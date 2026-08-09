@@ -1,0 +1,115 @@
+# CLAUDE.md — Fluid Mech / Phase 0
+
+**Project, one line:** A validated, continuously-running 2D fluid simulator in pure NumPy —
+D2Q9 lattice Boltzmann, any shape from a boolean mask, live streaming visual plus recordable video.
+
+**Phase 0 is not the product.** It exists so we understand LBM well enough to design the layer
+above it (see root `idea.md` and `README.md` for that product). Ship Phase 0, validate it, move on.
+
+**Full Phase 0 spec is `DOCS/IDEA2.md`.** Don't re-derive decisions already made there — cite them.
+If anything here conflicts with `DOCS/IDEA2.md`, **IDEA2.md wins**; log the conflict in
+`DOCS/STATE1.md` § Decisions rather than silently picking one.
+
+The existing `Navier-Fluid-Equation/` directory is **prior work** — potential-flow / panel-method
+scripts. It is not part of the LBM solver. Reuse its polygon-vertex code (`polygonsDemo.py`,
+`panels.py`) for `lbm/geometry.py` primitives; do not modify it otherwise.
+
+---
+
+## Hard constraints
+
+Load-bearing decisions, not optimizations. A design that drifts from these is wrong even if it runs.
+
+1. **D2Q9, BGK single relaxation time, bounce-back walls.** No MRT, no cumulant, no curved/
+   interpolated boundaries, no turbulence model in Phase 0. Deferred is not the same as forgotten.
+2. **Viscosity is not a free parameter.** `nu = cs2 * (tau - 0.5) = (tau - 0.5) / 3`. Never expose a
+   `nu` setter that doesn't go through `tau`. `tau -> 0.5` means `nu -> 0` means the sim blows up.
+3. **Lattice velocity stays under 0.1.** Compressibility error scales as Mach squared. Any config
+   path that can produce `|u| >= 0.1` must warn at setup, not at `nan` time.
+4. **State is `f` of shape `(9, ny, nx)`**, index order `(direction, y, x)`. `float32`. The nine
+   constants (`e`, `w`, `opp`, `cs2`) live in `lbm/core.py` and are imported from there — never
+   redefined locally.
+5. **The validation ladder is non-negotiable and ordered.** Rung 1 Poiseuille, Rung 2 cavity vs
+   Ghia, Rung 3 cylinder Re 100, Rung 4 square cylinder. Each rung is a script in `validate/` that
+   prints pass/fail. **A wrong sim that looks plausible is the main failure mode of this project.**
+   Do not start rung N+1 while rung N fails.
+6. **Do not optimise before Rung 3 passes.** No fused kernels, no Numba, no GPU, no clever
+   vectorisation tricks until the cylinder shows the right Strouhal number.
+7. **Simulation and rendering are decoupled.** One rendered frame is many timesteps.
+   `steps_per_frame` is **computed** from target playback speed — never hardcoded to 20.
+8. **Never block the sim on the display.** Ring buffer between them. If it fills, drop *display*
+   frames, never simulation steps.
+9. **Draw vorticity, not speed.** Diverging colormap, symmetric **fixed** limits. Speed magnitude is
+   a grey smear; per-frame autoscaled limits flicker.
+10. **One `render()`, three sinks** (live / record / headless). Do not write three renderers.
+11. **Restart must be bit-identical.** `f`, `mask`, and step count are the entire state. Pickle every
+    N steps; resume produces a bit-identical continuation, and that is a tested claim.
+12. **Geometry is one boolean array**, `solid`, shape `(ny, nx)`. Solid at least 3 cells thick
+    (detect and warn — thinner leaks through bounce-back), object ≥8 diameters from the outlet,
+    blockage ratio under ~10%.
+
+---
+
+## Session protocol
+
+**Follow this every session. No exceptions.**
+
+1. **At session start** — read `DOCS/STATE1.md` (all of it) and `DOCS/TASKS1.md` (the row for the
+   live task) **before touching any code**. They say what task is live, what's blocked, what the
+   previous session actually left behind.
+2. **Before working a task** — run `/start-task T0XX`. It reads the task contract and the
+   `DOCS/IDEA2.md` section it cites, then restates goal + acceptance criteria for confirmation.
+3. **One task per session.** `DOCS/PLAN1.md` maps one task to one session deliberately — context
+   stays small and each session ends at a validated boundary. Work that turns up mid-stream gets
+   `/new-task`, not scope creep.
+4. **At session end** — run `/checkpoint`. Never end a session without it. It updates
+   `DOCS/STATE1.md`, syncs `DOCS/TASKS1.md`, and writes the next paste-ready prompt into
+   `PROMPTS/`.
+
+## Coding conventions
+
+- **Type hints everywhere.** Arrays annotated with intent: `NDArray[np.float32]`, and document
+  shape in the docstring (`(9, ny, nx)`).
+- **Docstrings cite the spec** — name the `DOCS/IDEA2.md` section so the reasoning is one hop away.
+- **Preallocate. Never allocate inside the step loop.** Buffers are created once by the runner and
+  passed in, or held on the sim object.
+- **`float32` throughout.** Halves the bandwidth; accuracy is fine for this.
+- **No physics constant twice.** `e`, `w`, `opp`, `cs2` from `lbm/core.py` only.
+- **Physical units never reach the solver.** `lbm/units.py` converts at the boundary; everything
+  inside `lbm/` is lattice units.
+- Stubs raise `NotImplementedError("see DOCS/TASKS1.md T0XX")` until their task lands.
+- `pytest` for unit tests; `validate/` scripts are the integration tests and print pass/fail.
+
+## Commands
+
+```bash
+myenv/Scripts/python.exe -m pytest                        # unit tests
+myenv/Scripts/python.exe -m validate.poiseuille           # Rung 1
+myenv/Scripts/python.exe -m validate.cavity --re 100      # Rung 2
+myenv/Scripts/python.exe -m validate.cylinder             # Rung 3
+myenv/Scripts/python.exe -m validate.polygons             # Rung 4
+myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
+```
+
+`myenv/` is the project venv (Python 3.11, numpy 2.4, matplotlib 3.11, pillow). It is gitignored.
+Adding a dependency (pygame, imageio, pytest) means `myenv/Scripts/pip.exe install <pkg>` **and** a
+line in `DOCS/STATE1.md` § Environment.
+
+## Module map
+
+| Module | Responsibility | Lands in |
+|---|---|---|
+| `lbm/core.py` | D2Q9 constants, macroscopic, equilibrium, collide, stream | T001, T002 |
+| `lbm/boundary.py` | bounce-back, walls, body force, inlet, outlet | T002, T005 |
+| `lbm/geometry.py` | mask from primitives / PNG / SVG, sanity checks | T004, T009 |
+| `lbm/probe.py` | vorticity, drag, lift, Strouhal, residuals | T005 |
+| `lbm/runner.py` | continuous loop, ring buffer, checkpoint / restart | T006 |
+| `lbm/render.py` | field -> RGB, diverging colormap, fixed limits | T007 |
+| `lbm/record.py` | MP4 / GIF writer, headless sink | T010 |
+| `lbm/units.py` | physical <-> lattice conversion | T009 |
+| `validate/*.py` | the four rungs, each printing pass/fail | T002, T003, T007, T008 |
+
+## Current state
+
+Nothing implemented. Docs and agentic scaffold only. Task order T001 → T011, see `DOCS/TASKS1.md`.
+Live status in `DOCS/STATE1.md`.
