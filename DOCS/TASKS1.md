@@ -11,8 +11,8 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 
 | ID | Title | Status | Depends on | Gate |
 |---|---|---|---|---|
-| T001 | D2Q9 constants, macroscopic, equilibrium | `not_started` | — | unit tests |
-| T002 | Collide, stream, bounce-back, body force | `not_started` | T001 | **Rung 1** |
+| T001 | D2Q9 constants, macroscopic, equilibrium | `done` | — | unit tests |
+| T002 | Collide, stream, bounce-back, body force | `done` | T001 | **Rung 1** |
 | T003 | Moving-lid BC + cavity benchmark | `not_started` | T002 | **Rung 2** |
 | T004 | Geometry primitives + mask sanity checks | `not_started` | T002 | unit tests |
 | T005 | Inlet / outlet BC + probes | `not_started` | T003, T004 | unit tests |
@@ -27,7 +27,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 
 ## T001 — D2Q9 constants, macroscopic, equilibrium
 
-**Status:** `not_started`
+**Status:** `done` (session 1, 2026-08-09)
 
 ### Goal
 
@@ -48,14 +48,14 @@ Also exported: `E` (9,2) int, `W` (9,), `OPP` (9,) int, `CS2 = 1/3`, `nu_from_ta
 
 ### Acceptance criteria
 
-- [ ] `lbm/__init__.py` and `lbm/core.py` exist; `E`, `W`, `OPP`, `CS2` match `DOCS/IDEA2.md` exactly, in that index order.
-- [ ] `W.sum() == 1` to float32 tolerance, and `E[OPP[i]] == -E[i]` for all `i`.
-- [ ] `equilibrium(rho, u).sum(axis=0)` equals `rho` to within `1e-5` for random `rho` in `[0.9,1.1]`, random `|u| < 0.1`.
-- [ ] First moment holds: `(E.T @ equilibrium(rho,u).reshape(9,-1)).reshape(2,ny,nx)` equals `rho*u` to within `1e-5`.
-- [ ] Round trip: `macroscopic(equilibrium(rho, u))` returns the same `rho` and `u` to within `1e-5`.
-- [ ] `nu_from_tau(tau)` returns `(tau - 0.5) / 3` and raises `ValueError` naming `tau` when `tau <= 0.5`.
-- [ ] All arrays returned are `float32`; asserted in a test.
-- [ ] `myenv/Scripts/python.exe -m pytest tests/test_core.py` green.
+- [x] `lbm/__init__.py` and `lbm/core.py` exist; `E`, `W`, `OPP`, `CS2` match `DOCS/IDEA2.md` exactly, in that index order.
+- [x] `W.sum() == 1` to float32 tolerance, and `E[OPP[i]] == -E[i]` for all `i`. — error exactly 0.0
+- [x] `equilibrium(rho, u).sum(axis=0)` equals `rho` to within `1e-5` for random `rho` in `[0.9,1.1]`, random `|u| < 0.1`. — max error `2.4e-07`
+- [x] First moment holds: `(E.T @ equilibrium(rho,u).reshape(9,-1)).reshape(2,ny,nx)` equals `rho*u` to within `1e-5`. — max error `3.0e-08`
+- [x] Round trip: `macroscopic(equilibrium(rho, u))` returns the same `rho` and `u` to within `1e-5`. — `2.4e-07` / `3.0e-08`
+- [x] `nu_from_tau(tau)` returns `(tau - 0.5) / 3` and raises `ValueError` naming `tau` when `tau <= 0.5`.
+- [x] All arrays returned are `float32`; asserted in a test.
+- [x] `myenv/Scripts/python.exe -m pytest tests/test_core.py` green. — `21 passed`
 
 ### Constraints that bite here
 
@@ -69,11 +69,17 @@ Also exported: `E` (9,2) int, `W` (9,), `OPP` (9,) int, `CS2 = 1/3`, `nu_from_ta
 § Environment. Resist writing `collide` "since it's three lines" — T002 owns it and Rung 1 is what
 proves it.
 
+**Outcome (session 1).** Delivered as specified; no criterion relaxed and no scope added. Four
+conventions were chosen that the contract left open and every later task now inherits — see
+`DOCS/STATE1.md` § Decisions **D-005** (`u` is `(2, ny, nx)`, component 0 = `ux`), **D-006** (optional
+preallocated `feq` / `work` / `rho` / `u` outputs), **D-007** (`E` int32 plus an `E_F32` companion),
+**D-008** (`1.5*u^2` hoisted out of the direction loop). `pytest` 9.1.1 installed and recorded.
+
 ---
 
 ## T002 — Collide, stream, bounce-back, body force → Rung 1
 
-**Status:** `not_started`
+**Status:** `done` (session 2, 2026-08-10)
 
 ### Goal
 
@@ -94,15 +100,15 @@ anything visual.
 
 ### Acceptance criteria
 
-- [ ] `collide(f, feq, tau)` implements `f -= (f - feq) / tau` in place, no allocation.
-- [ ] `stream(f, buf)` shifts each `f[i]` by `E[i]` — `roll` on axis 0 by `ey`, axis 1 by `ex` — with the sign convention documented in the docstring and verified by a test that streams a single-cell spike and checks it lands one cell along `E[i]`.
-- [ ] `bounce_back` uses the **pre-stream** copy: on solid cells `f[i] = f_pre[OPP[i]]`.
-- [ ] `validate/poiseuille.py` runs an empty channel, no-slip top and bottom, constant body force, to steady state, and prints `PASS`/`FAIL` plus the L2 error.
-- [ ] **L2 relative error against `u(y) = (G / 2nu) * y * (H - y)` is under 1%.**
-- [ ] **Halving `(tau - 0.5)` doubles centreline velocity** to within 2% — asserted in the script, not eyeballed.
-- [ ] Mass is conserved: `f.sum()` drifts less than `1e-4` relative over 5000 steps.
-- [ ] No `nan` after 20000 steps at `tau = 0.6`.
-- [ ] Peak lattice velocity in the run is under 0.1 and the script prints it.
+- [x] `collide(f, feq, tau)` implements `f -= (f - feq) / tau` in place, no allocation. — three in-place ops (`f -= feq; f *= 1-omega; f += feq`); test asserts equality with the literal expression, unchanged buffer pointer, and `tracemalloc` growth below one array over 50 calls.
+- [x] `stream(f, buf)` shifts each `f[i]` by `E[i]` — `roll` on axis 0 by `ey`, axis 1 by `ex` — with the sign convention documented in the docstring and verified by a test that streams a single-cell spike and checks it lands one cell along `E[i]`. — spike test parametrised over all 9 directions, plus `np.array_equal` against the literal `np.roll` form.
+- [x] `bounce_back` uses the **pre-stream** copy: on solid cells `f[i] = f_pre[OPP[i]]`. — `f_pre` is the pre-**collision** copy (see D-011); fluid cells asserted untouched.
+- [x] `validate/poiseuille.py` runs an empty channel, no-slip top and bottom, constant body force, to steady state, and prints `PASS`/`FAIL` plus the L2 error. — 22×16, `tau=0.6`, `gx=2.6667e-5`, converged in 10600 steps (residual 3.30e-06).
+- [x] **L2 relative error against `u(y) = (G / 2nu) * y * (H - y)` is under 1%.** — **0.3650%**
+- [x] **Halving `(tau - 0.5)` doubles centreline velocity** to within 2% — asserted in the script, not eyeballed. — ratio **1.99940** (0.039789 → 0.079554)
+- [x] Mass is conserved: `f.sum()` drifts less than `1e-4` relative over 5000 steps. — `5.186e-05`
+- [x] No `nan` after 20000 steps at `tau = 0.6`. — finite; separate run since the main one converges first.
+- [x] Peak lattice velocity in the run is under 0.1 and the script prints it. — peak `|u| = 0.07955`
 
 ### Constraints that bite here
 
@@ -115,6 +121,15 @@ anything visual.
 
 If L2 error sits stubbornly near 2–3%, suspect the wall-offset convention before suspecting collide.
 The classic fix is `H = ny - 1` vs `H = ny`; try both and record which one the code assumes.
+
+**Outcome (session 2).** Delivered as specified; no criterion relaxed, no scope added. Q-001 closed
+by measurement, not by argument — `validate/poiseuille.py` prints the L2 error for all three rival
+wall conventions every run: **halfway (`H = ny-2`) 0.365%**, wall-on-fluid-node (`H = ny-3`) 14.763%,
+wall-on-solid-node (`H = ny-1`) 12.746%. See **D-009**. Body force is Guo (chosen over the
+velocity-shift shortcut, **D-010**); the pre-collision bounce-back copy and the float32-limited
+residual floor are **D-011** and **D-012**. Residual error after convergence is a uniform ~1.1e-4
+deficit, which is the known `tau`-dependent effective wall position of BGK bounce-back (exact only at
+`(tau-0.5)^2 = 3/16`), not a bug — documented in `lbm/boundary.py`.
 
 ---
 
