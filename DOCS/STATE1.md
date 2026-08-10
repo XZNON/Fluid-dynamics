@@ -10,12 +10,12 @@ Never rewrite or condense the session log — append only.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 0 — D2Q9 LBM in NumPy (`DOCS/IDEA2.md`) |
-| **Current task** | `T005` |
+| **Current task** | `T006` |
 | **Task status** | `not_started` |
-| **Completed tasks** | T001, T002, T003, T004 |
+| **Completed tasks** | T001, T002, T003, T004, T005 |
 | **Milestone reached** | **M2** (2026-08-10, gate run: `python -m validate.cavity --re 100 --re 400 --re 1000` → PASS; max deviation from Ghia 0.75% / 0.42% / 1.01%, vortex centre 0.21 / 0.29 / 0.59 cells) — next: M3 at T007 |
 | **Rung status** | R1 🟩 · R2 🟩 · R3 ⬜ · R4 ⬜ |
-| **Last updated** | 2026-08-10 — session 4 (T004 done; geometry primitives + mask checks) |
+| **Last updated** | 2026-08-10 — session 5 (T005 done; inlet/outlet BC + probes) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -86,6 +86,8 @@ a past entry — supersede it with a new one that says so.
 | D-017 | 2026-08-10 | **Minimum solid thickness** (`lbm/geometry.py::min_thickness`) is measured **per 8-connected component** as `2 * max(d) - 1`, where `d` is the Chebyshev distance from a solid cell to the nearest fluid cell — the side of the largest fully-solid square that fits in that component — and the reported value is the minimum over components. | Measured, not argued: the two obvious metrics were written first and both **false-alarm on a plain cylinder**, which would have made every Rung 3 run warn and trained us to ignore the warning. (a) Run lengths: the topmost cell of a disc has a vertical run of 1. (b) Per-cell 3x3 opening ("is every solid cell covered by a fully-solid 3x3 square?"): for a disc of radius 10 centred at (30,30), the pole (20,30) needs (20,29), which is at distance² 101 and therefore fluid — so no square covers it. Digitised curvature always produces locally thin boundary cells and they are not what leaks. Component depth gives disc 15, 4-cell block 3, 2-cell bar 1, 1-cell diagonal 1. Odd-valued and rounds down (a 4-thick block reads 3) — the safe direction for a warning. Known limit, documented in the docstring: a thin appendage **fused** to a thick body shares its component and is not reported; primitives here are convex blobs, but a T009 PNG could hide a hairline behind this. |
 | D-018 | 2026-08-10 | **Domain borders are exempt from all three mask checks.** `check_mask` first calls `strip_solid_border`, which peels *entirely* solid edge rows and columns one layer at a time; the checks then run on what remains, the immersed object. A mask with nothing left passes silently. | Constraint 12's 3-cell rule exists because fluid leaks *through* a thin obstacle to the fluid on the far side. A domain border has no far side, and the existing rungs both use one-cell borders on purpose (D-009, `validate/cavity.py::cavity_masks`). Without the exemption, Rung 1's own mask warns — a check that cries wolf on the code's own passing benchmarks gets suppressed, which is exactly the failure mode `DOCS/PLAN1.md` § Risks warns about. Only fully-solid edge layers are peeled, so an object that merely touches the edge is still checked. |
 | D-019 | 2026-08-10 | **Characteristic length `D` is the cross-stream extent of the object's bounding box** (bbox height for `inlet_axis="x"`), and the blockage denominator is the **fluid** span — the cross-stream domain minus fully-solid border layers. Both are printed with the bbox, the streamwise extent, the downstream distance in `D`, the blockage and the thickness; `check_mask(verbose=True)` is the default. | `DOCS/IDEA2.md` § Geometry defines blockage as "object height / domain height", and "8 diameters downstream" is the same `D` for a cylinder, so one bbox-derived quantity serves both rules and there is nothing for a caller to pass in inconsistently. Counting the wall rows in the denominator would flatter the blockage ratio by a couple of percent at Rung 1 resolutions. Printing by default is the acceptance criterion ("derived from the mask bounding box and printed") and is what makes a warning diagnosable rather than mysterious. |
+| D-020 | 2026-08-10 | **The two snapshots `lbm.probe.forces` consumes are the pre-stream and post-stream states**, and the runner owns one extra `(9, ny, nx)` buffer for the first: `bounce_back(f, f_pre, solid)` → `np.copyto(f_bb, f)` → `stream(f, buf)` → `forces(f_bb, f, links, ...)`. The D-011 timestep order gains a tail: `stream` → `outlet_zero_gradient` → `inlet_velocity`. | The parameter named `f_pre` in `forces` is **not** the `f_pre` of `bounce_back`, which is the *pre-collision* copy (D-011) — one name, two meanings, and without fixing it now T006 would have had to reshape the API to find out. Momentum exchange needs the population leaving the fluid node (pre-stream) and the reflected one arriving back (post-stream). Because bounce-back is exactly `f[j](x_s) = f_pre_collision[opp(j)](x_s)`, that returning population can equivalently be read off the pre-stream array on the solid side; `tests/test_probe.py::test_the_two_snapshot_form_equals_the_solid_side_form` asserts the identity, so the timing is pinned by a test and not by a comment. The open boundaries go **after** `stream` because `stream` is periodic in `x`: after it, the inlet column's `ex = +1` populations and the outlet column's `ex = -1` populations are precisely the wrap-around garbage those two functions overwrite. |
+| D-021 | 2026-08-10 | **The outlet is convective, not a bare copy.** `outlet_zero_gradient(f, *, col, src, prev=None, lam=None)` keeps `f[:, :, -1] = f[:, :, -2]` as the default and adds `f[:, :, -1] = (prev + lam f[:, :, -2]) / (1 + lam)` when the caller supplies the previous outlet column; `lam` defaults to `sqrt(CS2) = 0.577`. The runner supplies `prev`. | Measured, not argued, the way Q-001 and Q-003 were closed. A smooth Gaussian pressure pulse (`sigma = 10` cells, 400-cell domain) fired at the boundary reflects: **plain copy 35%**, `lam = 0.4` 4.7%, **`lam = cs` 0.6%**, `lam = 1.0` 7.5%, `lam = 2 cs` 17%. The criterion is "under 5%", and **the bare copy the contract describes does not meet it**. The copy is the `lam -> inf` limit of the same expression, and the minimum is sharp and sits exactly at the lattice sound speed — which is what an advection boundary tuned to the outgoing wave speed is supposed to do. `DOCS/IDEA2.md` § Stability already anticipates this ("proper zero-gradient / sponge layer"). The copy stays the default because it is the documented behaviour and needs no state; its 35% is pinned by its own test so the convective form cannot be deleted later as redundant. `lam = U` rather than `cs` is the other defensible tuning — wake vorticity is advected, not radiated — and is left exposed for Rung 3 (T007) to measure. |
 
 ## Session log
 
@@ -348,3 +350,70 @@ Append one entry per session. Newest at the bottom.
 **Next**
 - Paste `PROMPTS/005-t005-inlet-outlet-probes.md` into a fresh session. It runs `/start-task T005`.
   T005's gate is unit tests; `forces` is the error-prone one and Rung 3 (T007) is what audits it.
+
+### 2026-08-10 — Session 5: T005 — inlet / outlet BC + probes
+
+**Task worked:** T005 — `done`, every acceptance criterion run and green. No milestone (M3 is T007).
+
+**Done**
+- `lbm/boundary.py` — added `inlet_profile(ny, U, profile, *, solid, col, uy)` (uniform / parabolic,
+  D-009 halfway wall convention, warns at `|u| >= 0.1`), `inlet_velocity(...)` (**Zou–He** on the
+  three `ex = +1` unknowns, allocation-free with a cached `u_in` and a `(5, ny)` work buffer, skips
+  solid rows) and `outlet_zero_gradient(f, *, col, src, prev, lam)` (copy by default, convective when
+  given `prev`). Module docstring now carries the full timestep order including the D-020 tail.
+- `lbm/probe.py` — new. `vorticity(u, *, solid, out, work)`, `BoundaryLinks` +
+  `boundary_links(solid)`, `forces(f_pre, f_post, solid, *, U, D, rho0)`,
+  `strouhal(cl_series, dt, D, U, *, transient)`, `residual(u_now, u_prev, U, *, solid, work)`.
+- `lbm/__init__.py` — re-exports the eleven new public names.
+- `tests/test_probe.py` — 49 tests covering both BCs and all four probes.
+
+**Measured**
+- `myenv/Scripts/python.exe -m pytest tests/test_probe.py` → **`49 passed`**
+- `myenv/Scripts/python.exe -m pytest` → **`152 passed in 5.41s`** (103 existing + 49 new)
+- `myenv/Scripts/python.exe -m validate.poiseuille` → **PASS**, L2 **0.3650%**, peak `|u|` 0.07955
+- `myenv/Scripts/python.exe -m validate.cavity --re 100 --re 400 --re 1000` → **PASS**, max deviation
+  **0.75% / 0.42% / 1.01%**, vortex 0.21 / 0.29 / 0.59 cells — both rungs identical to session 4.
+- Outlet reflection of a `sigma = 10` Gaussian pressure pulse: plain copy **35%**, `lam = 0.4` 4.7%,
+  `lam = cs` **0.6%**, `lam = 1.0` 7.5%, `lam = 2 cs` 17% → **D-021**.
+- `forces` magnitude audit by Poiseuille momentum balance: wall drag `8.5319e-03` against injected
+  `gx * A_fluid = 8.5334e-03`, **ratio 0.99982** (0.02% error), transverse force `1.1e-06`.
+- Sign/symmetry harness (41x140 channel, `D = 9` cylinder, `tau = 0.65`, 1200 steps, last 200
+  averaged): centred `Cd = 27.3`, `Cl = 1.5e-05`; offset `Cl = +0.0531` against mirrored `-0.0531`.
+  `Cd = 27` is not a benchmark number and is not meant to be — that case is Re ~ 9 at 23% blockage,
+  well outside what `check_mask` allows. Rung 3 (T007) is the run that measures `Cd ~ 1.34`.
+
+**Not done / deferred**
+- Nothing from the T005 contract. No cylinder run and no `validate/cylinder.py` — Rung 3 is T007 and
+  the contract says so explicitly.
+- No sponge layer. `DOCS/IDEA2.md` § Stability offers "zero-gradient **or** sponge"; a tau-ramp
+  sponge was measured (it only improved the copy outlet from 26% to 21% reflection) and dropped in
+  favour of the convective boundary, which is one line and ten times better.
+- No optimisation (constraint 6). `forces` fancy-indexes per direction, which allocates a small
+  temporary per call; the link list is built once, which is what the contract asked for.
+
+**Decisions made**
+- **D-020** (which two snapshots `forces` takes, and the extra runner buffer — the API question the
+  contract told this session to settle for T006), **D-021** (convective outlet, measured). Both above.
+
+**Two things measurement changed**
+- The bare column-copy outlet **fails** the 5% criterion at 35%. Fixed by the convective form rather
+  than by relaxing the number; the copy's 35% is now itself a test, so the fix cannot be undone by
+  someone tidying up.
+- The contract's `forces` validation (uniform flow, no obstacle, `|Cd| < 1e-6`) is trivially true —
+  with no obstacle there are no links and the sum is empty. It is kept, and a **Poiseuille momentum
+  balance** test was added next to it, which does audit the magnitude: 0.02% against the exact
+  answer. Criterion strengthened, not relaxed; the row in `DOCS/TASKS1.md` says so.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- R1 🟩 · R2 🟩 · R3 ⬜ · R4 ⬜. R3 and R4 still have no script (T007, T008) — not attempted, not
+  failing.
+
+**Next**
+- Paste `PROMPTS/006-t006-runner-ringbuffer-restart.md` into a fresh session. It runs
+  `/start-task T006`. The runner's buffer list is fixed by D-020 (the extra pre-stream `f_bb`, the
+  `(9, ny)` outlet `prev`, the cached `u_in` and its `(5, ny)` work array); constraint 11's
+  bit-identical restart is the criterion most likely to bite, and `float64` creeping into the step
+  path is how it breaks.

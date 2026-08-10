@@ -15,7 +15,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T002 | Collide, stream, bounce-back, body force | `done` | T001 | **Rung 1** |
 | T003 | Moving-lid BC + cavity benchmark | `done` | T002 | **Rung 2** |
 | T004 | Geometry primitives + mask sanity checks | `done` | T002 | unit tests |
-| T005 | Inlet / outlet BC + probes | `not_started` | T003, T004 | unit tests |
+| T005 | Inlet / outlet BC + probes | `done` | T003, T004 | unit tests |
 | T006 | Runner: decoupled loop, ring buffer, restart | `not_started` | T005 | restart test |
 | T007 | Render + live sink + cylinder benchmark | `not_started` | T006 | **Rung 3** |
 | T008 | Square cylinder benchmark | `not_started` | T007 | **Rung 4** |
@@ -237,7 +237,7 @@ asserts `channel_walls` is byte-equal to the inline mask instead).
 
 ## T005 — Inlet / outlet BC + probes
 
-**Status:** `not_started`
+**Status:** `done` (session 5, 2026-08-10)
 
 ### Goal
 
@@ -257,15 +257,15 @@ code that makes Rung 3 checkable. Without probes, "the wake looks right" is all 
 
 ### Acceptance criteria
 
-- [ ] `inlet_velocity` imposes a prescribed profile (uniform or parabolic, selectable) — Zou–He or equilibrium-based, stated in the docstring.
-- [ ] `outlet_zero_gradient` copies the second-to-last column; a test confirms a pressure pulse crossing the outlet reflects less than 5% of its amplitude.
-- [ ] `vorticity(u)` returns `d(uy)/dx - d(ux)/dy` via central differences, one-sided at edges, masked to `nan` on solid cells.
-- [ ] `forces(f_pre, f_post, solid)` computes drag and lift by **momentum exchange** over boundary links, returning dimensionless `Cd`, `Cl` given `U` and characteristic length.
-- [ ] `forces` validated on a known case: uniform flow with no obstacle gives `|Cd| < 1e-6`.
-- [ ] `strouhal(cl_series, dt)` finds the dominant frequency via FFT, ignores the first 30% of the series as transient, and returns `St = f*D/U`.
-- [ ] `strouhal` verified against a synthetic sine of known frequency to within 1%.
-- [ ] `residual(u_now, u_prev, U)` returns `max|Δu|/U`.
-- [ ] `pytest tests/test_probe.py` green; Rungs 1–2 still green.
+- [x] `inlet_velocity` imposes a prescribed profile (uniform or parabolic, selectable) — Zou–He or equilibrium-based, stated in the docstring. — **Zou–He**, stated in the docstring with the four formulas; profile built by `inlet_profile(ny, U, "uniform"|"parabolic", solid=, col=, uy=)` and cacheable. Tests assert all three moments (`rho`, `rho ux`, `rho uy`) of the completed column, not the formulas.
+- [x] `outlet_zero_gradient` copies the second-to-last column; a test confirms a pressure pulse crossing the outlet reflects less than 5% of its amplitude. — the copy is the default; the 5% criterion is met by the **convective** form `prev`/`lam`, measured **0.6%** at `lam = cs` against **35%** for the bare copy (**D-021**). Both numbers are pinned by tests.
+- [x] `vorticity(u)` returns `d(uy)/dx - d(ux)/dy` via central differences, one-sided at edges, masked to `nan` on solid cells. — asserted equal to `np.gradient` (which is central/one-sided) and exact on linear shear and solid-body rotation; `np.isnan(w)` asserted byte-equal to the mask.
+- [x] `forces(f_pre, f_post, solid)` computes drag and lift by **momentum exchange** over boundary links, returning dimensionless `Cd`, `Cl` given `U` and characteristic length. — `f_pre` is the **pre-stream** snapshot, `f_post` the post-stream one (**D-020**); `solid` may be a mask or a precomputed `BoundaryLinks`.
+- [x] `forces` validated on a known case: uniform flow with no obstacle gives `|Cd| < 1e-6`. — plus three stronger cases, since that one is trivially zero: **Poiseuille momentum balance** (wall drag equals `gx * A_fluid` to **0.02%**, tolerance 0.5%), a body in quiescent fluid (0 to round-off), and lift that flips sign under mirroring.
+- [x] `strouhal(cl_series, dt)` finds the dominant frequency via FFT, ignores the first 30% of the series as transient, and returns `St = f*D/U`. — signature `strouhal(cl_series, dt, D, U, *, transient=0.3)`; Hann window plus parabolic peak refinement.
+- [x] `strouhal` verified against a synthetic sine of known frequency to within 1%. — also verified on a frequency placed exactly half a bin off, where the nearest-bin answer fails 1% and the refined one passes, and against a prepended ramp-plus-drift transient (answer unchanged to 1e-9).
+- [x] `residual(u_now, u_prev, U)` returns `max|Δu|/U`. — fluid cells only (**D-014**); the unmasked-junk regression is pinned.
+- [x] `pytest tests/test_probe.py` green; Rungs 1–2 still green. — `49 passed`, whole suite **`152 passed`**; Rung 1 L2 0.3650%, Rung 2 0.75% / 0.42% / 1.01%, both identical to session 4.
 
 ### Constraints that bite here
 
@@ -277,6 +277,18 @@ code that makes Rung 3 checkable. Without probes, "the wake looks right" is all 
 
 `forces` is the single most error-prone function in the project and Rung 3's `Cd ≈ 1.34` is what
 audits it. Write it so the link list is precomputed once from the mask, not rebuilt per step.
+
+**Outcome (session 5).** Delivered as specified; no criterion relaxed, two strengthened.
+`lbm/boundary.py` gained `inlet_profile`, `inlet_velocity`, `outlet_zero_gradient`; `lbm/probe.py` is
+new (`vorticity`, `boundary_links`/`BoundaryLinks`, `forces`, `strouhal`, `residual`);
+`tests/test_probe.py` has 49 tests. Two things did not survive contact with measurement. (1) The
+bare column-copy outlet reflects **35%** of a sound pulse, not under 5% — the convective form at
+`lam = cs` reflects **0.6%** and is what meets the criterion (**D-021**); the copy is kept as the
+default and its bad number is pinned by a test so nobody "simplifies" the fix away. (2) The
+zero-obstacle `|Cd| < 1e-6` check is trivially satisfied and audits nothing, so a Poiseuille
+momentum-balance test was added — wall drag equals the injected `gx * A_fluid` to **0.02%**, which is
+a real magnitude check on `forces` available now rather than at Rung 3. The runner's extra pre-stream
+buffer is **D-020**.
 
 ---
 

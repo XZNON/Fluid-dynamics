@@ -1,8 +1,8 @@
-"""Solid walls and body forcing.
+"""Solid walls, open boundaries and body forcing.
 
 Implements ``DOCS/IDEA2.md`` § "The method, in the order the code runs it",
-step 5 (bounce-back), plus the Guo body-force scheme that Rung 1 needs to drive
-a channel. Inlet and outlet boundaries are T005 and land here later.
+step 5 (bounce-back) and step 6 (inlet velocity, outlet zero-gradient), plus the
+Guo body-force scheme that Rung 1 needs to drive a channel.
 
 The nine lattice constants are imported from :mod:`lbm.core` and never
 redefined (``CLAUDE.md`` constraint 4). Everything here is lattice units.
@@ -20,27 +20,48 @@ Bounce-back is applied to the **post-collision** state using a copy of the
     collide(f, feq, tau)
     apply_body_force(f, rho, u, tau, g, work)
     bounce_back(f, f_pre, solid)           # overwrite solid cells
+    np.copyto(f_bb, f)                     # pre-stream copy, for probe.forces
     stream(f, buf)
+    outlet_zero_gradient(f, prev=f_out)    # step 6, open boundaries
+    inlet_velocity(f, U, u_in=u_in, work=inlet_work)
 
 That order is what makes the reflection work: ``f_pre[OPP[i]]`` at a solid cell
 is the population that streamed *into* the solid last step travelling in
 direction ``OPP[i]``. Writing it into slot ``i`` sends it straight back out
 along ``E[i]`` on the next stream.
+
+The open boundaries come **after** :func:`lbm.core.stream` and not before
+(``DOCS/STATE1.md`` D-020). ``stream`` is periodic in ``x``, so after it the
+inlet column holds wrap-around garbage in exactly its ``ex = +1`` populations
+and the outlet column holds it in the ``ex = -1`` ones — precisely the unknowns
+these two functions overwrite. ``f_bb`` is the extra ``(9, ny, nx)`` buffer
+:func:`lbm.probe.forces` needs; it is the **pre-stream** state, distinct from
+``f_pre``, which is pre-collision.
 """
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from numpy.typing import NDArray
 
-from lbm.core import E_F32, OPP, Q, W
+from lbm.core import CS2, E_F32, OPP, Q, W
 
 __all__ = [
     "bounce_back",
     "moving_wall",
+    "inlet_profile",
+    "inlet_velocity",
+    "outlet_zero_gradient",
     "force_velocity_shift",
     "apply_body_force",
 ]
+
+#: Lattice velocity ceiling (``CLAUDE.md`` constraint 3). Compressibility error
+#: scales as Mach squared, so anything at or above this is out of the model's
+#: range. Warned about here; ``lbm/units.py`` (T009) is where it raises.
+U_MAX: float = 0.1
 
 
 def bounce_back(
@@ -180,6 +201,329 @@ def moving_wall(
             # 2 / cs2 == 6
             c = np.float32(6.0 * float(W[i]) * rho_w * eu)
             np.add(f[i], c, out=f[i], where=wall)
+
+
+def inlet_profile(
+    ny: int,
+    U: float,
+    profile: str = "uniform",
+    *,
+    solid: NDArray[np.bool_] | None = None,
+    col: int = 0,
+    uy: float = 0.0,
+) -> NDArray[np.float32]:
+    """The prescribed inlet velocity profile, built once at setup.
+
+    ``DOCS/IDEA2.md`` § The method, step 6 — the velocity that
+    :func:`inlet_velocity` imposes. Two profiles, selectable:
+
+    ``"uniform"``
+        ``ux = U`` on every fluid row of the inlet column.
+    ``"parabolic"``
+        ``ux = 4 U y_ (H - y_) / H^2`` — the Poiseuille shape, **peak** ``U``
+        (not mean; the mean is ``2U/3``).
+
+    The parabola uses the half-way wall convention (``DOCS/STATE1.md`` D-009):
+    with fluid rows ``y0 .. y1`` in the inlet column, the walls are the planes
+    ``y0 - 0.5`` and ``y1 + 0.5``, so ``H = y1 - y0 + 1`` and
+    ``y_ = y - (y0 - 0.5)``. That puts ``ux = 0`` exactly on the wall planes
+    rather than on the last fluid row, which is the convention Rung 1 measured
+    at 0.365% against 12.7%/14.8% for the two rivals.
+
+    Solid rows get zero velocity — :func:`inlet_velocity` skips them anyway.
+
+    Args:
+        ny: number of rows in the domain.
+        U: peak (parabolic) or uniform (uniform) streamwise lattice velocity.
+        profile: ``"uniform"`` or ``"parabolic"``.
+        solid: optional solid mask, shape ``(ny, nx)``, ``bool``. Its column
+            ``col`` decides which rows are fluid. ``None`` means every row is.
+        col: index of the inlet column, used only to read ``solid``.
+        uy: cross-stream inlet velocity, uniform over the fluid rows. Normally
+            0; nonzero is how a run is deliberately perturbed to trip the
+            cylinder wake out of its unstable-symmetric state.
+
+    Returns:
+        ``u_in``, shape ``(2, ny)``, ``float32``, ``(ux, uy)``
+        (``DOCS/STATE1.md`` D-005).
+
+    Raises:
+        ValueError: on an unknown ``profile``, or if the inlet column has no
+            fluid rows.
+
+    Warns:
+        UserWarning: if the resulting ``max|u| >= 0.1`` (``CLAUDE.md``
+            constraint 3). A warning here and not an error: the ceiling is a
+            modelling limit, and ``lbm/units.py`` (T009) is the layer that
+            refuses outright.
+    """
+    if profile not in ("uniform", "parabolic"):
+        raise ValueError(
+            f"profile must be 'uniform' or 'parabolic' (got {profile!r})."
+        )
+
+    fluid_rows = (
+        np.ones(ny, dtype=bool) if solid is None else ~np.asarray(solid)[:, col]
+    )
+    rows = np.flatnonzero(fluid_rows)
+    if rows.size == 0:
+        raise ValueError(
+            f"inlet column {col} has no fluid rows — the whole column is solid."
+        )
+
+    u_in = np.zeros((2, ny), dtype=np.float32)
+
+    if profile == "uniform":
+        u_in[0, rows] = np.float32(U)
+    else:
+        y0, y1 = int(rows[0]), int(rows[-1])
+        H = float(y1 - y0 + 1)
+        y_ = rows.astype(np.float32) - np.float32(y0 - 0.5)
+        u_in[0, rows] = np.float32(4.0 * U) * y_ * (np.float32(H) - y_) / np.float32(H * H)
+
+    u_in[1, rows] = np.float32(uy)
+
+    peak = float(np.max(np.hypot(u_in[0], u_in[1])))
+    if peak >= U_MAX:
+        warnings.warn(
+            f"inlet peak lattice velocity {peak:.4f} >= {U_MAX} "
+            "(CLAUDE.md constraint 3): compressibility error scales as Mach "
+            "squared and this profile is outside the model's range. Lower U, or "
+            "raise the resolution and lower U in proportion.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    return u_in
+
+
+def inlet_velocity(
+    f: NDArray[np.float32],
+    U: float = 0.0,
+    *,
+    profile: str = "uniform",
+    solid: NDArray[np.bool_] | None = None,
+    col: int = 0,
+    uy: float = 0.0,
+    u_in: NDArray[np.float32] | None = None,
+    work: NDArray[np.float32] | None = None,
+) -> NDArray[np.float32]:
+    """Zou–He velocity inlet on a left-facing column, in place.
+
+    ``DOCS/IDEA2.md`` § The method, step 6. **This is Zou–He**, not
+    bounce-back: an inlet has to give the column a density consistent with the
+    velocity it prescribes, and bounce-back cannot — it reflects whatever
+    arrives. ``DOCS/IDEA2.md`` § Stability lists "sim fine but wake is wrong"
+    against a bad inlet.
+
+    Call it **after** :func:`lbm.core.stream` (module docstring,
+    ``DOCS/STATE1.md`` D-020). At that moment the three ``ex = +1`` populations
+    in the inlet column are unknown — nothing upstream streamed into them, and
+    the periodic wrap has filled them with the outlet's values. Those three are
+    what this overwrites. With this package's direction order
+    (``0`` rest, ``1 +x``, ``2 +y``, ``3 -x``, ``4 -y``, ``5 ++``, ``6 -+``,
+    ``7 --``, ``8 +-``) the unknowns are ``i = 1, 5, 8`` and Zou–He gives::
+
+        rho = (f0 + f2 + f4 + 2 (f3 + f6 + f7)) / (1 - ux)
+        f1  = f3 + (2/3) rho ux
+        f5  = f7 - (1/2)(f2 - f4) + (1/6) rho ux + (1/2) rho uy
+        f8  = f6 + (1/2)(f2 - f4) + (1/6) rho ux - (1/2) rho uy
+
+    The first line is mass conservation solved for the unknown density; the
+    other three are chosen so that the zeroth and both first moments of the
+    completed column reproduce ``rho``, ``rho ux`` and ``rho uy`` exactly. The
+    unit tests assert all three moments rather than the formulas, so a
+    transcription error cannot pass.
+
+    Solid rows in the inlet column are left untouched — :func:`bounce_back` owns
+    them.
+
+    Allocation (``CLAUDE.md`` § conventions): pass ``u_in`` and ``work`` and the
+    call allocates nothing. Building the profile every step would allocate
+    ``O(ny)``, so the runner (T006) keeps the returned ``u_in`` and hands it
+    back (``DOCS/STATE1.md`` D-006).
+
+    Args:
+        f: distribution, shape ``(9, ny, nx)``, ``float32``. Modified in place
+            in column ``col`` only, and only in directions 1, 5 and 8.
+        U: inlet velocity passed to :func:`inlet_profile`. Ignored when ``u_in``
+            is supplied.
+        profile: ``"uniform"`` or ``"parabolic"``. Ignored when ``u_in`` is
+            supplied.
+        solid: optional solid mask, shape ``(ny, nx)``, ``bool``. Rows that are
+            solid in column ``col`` are skipped.
+        col: index of the inlet column. Any column may be used, but it is
+            always treated as **left-facing** — the unknowns are the ``+x``
+            directions.
+        uy: cross-stream inlet velocity. Ignored when ``u_in`` is supplied.
+        u_in: prescribed profile, shape ``(2, ny)``, ``float32``. Built by
+            :func:`inlet_profile` when ``None``.
+        work: optional scratch, shape ``(>=5, ny)``, ``float32``.
+
+    Returns:
+        ``u_in`` — the profile that was imposed, for the caller to cache.
+    """
+    ny = f.shape[1]
+
+    if u_in is None:
+        u_in = inlet_profile(ny, U, profile, solid=solid, col=col, uy=uy)
+
+    if work is None:
+        work = np.empty((5, ny), dtype=np.float32)
+    rho, rho_ux, dn, half_ruy, tmp = work[0], work[1], work[2], work[3], work[4]
+
+    fc = f[:, :, col]  # (9, ny) view into f
+    ux, uy_arr = u_in[0], u_in[1]
+
+    fluid = None if solid is None else ~solid[:, col]
+
+    # rho = (f0 + f2 + f4 + 2 (f3 + f6 + f7)) / (1 - ux)
+    np.add(fc[3], fc[6], out=rho)
+    rho += fc[7]
+    rho *= np.float32(2.0)
+    rho += fc[0]
+    rho += fc[2]
+    rho += fc[4]
+    np.subtract(np.float32(1.0), ux, out=tmp)
+    rho /= tmp
+
+    np.multiply(rho, ux, out=rho_ux)
+
+    # The (1/2)(f2 - f4) transverse correction, shared by f5 and f8. Read
+    # before anything is written; directions 2 and 4 are never overwritten here.
+    np.subtract(fc[2], fc[4], out=dn)
+    dn *= np.float32(0.5)
+
+    np.multiply(rho, uy_arr, out=half_ruy)
+    half_ruy *= np.float32(0.5)
+
+    # f1 = f3 + (2/3) rho ux
+    np.multiply(rho_ux, np.float32(2.0 / 3.0), out=tmp)
+    tmp += fc[3]
+    _write_col(fc, 1, tmp, fluid)
+
+    # f5 = f7 - (1/2)(f2 - f4) + (1/6) rho ux + (1/2) rho uy
+    np.multiply(rho_ux, np.float32(1.0 / 6.0), out=tmp)
+    tmp -= dn
+    tmp += half_ruy
+    tmp += fc[7]
+    _write_col(fc, 5, tmp, fluid)
+
+    # f8 = f6 + (1/2)(f2 - f4) + (1/6) rho ux - (1/2) rho uy
+    np.multiply(rho_ux, np.float32(1.0 / 6.0), out=tmp)
+    tmp += dn
+    tmp -= half_ruy
+    tmp += fc[6]
+    _write_col(fc, 8, tmp, fluid)
+
+    return u_in
+
+
+def _write_col(
+    fc: NDArray[np.float32],
+    i: int,
+    value: NDArray[np.float32],
+    fluid: NDArray[np.bool_] | None,
+) -> None:
+    """Write ``value`` into direction ``i`` of a column view, fluid rows only."""
+    if fluid is None:
+        np.copyto(fc[i], value)
+    else:
+        np.copyto(fc[i], value, where=fluid)
+
+
+def outlet_zero_gradient(
+    f: NDArray[np.float32],
+    *,
+    col: int = -1,
+    src: int = -2,
+    prev: NDArray[np.float32] | None = None,
+    lam: float | None = None,
+) -> None:
+    """Zero-gradient outflow, in place — plain copy or convective.
+
+    ``DOCS/IDEA2.md`` § The method, step 6, and § Stability, the row
+    "reflections from the right edge / outlet BC reflecting".
+
+    **Plain copy** (``prev=None``, the default). The outlet column is given the
+    whole distribution of its inboard neighbour, all nine directions::
+
+        f[:, :, -1] = f[:, :, -2]
+
+    **Convective** (pass ``prev``). The outlet column is advanced by the 1D
+    advection equation ``df/dt + lam df/dx = 0``, discretised implicitly::
+
+        f[:, :, -1] = (prev + lam f[:, :, -2]) / (1 + lam)
+
+    where ``prev`` is this column's value at the previous step. The plain copy
+    is exactly the ``lam -> inf`` limit of that expression, which is why both
+    live in one function.
+
+    Which to use, measured (``DOCS/STATE1.md`` **D-021**)
+    ----------------------------------------------------
+    A wave leaving through a copied column reflects far more than the name
+    "zero-gradient" suggests. ``tests/test_probe.py`` fires a smooth Gaussian
+    pressure pulse (``sigma = 10`` cells) at the boundary and measures what
+    comes back:
+
+    ======================================  ==========
+    outlet                                  reflected
+    ======================================  ==========
+    plain copy                              **35%**
+    convective, ``lam = 0.4``               4.7%
+    convective, ``lam = cs = 0.577``        **0.6%**
+    convective, ``lam = 1.0``               7.5%
+    ======================================  ==========
+
+    The minimum is sharp and it sits exactly at the lattice speed of sound,
+    which is what the theory says: a disturbance travelling out at speed ``c``
+    is absorbed perfectly by an advection boundary tuned to ``c``, and a
+    pressure pulse travels at ``cs``. Hence ``lam`` defaults to ``sqrt(CS2)``
+    when ``prev`` is supplied, and the runner supplies it. The acceptance
+    criterion — under 5% — is met by the convective form, not by the copy.
+
+    ``lam = U`` instead of ``cs`` is the other defensible tuning: vorticity in a
+    wake is *advected* at roughly the free-stream speed rather than radiated at
+    ``cs``. It is exposed rather than chosen here because Rung 3 is the run that
+    can measure which one leaves the wake cleaner.
+
+    Call it **after** :func:`lbm.core.stream` and **before**
+    :func:`inlet_velocity` (module docstring, ``DOCS/STATE1.md`` D-020).
+    Streaming is periodic in ``x``, so without this the outlet column's
+    ``ex = -1`` populations are whatever wrapped around from the inlet.
+
+    Constraint 12's "object at least 8 diameters from the outlet" is the other
+    half of this; :func:`lbm.geometry.check_mask` enforces it. This boundary
+    makes the outlet quiet, not free.
+
+    Args:
+        f: distribution, shape ``(9, ny, nx)``, ``float32``, modified in place
+            in column ``col`` only.
+        col: outlet column, default the last.
+        src: column copied from, default the second-to-last. Passing
+            ``col=0, src=1`` makes the *left* edge absorbing instead, which is
+            how the reflection test stops its left-going pulse from wrapping
+            back in.
+        prev: the outlet column at the previous step, shape ``(9, ny)``,
+            ``float32``. Owned by the caller (the runner allocates it once) and
+            **updated in place** by this call, so the next step gets it for
+            free. ``None`` selects the plain copy.
+        lam: advection speed of the convective form, lattice units. Defaults to
+            ``sqrt(CS2)``. Ignored when ``prev`` is ``None``.
+    """
+    out = f[:, :, col]
+
+    if prev is None:
+        np.copyto(out, f[:, :, src])
+        return
+
+    if lam is None:
+        lam = float(np.sqrt(CS2))
+
+    np.multiply(f[:, :, src], np.float32(lam), out=out)
+    out += prev
+    out *= np.float32(1.0 / (1.0 + lam))
+    np.copyto(prev, out)
 
 
 def force_velocity_shift(
