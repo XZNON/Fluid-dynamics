@@ -13,8 +13,8 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 |---|---|---|---|---|
 | T001 | D2Q9 constants, macroscopic, equilibrium | `done` | — | unit tests |
 | T002 | Collide, stream, bounce-back, body force | `done` | T001 | **Rung 1** |
-| T003 | Moving-lid BC + cavity benchmark | `not_started` | T002 | **Rung 2** |
-| T004 | Geometry primitives + mask sanity checks | `not_started` | T002 | unit tests |
+| T003 | Moving-lid BC + cavity benchmark | `done` | T002 | **Rung 2** |
+| T004 | Geometry primitives + mask sanity checks | `done` | T002 | unit tests |
 | T005 | Inlet / outlet BC + probes | `not_started` | T003, T004 | unit tests |
 | T006 | Runner: decoupled loop, ring buffer, restart | `not_started` | T005 | restart test |
 | T007 | Render + live sink + cylinder benchmark | `not_started` | T006 | **Rung 3** |
@@ -135,7 +135,7 @@ deficit, which is the known `tau`-dependent effective wall position of BGK bounc
 
 ## T003 — Moving-lid BC + cavity benchmark → Rung 2
 
-**Status:** `not_started`
+**Status:** `done` (session 3, 2026-08-10) — **M2 reached**
 
 ### Goal
 
@@ -154,13 +154,13 @@ Lid-driven cavity at Re 100, 400 and 1000 matches Ghia et al. (1982) centreline 
 
 ### Acceptance criteria
 
-- [ ] `moving_wall` imposes a tangential wall velocity (momentum-corrected bounce-back or Zou–He — state which in the docstring).
-- [ ] Ghia reference values for `ux` along the vertical centreline and `uy` along the horizontal centreline are stored as a literal table in `validate/cavity.py` with the citation, at the standard 17 sample points.
-- [ ] `validate/cavity.py --re {100,400,1000}` runs to steady state (residual `max|u_n - u_{n-1}| / U < 1e-6`) and prints per-Re PASS/FAIL.
-- [ ] **Max absolute deviation from Ghia is under 5% of the lid velocity at all sampled points, for all three Re.**
-- [ ] The primary vortex centre location is printed and lies within 2 cells of Ghia's for each Re.
-- [ ] The script prints resolution, `tau`, and peak lattice velocity per case; peak stays under 0.1.
-- [ ] Rung 1 re-run and still green.
+- [x] `moving_wall` imposes a tangential wall velocity (momentum-corrected bounce-back or Zou–He — state which in the docstring). — **momentum-corrected (Ladd) bounce-back**, `f[i] = f_pre[OPP[i]] + 6 w_i rho_w (e_i . u_wall)`; named in the docstring, and a unit test asserts it degenerates to `bounce_back` at `u_wall = 0`.
+- [x] Ghia reference values for `ux` along the vertical centreline and `uy` along the horizontal centreline are stored as a literal table in `validate/cavity.py` with the citation, at the standard 17 sample points. — `GHIA_Y`/`GHIA_U`, `GHIA_X`/`GHIA_V`, J. Comput. Phys. 48, 387-411 (1982), Tables I and II.
+- [x] `validate/cavity.py --re {100,400,1000}` runs to steady state (residual `max|u_n - u_{n-1}| / U < 1e-6`) and prints per-Re PASS/FAIL. — converged at 7.0e-07 / 8.8e-07 / 9.8e-07 per step in 14500 / 33000 / 77500 steps. Residual is per-step over a 500-step interval and measured on the fluid interior; see **D-014**.
+- [x] **Max absolute deviation from Ghia is under 5% of the lid velocity at all sampled points, for all three Re.** — **0.75% / 0.42% / 1.01%**. One reference point is excluded as corrupt and printed every run with its deviation: Re 400 `v(x=0.9063)`, see **D-015**.
+- [x] The primary vortex centre location is printed and lies within 2 cells of Ghia's for each Re. — **0.21 / 0.29 / 0.59 cells**.
+- [x] The script prints resolution, `tau`, and peak lattice velocity per case; peak stays under 0.1. — 130²/`tau` 0.8456, 130²/0.5864, 258²/0.5691; peak `|u|` 0.08797 / 0.08679 / 0.08752 at `U = 0.09` (**D-016**).
+- [x] Rung 1 re-run and still green. — `python -m validate.poiseuille` → PASS, L2 0.3650%, peak 0.07955, unchanged from session 2.
 
 ### Constraints that bite here
 
@@ -174,11 +174,18 @@ This is the task most likely to need two sessions. `DOCS/PLAN1.md` § Risks defi
 to one session, then log and try Zou–He walls. Corner cells at the lid are the usual culprit —
 decide explicitly whether corners are lid or wall.
 
+**Outcome (session 3).** One session; the valve was not needed and Zou–He was never reached.
+Corners went to the **static walls** (**D-013**, closes Q-003) on measured worst-case deviation.
+Two things cost real time and are worth inheriting: the residual read `8.4e+01` until it was
+restricted to the fluid interior (`u` on solid cells is `(e.f)/rho` with a meaningless `rho`), and
+a 13.7% "failure" at Re 400 turned out to be a corrupt entry in the published reference table
+(**D-015**), diagnosed by grid convergence rather than by tuning the boundary condition.
+
 ---
 
 ## T004 — Geometry primitives + mask sanity checks
 
-**Status:** `not_started`
+**Status:** `done` (session 4, 2026-08-10)
 
 ### Goal
 
@@ -198,13 +205,13 @@ loudly — to hand back a mask that will produce a wrong answer.
 
 ### Acceptance criteria
 
-- [ ] `circle`, `rectangle`, `polygon` each return a `(ny, nx)` bool array; polygon handles concave shapes and is tested against a known-area convex case to within 2%.
-- [ ] `channel_walls(ny, nx)` returns top/bottom no-slip rows, composable with `|`.
-- [ ] `check_mask(solid, inlet_axis, ...)` returns a warning string, not silence, when: min solid thickness `< 3` cells; object closer than 8 characteristic lengths to the outlet; blockage ratio `> 10%`.
-- [ ] Thickness check verified by a test on a deliberately 1-cell-thick diagonal line and a 4-cell-thick block — warns for the first, not the second.
-- [ ] Warnings are emitted through `warnings.warn`, and `check_mask(..., strict=True)` raises instead.
-- [ ] Characteristic length used for blockage/downstream checks is derived from the mask bounding box and printed.
-- [ ] `pytest tests/test_geometry.py` green; Rungs 1–2 still green.
+- [x] `circle`, `rectangle`, `polygon` each return a `(ny, nx)` bool array; polygon handles concave shapes and is tested against a known-area convex case to within 2%. — plus `regular_polygon` (the `panels.py` vertex generator, T008's square). Known-area cases: a 40x30 rectangle-as-polygon and a hexagon of circumradius 25, both within 2%; disc within 2% of `pi r^2`. Concave case is an L whose notch stays fluid and whose area is 700, not its hull's 1600.
+- [x] `channel_walls(ny, nx)` returns top/bottom no-slip rows, composable with `|`. — asserted byte-equal to `validate/poiseuille.py::channel_mask`; `thickness` argument, and it refuses a grid with no fluid rows.
+- [x] `check_mask(solid, inlet_axis, ...)` returns a warning string, not silence, when: min solid thickness `< 3` cells; object closer than 8 characteristic lengths to the outlet; blockage ratio `> 10%`. — returns `list[str]`, one message per failed rule, each naming the measured number and the domain size that would fix it. One test fires all three at once and asserts the order.
+- [x] Thickness check verified by a test on a deliberately 1-cell-thick diagonal line and a 4-cell-thick block — warns for the first, not the second. — `min_thickness` reads 1 and 3 respectively; also asserted not to false-alarm on a disc (15) and to still catch a 1-cell plate parked beside a thick block (**D-017**).
+- [x] Warnings are emitted through `warnings.warn`, and `check_mask(..., strict=True)` raises instead. — category `MaskWarning(UserWarning)`; `strict=True` raises `ValueError` listing every message and emits no warning.
+- [x] Characteristic length used for blockage/downstream checks is derived from the mask bounding box and printed. — cross-stream bbox extent (**D-019**), printed with the bbox, streamwise extent, downstream distance in D, blockage and thickness; asserted by a `capsys` test.
+- [x] `pytest tests/test_geometry.py` green; Rungs 1–2 still green. — `40 passed`, whole suite `103 passed in 1.64s`; Rung 1 L2 0.3650%, Rung 2 0.75% / 0.42% / 1.01%, both identical to session 3.
 
 ### Constraints that bite here
 
@@ -215,6 +222,16 @@ loudly — to hand back a mask that will produce a wrong answer.
 
 Reuse the prior polygon code rather than rewriting a point-in-polygon test, but keep the import
 one-directional: `lbm/` may read from `Navier-Fluid-Equation/` concepts, never the reverse.
+
+**Outcome (session 4).** Delivered as specified; no criterion relaxed. `lbm/geometry.py` +
+`tests/test_geometry.py` (40 tests). The only hard part was measuring thickness: two obvious metrics
+were implemented, measured to give **false alarms on a plain cylinder**, and rejected — run lengths
+(the pole of a disc has a vertical run of 1) and per-cell 3x3 opening (the pole of a digital disc has
+no fully-solid 3x3 square covering it either). What shipped is component-wise Chebyshev depth,
+**D-017**. Domain borders are exempted from all three checks by `strip_solid_border`, **D-018**;
+characteristic length and the blockage denominator are **D-019**. `validate/poiseuille.py` and
+`validate/cavity.py` were deliberately **not** rewritten onto the new primitives (scope; a test
+asserts `channel_walls` is byte-equal to the inline mask instead).
 
 ---
 

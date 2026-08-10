@@ -35,7 +35,12 @@ from numpy.typing import NDArray
 
 from lbm.core import E_F32, OPP, Q, W
 
-__all__ = ["bounce_back", "force_velocity_shift", "apply_body_force"]
+__all__ = [
+    "bounce_back",
+    "moving_wall",
+    "force_velocity_shift",
+    "apply_body_force",
+]
 
 
 def bounce_back(
@@ -89,6 +94,92 @@ def bounce_back(
     """
     for i in range(Q):
         np.copyto(f[i], f_pre[OPP[i]], where=solid)
+
+
+def moving_wall(
+    f: NDArray[np.float32],
+    f_pre: NDArray[np.float32],
+    wall: NDArray[np.bool_],
+    u_wall: tuple[float, float],
+    rho_w: float = 1.0,
+) -> None:
+    """Momentum-corrected (Ladd) bounce-back on a moving wall, in place.
+
+    ``DOCS/IDEA2.md`` § "Validation ladder", Rung 2 — the lid of the lid-driven
+    cavity. This is **momentum-corrected bounce-back**, not Zou–He::
+
+        f[i] = f_pre[OPP[i]] + 2 w_i rho_w (e_i . u_wall) / cs2
+             = f_pre[OPP[i]] + 6 w_i rho_w (e_i . u_wall)
+
+    With ``u_wall = 0`` it degenerates exactly to :func:`bounce_back`, which is
+    the consistency check the unit tests make. The correction term is the
+    momentum the wall hands to the reflected population: for a lid at the top row
+    moving in ``+x``, the directions that re-enter the fluid are those with
+    ``ey = -1``, and the term adds to ``i = 8`` ``(+1,-1)`` while subtracting from
+    ``i = 7`` ``(-1,-1)``, so the reflected populations carry net ``+x`` momentum
+    into the fluid. That is the drag the lid exerts.
+
+    Call order and the ``f_pre`` it consumes are the same as
+    :func:`bounce_back` — see the module docstring (``DOCS/STATE1.md`` D-011).
+    Apply it **after** :func:`bounce_back` if the masks overlap; this function
+    writes the complete reflection for its cells, so the last writer wins.
+
+    Wall offset is unchanged from D-009: the no-slip / moving-wall plane sits
+    **halfway** between the last fluid node and the solid node. For a cavity of
+    ``n x n`` cells with a one-cell solid border, the fluid nodes are
+    ``1 .. n - 2`` and the characteristic length is ``L = n - 2``.
+
+    Corner cells (``DOCS/STATE1.md`` § Decisions, **D-013**, closes Q-003)
+    ---------------------------------------------------------------------
+    The two cells where the lid meets the side walls are ambiguous: they are
+    solid, they touch both walls, and the diagonal population they emit
+    (``i = 8`` from the left corner, ``i = 7`` from the right) lands on a fluid
+    cell, so the choice is not cosmetic.
+
+    **They belong to the static side walls, not to the lid.** Measured, not
+    argued: ``validate/cavity.py --corners both`` runs every Reynolds number
+    both ways and prints the comparison. Max deviation from Ghia, as a fraction
+    of the lid velocity::
+
+        Re      corners=lid    corners=wall
+        100        0.51%          0.75%
+        400        1.21%          0.42%
+        1000       1.35%          1.01%
+
+    Worst case across the three: **1.01% for wall against 1.35% for lid**, so
+    ``wall`` wins on the number the acceptance criterion actually measures. It
+    is also the physically defensible reading — the corner is where the moving
+    and stationary walls meet, and the velocity there is genuinely singular;
+    giving the cell the lid velocity injects the full lid momentum right at the
+    singularity, which is precisely where the truncation error is worst.
+
+    This function does not decide for the caller: it applies the wall velocity
+    to whatever mask it is given. The decision lives in ``validate/cavity.py``'s
+    ``CORNERS`` and in ``DOCS/STATE1.md`` D-013.
+
+    Args:
+        f: post-collision distribution, shape ``(9, ny, nx)``, ``float32``,
+            modified in place on ``wall`` cells only.
+        f_pre: pre-collision copy of ``f``, same shape and dtype.
+        wall: mask of the moving solid cells, shape ``(ny, nx)``, ``bool``.
+        u_wall: wall velocity ``(ux, uy)``, lattice units. Must stay well under
+            0.1 (``CLAUDE.md`` constraint 3); the correction is linear in it and
+            the equilibrium it feeds is a Mach-squared truncation.
+        rho_w: wall density used in the correction. 1.0 is the standard
+            incompressible choice and the density in a cavity stays within a
+            fraction of a percent of it; the error is ``O(Ma^2)`` on a term that
+            is already ``O(Ma)``.
+    """
+    uwx, uwy = float(u_wall[0]), float(u_wall[1])
+
+    for i in range(Q):
+        np.copyto(f[i], f_pre[OPP[i]], where=wall)
+
+        eu = float(E_F32[i, 0]) * uwx + float(E_F32[i, 1]) * uwy
+        if eu != 0.0:
+            # 2 / cs2 == 6
+            c = np.float32(6.0 * float(W[i]) * rho_w * eu)
+            np.add(f[i], c, out=f[i], where=wall)
 
 
 def force_velocity_shift(
