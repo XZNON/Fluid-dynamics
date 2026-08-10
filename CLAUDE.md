@@ -91,6 +91,32 @@ myenv/Scripts/python.exe -m validate.polygons             # Rung 4
 myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
 ```
 
+### Issue queue
+
+Problems found while testing or running are **queued locally, never filed automatically**.
+
+```bash
+myenv/Scripts/python.exe -m tools.issues list                     # the queue
+myenv/Scripts/python.exe -m tools.issues add --title "[core] ..." --body "..." --location "lbm/core.py:42"
+myenv/Scripts/python.exe -m tools.issues drop <id> --reason "..."  # not worth filing
+myenv/Scripts/python.exe -m tools.issues sync --dry-run            # what would be pushed
+myenv/Scripts/python.exe -m tools.issues sync                      # push to GitHub via gh
+
+# wrap any run so a non-zero exit queues an issue with the output tail
+myenv/Scripts/python.exe -m tools.issues capture --source validate -- myenv/Scripts/python.exe -m validate.cylinder
+```
+
+- Queue is `DOCS/ISSUES.jsonl`, one JSON object per line, **committed**. Entries are deduped by a
+  `sha1(source|location|title)` fingerprint with numbers and paths folded out, so re-running a
+  failing rung bumps `count` instead of appending.
+- `pytest` queues every distinct failure by itself (`tests/conftest.py`). Disable for a run with
+  `--no-issue-capture` or `LBM_ISSUE_CAPTURE=0`.
+- `sync` is the only thing that talks to GitHub. It needs the `gh` CLI authenticated
+  (`winget install --id GitHub.cli -e && gh auth login`); without it, entries stay queued.
+- Slash commands: `/file-issue <description>` to queue, `/sync-issues` to review then push.
+- **A failing rung that blocks the live task is a `DOCS/STATE1.md` § Blockers entry, not a queued
+  issue.** The queue is for things the work continues without.
+
 `myenv/` is the project venv (Python 3.11, numpy 2.4, matplotlib 3.11, pillow). It is gitignored.
 Adding a dependency (pygame, imageio, pytest) means `myenv/Scripts/pip.exe install <pkg>` **and** a
 line in `DOCS/STATE1.md` § Environment.
