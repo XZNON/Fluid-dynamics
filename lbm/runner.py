@@ -1,0 +1,931 @@
+"""The continuous loop: one timestep, many timesteps per frame, and restart.
+
+Implements ``DOCS/IDEA2.md`` § "Continuous simulation — the part that matters
+most". The simulation is a *stream*, not a batch job:
+
+* :class:`Sim` owns ``f``, ``solid``, ``step_count`` and **every** buffer the
+  step needs, so :meth:`Sim.step` allocates nothing (``CLAUDE.md`` conventions,
+  ``DOCS/STATE1.md`` D-006).
+* :func:`steps_per_frame` is **computed** from the target playback speed
+  (constraint 7). A hardcoded 20 is exactly what this module exists to avoid.
+* :class:`RingBuffer` sits between the physics and the sink. When it fills it
+  drops the **oldest display frame** and never a simulation step (constraint 8).
+* :func:`save_checkpoint` / :func:`load_checkpoint` pickle ``f``, ``solid``,
+  ``step_count`` and the config — the entire state — and a resumed run is
+  bit-identical (constraint 11), which ``tests/test_runner.py`` asserts rather
+  than claims.
+
+Everything here is lattice units (``lbm/units.py``, T009, converts at the
+boundary). Rendering is not here: :class:`Sink` is abstract and only
+:class:`NullSink` is implemented — the live sink is T007 and the recording sinks
+are T011 (constraint 10).
+
+The timestep order
+------------------
+
+``DOCS/STATE1.md`` **D-020**, also carried by ``lbm/boundary.py``'s module
+docstring::
+
+    copyto(f_pre, f)                       # pre-collision copy, for bounce_back
+    macroscopic(f, rho, u)
+    force_velocity_shift(rho, u, g, work)  # Guo, first half
+    equilibrium(rho, u, feq, work)
+    collide(f, feq, tau)
+    apply_body_force(f, rho, u, tau, g, work)   # Guo, second half
+    bounce_back(f, f_pre, solid)
+    copyto(f_bb, f)                        # pre-stream copy, for probe.forces
+    stream(f, buf)
+    outlet_zero_gradient(f, prev=out_prev) # after stream: it is periodic in x
+    inlet_velocity(f, u_in=u_in, work=inlet_work)
+
+``f_pre`` (pre-collision) and ``f_bb`` (pre-stream) are two buffers with two
+meanings and are deliberately not merged.
+
+Why the checkpoint is still only three things
+---------------------------------------------
+
+The convective outlet (D-021) carries the previous outlet column, ``out_prev``,
+across steps, which looks like a fourth piece of state. It is not: nothing after
+:func:`lbm.boundary.outlet_zero_gradient` writes the outlet column — the inlet
+is a different column — so at the end of every step ``out_prev`` is byte-identical
+to ``f[:, :, outlet_col]`` and :func:`load_checkpoint` rebuilds it from ``f``.
+The restart test exercises a run with the convective outlet on for that reason.
+"""
+
+from __future__ import annotations
+
+import abc
+import pickle
+import threading
+import time
+import warnings
+from collections import deque
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Any, Callable
+
+import numpy as np
+from numpy.typing import NDArray
+
+from lbm.boundary import (
+    U_MAX,
+    apply_body_force,
+    bounce_back,
+    force_velocity_shift,
+    inlet_profile,
+    inlet_velocity,
+    outlet_zero_gradient,
+)
+from lbm.core import Q, collide, equilibrium, macroscopic, stream
+from lbm.geometry import bounding_box, check_mask
+from lbm.probe import BoundaryLinks, boundary_links, forces, residual, vorticity
+
+__all__ = [
+    "SimConfig",
+    "Sim",
+    "RingBuffer",
+    "RunStats",
+    "Sink",
+    "NullSink",
+    "run",
+    "steps_per_frame",
+    "save_checkpoint",
+    "load_checkpoint",
+]
+
+#: Bumped if the pickle layout ever changes. :func:`load_checkpoint` refuses a
+#: format it does not know rather than unpacking it wrongly.
+CHECKPOINT_FORMAT: int = 1
+
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SimConfig:
+    """Everything about a run except the mask and the state itself.
+
+    Plain scalars only — no arrays — so it pickles cheaply and a checkpoint can
+    carry it verbatim (``DOCS/TASKS1.md`` § T006: the checkpoint is ``f``,
+    ``solid``, ``step_count`` and *the config*). The mask travels beside it,
+    not inside it.
+
+    All lattice units (``DOCS/IDEA2.md`` § Module layout: physical units are
+    converted by ``lbm/units.py`` at the boundary and never reach the solver).
+
+    Attributes:
+        ny: rows.
+        nx: columns.
+        tau: BGK relaxation time. ``nu = (tau - 0.5) / 3``; ``tau <= 0.5`` is
+            rejected (constraint 2).
+        inlet_U: inlet velocity passed to :func:`lbm.boundary.inlet_profile`.
+        profile: ``"uniform"`` or ``"parabolic"``.
+        inlet_uy: cross-stream inlet velocity.
+        inlet_col: column the Zou–He inlet writes.
+        outlet_col: column the outflow condition writes.
+        outlet_src: column the outflow condition reads.
+        outlet_lam: advection speed of the convective outlet. ``None`` means
+            ``sqrt(CS2)``, which D-021 measured at 0.6% reflection against 35%
+            for the bare copy.
+        use_inlet: apply the Zou–He inlet each step.
+        use_outlet: apply the outflow condition each step.
+        convective_outlet: use the convective form (owns ``out_prev``) rather
+            than the plain copy. Ignored when ``use_outlet`` is false.
+        g: body force ``(gx, gy)``, Guo scheme (D-010). ``(0, 0)`` skips both
+            halves of the scheme entirely.
+        rho0: initial and reference density.
+        D: characteristic length in cells for the force coefficients. ``None``
+            derives it from the mask bounding box (D-019).
+        inlet_axis: ``"x"`` or ``"y"``, passed to
+            :func:`lbm.geometry.check_mask`.
+        check_geometry: run the mask sanity checks at setup (constraint 12).
+        verbose_mask: let ``check_mask`` print its report.
+        checkpoint_every: auto-checkpoint interval in steps. ``0`` is **off**,
+            which is the default.
+        checkpoint_path: where auto-checkpoints are written.
+    """
+
+    ny: int
+    nx: int
+    tau: float
+    inlet_U: float = 0.0
+    profile: str = "uniform"
+    inlet_uy: float = 0.0
+    inlet_col: int = 0
+    outlet_col: int = -1
+    outlet_src: int = -2
+    outlet_lam: float | None = None
+    use_inlet: bool = False
+    use_outlet: bool = False
+    convective_outlet: bool = True
+    g: tuple[float, float] = (0.0, 0.0)
+    rho0: float = 1.0
+    D: float | None = None
+    inlet_axis: str = "x"
+    check_geometry: bool = True
+    verbose_mask: bool = False
+    checkpoint_every: int = 0
+    checkpoint_path: str | None = None
+
+    def replace(self, **changes: Any) -> "SimConfig":
+        """A copy with fields overridden (``dataclasses.replace``)."""
+        return replace(self, **changes)
+
+
+# ---------------------------------------------------------------------------
+# steps_per_frame
+# ---------------------------------------------------------------------------
+
+
+def steps_per_frame(dt: float, fps: float = 60.0, speed: float = 1.0) -> int:
+    """How many timesteps one rendered frame is worth.
+
+    ``DOCS/IDEA2.md`` § Decouple simulation from rendering: "``steps_per_frame``
+    is the knob that makes the video look like real time regardless of grid
+    size. Compute it from the target physical playback speed — do not hardcode
+    20." ``CLAUDE.md`` constraint 7 says the same thing and this function is
+    what satisfies it.
+
+    The arithmetic, in full::
+
+        dt                 seconds of physical time advanced by one timestep
+        1 / fps            seconds of wall-clock time one displayed frame lasts
+        speed              playback rate: 1.0 real time, 10.0 ten times faster
+
+        physical time to show in one frame = speed / fps          [s]
+        steps to advance that much time    = (speed / fps) / dt   [steps]
+
+        steps_per_frame = round(speed / (fps * dt)),  at least 1
+
+    Worked example. A cylinder at ``D = 20`` cells with ``U = 0.05`` lattice and
+    a physical free stream of 1 m/s: one lattice step is
+    ``dt = (U_lattice / U_phys) * dx`` seconds, say ``dt = 5e-4 s``. At 60 fps
+    and real-time playback, ``1 / (60 * 5e-4) = 33`` steps per frame. Refine the
+    grid by 2 and ``dt`` halves, so the same playback speed asks for 66 steps —
+    which is the whole point of computing it rather than fixing it.
+
+    ``dt`` is a plain scalar handed in by the caller (``lbm/units.py``, T009
+    computes it from the grid spacing and the velocity scale). Grid size enters
+    through ``dt``, which is where it enters physically; no physical units cross
+    into this package.
+
+    Args:
+        dt: seconds of physical time per lattice timestep. Must be positive.
+        fps: target display rate, frames per second. Must be positive.
+        speed: playback rate. ``1.0`` is real time; ``0.5`` is slow motion.
+
+    Returns:
+        Timesteps per rendered frame, at least 1.
+
+    Raises:
+        ValueError: if any argument is not positive.
+    """
+    if dt <= 0.0:
+        raise ValueError(f"dt must be positive (got {dt!r}): it is seconds per timestep.")
+    if fps <= 0.0:
+        raise ValueError(f"fps must be positive (got {fps!r}).")
+    if speed <= 0.0:
+        raise ValueError(f"speed must be positive (got {speed!r}).")
+
+    return max(1, int(round(speed / (fps * dt))))
+
+
+# ---------------------------------------------------------------------------
+# Ring buffer and sinks
+# ---------------------------------------------------------------------------
+
+
+class RingBuffer:
+    """A bounded frame queue that drops the oldest frame when it is full.
+
+    ``DOCS/IDEA2.md`` § Never block the sim on the display: "If the display is
+    slow, the physics should not stutter. Put a small ring buffer between them.
+    If it fills, drop display frames, never simulation steps."
+
+    That is ``CLAUDE.md`` constraint 8, and it is the reason :meth:`push` never
+    blocks and never returns a failure the producer has to handle: a full buffer
+    costs a *display* frame and is recorded in :attr:`dropped`.
+
+    Thread-safe: :func:`run` drains it from a consumer thread while the sim
+    thread pushes.
+
+    Attributes:
+        maxlen: capacity in frames.
+        dropped: frames discarded because the buffer was full.
+        pushed: frames accepted (including ones later dropped).
+    """
+
+    def __init__(self, maxlen: int = 4) -> None:
+        if maxlen < 1:
+            raise ValueError(f"maxlen must be at least 1 (got {maxlen!r}).")
+        self._q: deque[Any] = deque()
+        self.maxlen: int = int(maxlen)
+        self.dropped: int = 0
+        self.pushed: int = 0
+        self._lock = threading.Lock()
+
+    def push(self, item: Any) -> bool:
+        """Add a frame, evicting the oldest if the buffer is full.
+
+        Returns:
+            ``True`` if nothing was evicted, ``False`` if a frame was dropped.
+        """
+        with self._lock:
+            self.pushed += 1
+            evicted = False
+            if len(self._q) >= self.maxlen:
+                self._q.popleft()
+                self.dropped += 1
+                evicted = True
+            self._q.append(item)
+            return not evicted
+
+    def pop(self) -> Any | None:
+        """Remove and return the oldest frame, or ``None`` if empty."""
+        with self._lock:
+            if not self._q:
+                return None
+            return self._q.popleft()
+
+    def clear(self) -> None:
+        """Discard every buffered frame without counting them as dropped."""
+        with self._lock:
+            self._q.clear()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._q)
+
+    def __repr__(self) -> str:
+        return (
+            f"RingBuffer(maxlen={self.maxlen}, len={len(self)}, "
+            f"pushed={self.pushed}, dropped={self.dropped})"
+        )
+
+
+class Sink(abc.ABC):
+    """Where rendered frames go.
+
+    ``DOCS/IDEA2.md`` § Three output sinks, same frame source — live, record,
+    headless — all fed by one ``render()``. ``CLAUDE.md`` constraint 10: do not
+    write three renderers.
+
+    Only the abstract base and :class:`NullSink` exist in T006. The live pygame
+    sink is T007 and the MP4/GIF sinks are T011; the ring buffer is built first,
+    deliberately, because a fake slow sink proves frame-dropping far more
+    cleanly than a real window does (``DOCS/TASKS1.md`` § T006 Notes).
+    """
+
+    @abc.abstractmethod
+    def push(self, frame: Any) -> None:
+        """Consume one frame. May be slow; the sim never waits on it."""
+
+    @abc.abstractmethod
+    def close(self) -> None:
+        """Release whatever the sink holds. Called once at the end of a run."""
+
+    def __enter__(self) -> "Sink":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
+class NullSink(Sink):
+    """A sink that counts frames and does nothing else.
+
+    The headless case of ``DOCS/IDEA2.md`` § Three output sinks, and what the
+    runner's own tests measure against.
+
+    Attributes:
+        count: frames pushed.
+        closed: whether :meth:`close` has been called.
+    """
+
+    def __init__(self) -> None:
+        self.count: int = 0
+        self.closed: bool = False
+
+    def push(self, frame: Any) -> None:
+        self.count += 1
+
+    def close(self) -> None:
+        self.closed = True
+
+
+# ---------------------------------------------------------------------------
+# The simulation
+# ---------------------------------------------------------------------------
+
+
+class Sim:
+    """One simulation: the state, every buffer, and one timestep.
+
+    ``DOCS/IDEA2.md`` § The method, in the order the code runs it — this class
+    calls those functions and owns nothing else. The physics lives in
+    :mod:`lbm.core`, :mod:`lbm.boundary` and :mod:`lbm.probe`; the constants
+    live in :mod:`lbm.core` and are never redefined (constraint 4).
+
+    Buffers are allocated once here and reused forever, which is what makes
+    :meth:`step` allocation-free (``CLAUDE.md`` conventions; D-006 gave every
+    hot function an optional preallocated output for exactly this caller).
+
+    Attributes:
+        config: the :class:`SimConfig` this was built from.
+        f: distribution function, shape ``(9, ny, nx)``, ``float32``.
+        solid: solid mask, shape ``(ny, nx)``, ``bool``.
+        step_count: timesteps executed since the run began.
+        rho: density, shape ``(ny, nx)``, ``float32``, refreshed each step.
+        u: velocity, shape ``(2, ny, nx)``, ``float32``, refreshed each step.
+            With a body force this is the Guo-corrected velocity (D-010).
+        links: bounce-back links, built once from the mask (D-020).
+        D: characteristic length in cells (D-019).
+    """
+
+    def __init__(
+        self,
+        config: SimConfig,
+        solid: NDArray[np.bool_] | None = None,
+        *,
+        f: NDArray[np.float32] | None = None,
+        step_count: int = 0,
+    ) -> None:
+        """Allocate the state and every buffer.
+
+        Args:
+            config: the run configuration.
+            solid: solid mask, shape ``(ny, nx)``, ``bool``. ``None`` is an
+                empty domain.
+            f: an existing distribution to adopt, shape ``(9, ny, nx)``,
+                ``float32``. Copied, not aliased. ``None`` initialises to the
+                equilibrium of ``rho0`` and the inlet profile.
+            step_count: steps already executed — set by
+                :func:`load_checkpoint`.
+
+        Raises:
+            ValueError: on ``tau <= 0.5`` (constraint 2) or a mask/state whose
+                shape disagrees with the config.
+        """
+        cfg = config
+        if cfg.tau <= 0.5:
+            raise ValueError(
+                f"tau must exceed 0.5 (got {cfg.tau!r}): nu = (tau - 0.5) / 3, "
+                f"so tau -> 0.5 means nu -> 0 and the simulation blows up "
+                f"(CLAUDE.md constraint 2)."
+            )
+        if cfg.ny < 3 or cfg.nx < 3:
+            raise ValueError(f"grid must be at least 3x3 (got {cfg.ny}x{cfg.nx}).")
+
+        self.config = cfg
+        ny, nx = cfg.ny, cfg.nx
+
+        if solid is None:
+            solid = np.zeros((ny, nx), dtype=bool)
+        else:
+            solid = np.ascontiguousarray(solid, dtype=bool)
+            if solid.shape != (ny, nx):
+                raise ValueError(
+                    f"solid must be {(ny, nx)} to match the config "
+                    f"(got {solid.shape})."
+                )
+        self.solid: NDArray[np.bool_] = solid
+
+        if cfg.check_geometry and solid.any():
+            check_mask(solid, cfg.inlet_axis, verbose=cfg.verbose_mask)
+
+        # --- state -------------------------------------------------------
+        self.step_count: int = int(step_count)
+        self.f: NDArray[np.float32] = np.empty((Q, ny, nx), dtype=np.float32)
+
+        # --- buffers, allocated once (D-006, D-020) ----------------------
+        self.f_pre: NDArray[np.float32] = np.empty_like(self.f)  # pre-collision
+        self.f_bb: NDArray[np.float32] = np.empty_like(self.f)  # pre-stream
+        self.buf: NDArray[np.float32] = np.empty_like(self.f)  # stream scratch
+        self.rho: NDArray[np.float32] = np.empty((ny, nx), dtype=np.float32)
+        self.u: NDArray[np.float32] = np.empty((2, ny, nx), dtype=np.float32)
+        self.u_prev: NDArray[np.float32] = np.zeros((2, ny, nx), dtype=np.float32)
+        self.feq: NDArray[np.float32] = np.empty_like(self.f)
+        self.work: NDArray[np.float32] = np.empty((3, ny, nx), dtype=np.float32)
+        self.omega: NDArray[np.float32] = np.empty((ny, nx), dtype=np.float32)
+        self.vort_work: NDArray[np.float32] = np.empty((ny, nx), dtype=np.float32)
+        self.res_work: NDArray[np.float32] = np.empty((2, ny, nx), dtype=np.float32)
+        self.out_prev: NDArray[np.float32] = np.empty((Q, ny), dtype=np.float32)
+        self.inlet_work: NDArray[np.float32] = np.empty((5, ny), dtype=np.float32)
+
+        # Built once from the mask, reused every step (D-020, T005 contract).
+        self.links: BoundaryLinks = boundary_links(solid)
+
+        # The inlet profile is built once and handed back every step; building
+        # it per step would allocate O(ny) inside the loop.
+        self.u_in: NDArray[np.float32] = inlet_profile(
+            ny,
+            cfg.inlet_U,
+            cfg.profile,
+            solid=solid,
+            col=cfg.inlet_col,
+            uy=cfg.inlet_uy,
+        )
+
+        self.D: float = float(cfg.D) if cfg.D is not None else self._derive_D()
+
+        self._g: tuple[float, float] = (float(cfg.g[0]), float(cfg.g[1]))
+        self._forced: bool = self._g != (0.0, 0.0)
+
+        if f is None:
+            self._init_equilibrium()
+        else:
+            f = np.asarray(f)
+            if f.shape != (Q, ny, nx):
+                raise ValueError(
+                    f"f must be {(Q, ny, nx)} to match the config (got {f.shape})."
+                )
+            np.copyto(self.f, f.astype(np.float32, copy=False))
+
+        # The convective outlet's previous column. At the end of every step it
+        # equals f[:, :, outlet_col] exactly (nothing later writes that column),
+        # so seeding it from f here makes a fresh run and a resumed run agree
+        # bit-for-bit — see the module docstring.
+        np.copyto(self.out_prev, self.f[:, :, cfg.outlet_col])
+
+        self._warn_if_too_fast()
+
+    # -- setup helpers ----------------------------------------------------
+
+    def _derive_D(self) -> float:
+        """Characteristic length from the mask bounding box (D-019).
+
+        The cross-stream extent of the immersed object's bounding box — the
+        same ``D`` :func:`lbm.geometry.check_mask` uses for the blockage and
+        downstream rules. Inventing a second definition is how a 10% error in
+        ``Cd`` gets blamed on the solver.
+        """
+        from lbm.geometry import strip_solid_border
+
+        inner = strip_solid_border(self.solid)
+        box = bounding_box(inner)
+        if box is None:
+            return 1.0
+        y0, y1, x0, x1 = box
+        if self.config.inlet_axis == "x":
+            return float(y1 - y0 + 1)
+        return float(x1 - x0 + 1)
+
+    def _init_equilibrium(self) -> None:
+        """Seed ``f`` with the equilibrium of ``rho0`` and the inlet profile.
+
+        A uniform-density field at the inlet velocity everywhere: the cheapest
+        start that does not put a pressure shock in the domain on step 1.
+        """
+        cfg = self.config
+        self.rho.fill(np.float32(cfg.rho0))
+        if cfg.use_inlet:
+            # Broadcast the inlet column's profile across every column.
+            self.u[0] = self.u_in[0][:, None]
+            self.u[1] = self.u_in[1][:, None]
+        else:
+            self.u.fill(np.float32(0.0))
+        equilibrium(self.rho, self.u, self.f, self.work)
+        np.copyto(self.u_prev, self.u)
+
+    def _warn_if_too_fast(self) -> None:
+        """Warn at setup, not at ``nan`` time (``CLAUDE.md`` constraint 3).
+
+        Compressibility error scales as Mach squared, so any config path that
+        can produce ``|u| >= 0.1`` has to say so before the run, not after.
+        """
+        peak = float(np.abs(self.u_in).max()) if self.u_in.size else 0.0
+        if peak >= U_MAX:
+            warnings.warn(
+                f"inlet peak lattice velocity {peak:.4f} >= {U_MAX} "
+                f"(CLAUDE.md constraint 3): compressibility error scales as "
+                f"Mach squared. Lower inlet_U or refine the grid.",
+                stacklevel=3,
+            )
+
+    # -- the timestep -----------------------------------------------------
+
+    def step(self) -> None:
+        """One full timestep, in place, allocating nothing.
+
+        The order is ``DOCS/STATE1.md`` **D-020** — see the module docstring for
+        the annotated listing and ``lbm/boundary.py`` for the reasoning behind
+        each position. Nothing here allocates: every array it touches was
+        created in :meth:`__init__`, which is what
+        ``tests/test_runner.py::test_step_allocates_nothing`` asserts with
+        ``tracemalloc`` and the buffer identity of ``f``.
+        """
+        cfg = self.config
+        f = self.f
+
+        np.copyto(self.f_pre, f)  # pre-collision copy, for bounce_back (D-011)
+        macroscopic(f, self.rho, self.u)
+
+        if self._forced:
+            force_velocity_shift(self.rho, self.u, self._g, self.work)
+
+        equilibrium(self.rho, self.u, self.feq, self.work)
+        collide(f, self.feq, cfg.tau)
+
+        if self._forced:
+            apply_body_force(f, self.rho, self.u, cfg.tau, self._g, self.work)
+
+        bounce_back(f, self.f_pre, self.solid)
+        np.copyto(self.f_bb, f)  # pre-stream copy, for probe.forces (D-020)
+        stream(f, self.buf)
+
+        if cfg.use_outlet:
+            outlet_zero_gradient(
+                f,
+                col=cfg.outlet_col,
+                src=cfg.outlet_src,
+                prev=self.out_prev if cfg.convective_outlet else None,
+                lam=cfg.outlet_lam,
+            )
+        if cfg.use_inlet:
+            inlet_velocity(
+                f,
+                solid=self.solid,
+                col=cfg.inlet_col,
+                u_in=self.u_in,
+                work=self.inlet_work,
+            )
+
+        self.step_count += 1
+
+    def run_steps(self, n: int) -> None:
+        """Advance ``n`` timesteps."""
+        for _ in range(n):
+            self.step()
+
+    # -- diagnostics (buffer owners, not new physics) ---------------------
+
+    def vorticity(self) -> NDArray[np.float32]:
+        """Vorticity of the current velocity field, into the owned buffer.
+
+        ``DOCS/IDEA2.md`` § What to actually draw — vorticity, not speed
+        (constraint 9). The field is ``self.u``, which :meth:`step` refreshed;
+        call :meth:`step` at least once first on a resumed sim.
+
+        Returns:
+            ``(ny, nx)`` ``float32``, **the runner's buffer** — a caller that
+            keeps the frame must copy it.
+        """
+        return vorticity(
+            self.u, solid=self.solid, out=self.omega, work=self.vort_work
+        )
+
+    def forces(self) -> tuple[float, float]:
+        """``(Cd, Cl)`` by momentum exchange over the precomputed links.
+
+        Uses the two snapshots D-020 fixed: ``f_bb`` (pre-stream) and ``f``
+        (post-stream), both from the most recent :meth:`step`.
+        """
+        return forces(
+            self.f_bb,
+            self.f,
+            self.links,
+            U=self.config.inlet_U,
+            D=self.D,
+            rho0=self.config.rho0,
+        )
+
+    def residual(self, U: float | None = None) -> float:
+        """Velocity change since the last :meth:`mark_residual`, scaled by ``U``.
+
+        Fluid cells only (D-014). ``float32`` puts a floor near ``1.7e-6`` on a
+        per-step residual (D-012); to ask for less, mark, run ``k`` steps, and
+        divide the answer by ``k``.
+        """
+        ref = self.config.inlet_U if U is None else U
+        if ref == 0.0:
+            raise ValueError(
+                "residual needs a nonzero reference velocity: pass U= when the "
+                "config has no inlet velocity (a body-force channel has none)."
+            )
+        return residual(
+            self.u, self.u_prev, ref, solid=self.solid, work=self.res_work
+        )
+
+    def mark_residual(self) -> None:
+        """Snapshot the current velocity as the residual's reference."""
+        np.copyto(self.u_prev, self.u)
+
+    # -- checkpointing ----------------------------------------------------
+
+    def save_checkpoint(self, path: str | Path) -> Path:
+        """Pickle the whole state. See :func:`save_checkpoint`."""
+        return save_checkpoint(self, path)
+
+    def __repr__(self) -> str:
+        cfg = self.config
+        return (
+            f"Sim({cfg.ny}x{cfg.nx}, tau={cfg.tau}, step={self.step_count}, "
+            f"solid={int(self.solid.sum())} cells)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint / restart
+# ---------------------------------------------------------------------------
+
+
+def save_checkpoint(sim: Sim, path: str | Path) -> Path:
+    """Pickle exactly ``f``, ``solid``, ``step_count`` and the config.
+
+    ``DOCS/IDEA2.md`` § Restartability: "Long runs die. ``f``, ``mask``, and the
+    step count are the entire state — pickle them every N steps. Resume must
+    produce a bit-identical continuation." That is ``CLAUDE.md`` constraint 11,
+    and it is a **tested** claim
+    (``tests/test_runner.py::test_restart_is_bit_identical``).
+
+    Nothing else goes in — no buffers, no derived fields. Everything else is
+    either scratch that :meth:`Sim.step` overwrites before reading, or
+    recoverable from ``f``: the convective outlet's ``out_prev`` is
+    byte-identical to ``f[:, :, outlet_col]`` at the end of every step, so
+    :func:`load_checkpoint` rebuilds it (see the module docstring).
+
+    Args:
+        sim: the simulation to save.
+        path: destination file. Parent directories are created.
+
+    Returns:
+        The path written.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    state = {
+        "format": CHECKPOINT_FORMAT,
+        "f": sim.f,
+        "solid": sim.solid,
+        "step_count": sim.step_count,
+        "config": sim.config,
+    }
+    with open(path, "wb") as fh:
+        pickle.dump(state, fh, protocol=pickle.HIGHEST_PROTOCOL)
+    return path
+
+
+def load_checkpoint(path: str | Path) -> Sim:
+    """Rebuild a :class:`Sim` from a checkpoint, ready to continue.
+
+    The continuation is bit-identical to the run that was saved: ``f`` is
+    restored byte-for-byte, the buffers it reads before writing are all
+    rewritten by :meth:`Sim.step` before use, and ``out_prev`` is reconstructed
+    from ``f`` (module docstring). ``float32`` throughout and no RNG in the step
+    path mean there is nothing left to diverge.
+
+    Args:
+        path: a file written by :func:`save_checkpoint`.
+
+    Returns:
+        A :class:`Sim` at the saved ``step_count``.
+
+    Raises:
+        ValueError: if the pickle is not a checkpoint of a known format.
+    """
+    with open(Path(path), "rb") as fh:
+        state = pickle.load(fh)
+
+    if not isinstance(state, dict) or "format" not in state:
+        raise ValueError(f"{path} is not an lbm checkpoint.")
+    if state["format"] != CHECKPOINT_FORMAT:
+        raise ValueError(
+            f"checkpoint format {state['format']} is not "
+            f"{CHECKPOINT_FORMAT}; this build cannot read it."
+        )
+
+    cfg: SimConfig = state["config"]
+    # The mask checks already ran when the original Sim was built; re-running
+    # them on load would print or warn a second time for no new information.
+    return Sim(
+        cfg.replace(check_geometry=False),
+        state["solid"],
+        f=state["f"],
+        step_count=state["step_count"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# The loop
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RunStats:
+    """What one :func:`run` did.
+
+    Attributes:
+        steps: timesteps executed by this call.
+        frames: frames produced.
+        delivered: frames the sink actually received.
+        dropped: frames the ring buffer discarded (display frames only).
+        elapsed: wall-clock seconds.
+        checkpoints: auto-checkpoints written.
+    """
+
+    steps: int = 0
+    frames: int = 0
+    delivered: int = 0
+    dropped: int = 0
+    elapsed: float = 0.0
+    checkpoints: int = 0
+
+    @property
+    def steps_per_second(self) -> float:
+        return self.steps / self.elapsed if self.elapsed > 0.0 else float("nan")
+
+
+def _default_field(sim: Sim) -> NDArray[np.float32]:
+    """The frame source: a copy of the vorticity field (constraint 9).
+
+    A copy, because the sink consumes frames asynchronously and the sim's buffer
+    is about to be overwritten. One allocation per *frame*, not per step, so the
+    "never allocate inside the step loop" rule is intact.
+    """
+    return sim.vorticity().copy()
+
+
+def run(
+    sim: Sim,
+    sink: Sink | None = None,
+    *,
+    frames: int | None = None,
+    steps: int | None = None,
+    steps_per_frame: int = 1,
+    field: Callable[[Sim], Any] | None = None,
+    buffer_size: int = 4,
+    drop: bool = True,
+    stop: Callable[[Sim], bool] | None = None,
+    buffer: RingBuffer | None = None,
+) -> RunStats:
+    """Run the simulation, feeding frames to a sink through a ring buffer.
+
+    ``DOCS/IDEA2.md`` § Decouple simulation from rendering::
+
+        while running:
+            for _ in range(steps_per_frame):
+                step()
+            frame = render(field())
+            sink.push(frame)
+
+    with the ring buffer of § Never block the sim on the display between the
+    last two lines. ``steps_per_frame`` is a **computed** number — see
+    :func:`steps_per_frame` (constraint 7); passing a literal 20 here is what
+    that function exists to prevent.
+
+    Two modes, which are the two halves of ``DOCS/IDEA2.md`` § Three output
+    sinks:
+
+    ``drop=True`` (**live**)
+        A consumer thread drains the buffer into the sink. The sim thread only
+        pushes, so a slow sink can never stall the physics; the buffer fills and
+        the **oldest display frames** are dropped (constraint 8). Only the
+        display is threaded — the physics is a single loop and untouched
+        (constraint 6).
+    ``drop=False`` (**record**, T011)
+        Drained inline. The sink sees every frame in order and the sim waits for
+        it, which is what a fixed-framerate video writer needs.
+
+    Args:
+        sim: the simulation to advance.
+        sink: destination for frames. ``None`` means :class:`NullSink`.
+        frames: number of frames to produce. ``None`` runs until ``steps`` or
+            ``stop``.
+        steps: total timesteps to run. Rounded up to a whole frame.
+        steps_per_frame: timesteps between frames, from :func:`steps_per_frame`.
+        field: ``sim -> frame``. Defaults to a copy of the vorticity field.
+        buffer_size: ring buffer capacity in frames.
+        drop: see above.
+        stop: optional predicate; the run ends when it returns ``True``.
+        buffer: an existing :class:`RingBuffer` to use, so a caller can inspect
+            its counters afterwards.
+
+    Returns:
+        A :class:`RunStats`.
+
+    Raises:
+        ValueError: if neither ``frames`` nor ``steps`` nor ``stop`` bounds the
+            run, or ``steps_per_frame < 1``.
+    """
+    if steps_per_frame < 1:
+        raise ValueError(f"steps_per_frame must be at least 1 (got {steps_per_frame!r}).")
+    if frames is None and steps is None and stop is None:
+        raise ValueError(
+            "run needs a bound: pass frames=, steps= or stop=. An unbounded "
+            "loop belongs to the caller, not here."
+        )
+
+    if frames is None and steps is not None:
+        frames = -(-steps // steps_per_frame)  # ceil
+
+    own_sink = sink is None
+    sink = NullSink() if sink is None else sink
+    field = _default_field if field is None else field
+    ring = RingBuffer(buffer_size) if buffer is None else buffer
+
+    stats = RunStats()
+    start = time.perf_counter()
+
+    done = threading.Event()
+    consumer: threading.Thread | None = None
+
+    def _drain_forever() -> None:
+        while True:
+            item = ring.pop()
+            if item is None:
+                if done.is_set():
+                    return
+                time.sleep(0.0005)
+                continue
+            sink.push(item)
+            stats.delivered += 1
+
+    if drop:
+        consumer = threading.Thread(target=_drain_forever, name="lbm-sink", daemon=True)
+        consumer.start()
+
+    every = sim.config.checkpoint_every
+    ckpt_path = sim.config.checkpoint_path
+
+    try:
+        n = 0
+        while frames is None or n < frames:
+            for _ in range(steps_per_frame):
+                sim.step()
+                stats.steps += 1
+                if every > 0 and ckpt_path and sim.step_count % every == 0:
+                    save_checkpoint(sim, ckpt_path)
+                    stats.checkpoints += 1
+
+            ring.push(field(sim))
+            stats.frames += 1
+            n += 1
+
+            if not drop:
+                item = ring.pop()
+                while item is not None:
+                    sink.push(item)
+                    stats.delivered += 1
+                    item = ring.pop()
+
+            if stop is not None and stop(sim):
+                break
+    finally:
+        done.set()
+        if consumer is not None:
+            consumer.join()
+        # Anything still queued in record mode goes out; in live mode the
+        # consumer has already drained what survived.
+        item = ring.pop()
+        while item is not None:
+            sink.push(item)
+            stats.delivered += 1
+            item = ring.pop()
+        stats.dropped = ring.dropped
+        stats.elapsed = time.perf_counter() - start
+        if own_sink:
+            sink.close()
+
+    return stats

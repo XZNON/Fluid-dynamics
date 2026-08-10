@@ -10,12 +10,12 @@ Never rewrite or condense the session log — append only.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 0 — D2Q9 LBM in NumPy (`DOCS/IDEA2.md`) |
-| **Current task** | `T006` |
+| **Current task** | `T007` |
 | **Task status** | `not_started` |
-| **Completed tasks** | T001, T002, T003, T004, T005 |
+| **Completed tasks** | T001, T002, T003, T004, T005, T006 |
 | **Milestone reached** | **M2** (2026-08-10, gate run: `python -m validate.cavity --re 100 --re 400 --re 1000` → PASS; max deviation from Ghia 0.75% / 0.42% / 1.01%, vortex centre 0.21 / 0.29 / 0.59 cells) — next: M3 at T007 |
 | **Rung status** | R1 🟩 · R2 🟩 · R3 ⬜ · R4 ⬜ |
-| **Last updated** | 2026-08-10 — session 5 (T005 done; inlet/outlet BC + probes) |
+| **Last updated** | 2026-08-10 — session 6 (T006 done; runner, ring buffer, bit-identical restart) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -88,6 +88,9 @@ a past entry — supersede it with a new one that says so.
 | D-019 | 2026-08-10 | **Characteristic length `D` is the cross-stream extent of the object's bounding box** (bbox height for `inlet_axis="x"`), and the blockage denominator is the **fluid** span — the cross-stream domain minus fully-solid border layers. Both are printed with the bbox, the streamwise extent, the downstream distance in `D`, the blockage and the thickness; `check_mask(verbose=True)` is the default. | `DOCS/IDEA2.md` § Geometry defines blockage as "object height / domain height", and "8 diameters downstream" is the same `D` for a cylinder, so one bbox-derived quantity serves both rules and there is nothing for a caller to pass in inconsistently. Counting the wall rows in the denominator would flatter the blockage ratio by a couple of percent at Rung 1 resolutions. Printing by default is the acceptance criterion ("derived from the mask bounding box and printed") and is what makes a warning diagnosable rather than mysterious. |
 | D-020 | 2026-08-10 | **The two snapshots `lbm.probe.forces` consumes are the pre-stream and post-stream states**, and the runner owns one extra `(9, ny, nx)` buffer for the first: `bounce_back(f, f_pre, solid)` → `np.copyto(f_bb, f)` → `stream(f, buf)` → `forces(f_bb, f, links, ...)`. The D-011 timestep order gains a tail: `stream` → `outlet_zero_gradient` → `inlet_velocity`. | The parameter named `f_pre` in `forces` is **not** the `f_pre` of `bounce_back`, which is the *pre-collision* copy (D-011) — one name, two meanings, and without fixing it now T006 would have had to reshape the API to find out. Momentum exchange needs the population leaving the fluid node (pre-stream) and the reflected one arriving back (post-stream). Because bounce-back is exactly `f[j](x_s) = f_pre_collision[opp(j)](x_s)`, that returning population can equivalently be read off the pre-stream array on the solid side; `tests/test_probe.py::test_the_two_snapshot_form_equals_the_solid_side_form` asserts the identity, so the timing is pinned by a test and not by a comment. The open boundaries go **after** `stream` because `stream` is periodic in `x`: after it, the inlet column's `ex = +1` populations and the outlet column's `ex = -1` populations are precisely the wrap-around garbage those two functions overwrite. |
 | D-021 | 2026-08-10 | **The outlet is convective, not a bare copy.** `outlet_zero_gradient(f, *, col, src, prev=None, lam=None)` keeps `f[:, :, -1] = f[:, :, -2]` as the default and adds `f[:, :, -1] = (prev + lam f[:, :, -2]) / (1 + lam)` when the caller supplies the previous outlet column; `lam` defaults to `sqrt(CS2) = 0.577`. The runner supplies `prev`. | Measured, not argued, the way Q-001 and Q-003 were closed. A smooth Gaussian pressure pulse (`sigma = 10` cells, 400-cell domain) fired at the boundary reflects: **plain copy 35%**, `lam = 0.4` 4.7%, **`lam = cs` 0.6%**, `lam = 1.0` 7.5%, `lam = 2 cs` 17%. The criterion is "under 5%", and **the bare copy the contract describes does not meet it**. The copy is the `lam -> inf` limit of the same expression, and the minimum is sharp and sits exactly at the lattice sound speed — which is what an advection boundary tuned to the outgoing wave speed is supposed to do. `DOCS/IDEA2.md` § Stability already anticipates this ("proper zero-gradient / sponge layer"). The copy stays the default because it is the documented behaviour and needs no state; its 35% is pinned by its own test so the convective form cannot be deleted later as redundant. `lam = U` rather than `cs` is the other defensible tuning — wake vorticity is advected, not radiated — and is left exposed for Rung 3 (T007) to measure. |
+| D-022 | 2026-08-10 | **`out_prev` is not a fourth piece of state, and the checkpoint stays exactly `f` / `solid` / `step_count` / config** (plus a `format: 1` integer so a future layout change is refused rather than misread). `load_checkpoint` rebuilds the convective outlet's previous column as `f[:, :, outlet_col]`. | D-021's convective outlet carries a `(9, ny)` column across steps, which naively breaks constraint 11's "`f`, `mask` and step count are the entire state". It does not: nothing after `outlet_zero_gradient` writes the outlet column — the inlet is a different column — so at the end of every step `out_prev` is byte-identical to `f[:, :, outlet_col]`. Pinned by `tests/test_runner.py::test_the_outlet_prev_column_equals_f_at_the_end_of_a_step`, asserted every step for 25 steps, and the 500/500/500 restart test runs **with the convective outlet on** so a wrong reconstruction fails on the first resumed step rather than silently drifting. The alternative — pickling the buffer — would have made the checkpoint's contents depend on which boundary conditions were enabled. |
+| D-023 | 2026-08-10 | **`steps_per_frame(dt, fps=60.0, speed=1.0) -> max(1, round(speed / (fps * dt)))`**, with `dt` = *seconds of physical time per lattice timestep*, a plain scalar the caller supplies (`lbm/units.py`, T009). Grid size enters only through `dt`. | Constraint 7 wants the number computed from playback speed, grid size and `dt`; the convention forbids physical units inside `lbm/`. Taking `dt` as an already-converted scalar satisfies both — the runner does arithmetic on a number, not a unit conversion — and grid size enters exactly where it enters physically (refine by 2, `dt` halves, the same playback speed asks for twice the steps, which `test_steps_per_frame_halves_with_dt` asserts). Handing the function a `SimConfig` instead would have put a physical quantity into the config, which is the thing the convention exists to prevent. |
+| D-024 | 2026-08-10 | **`run(..., drop=True)` drains the ring buffer into the sink from one consumer thread; `drop=False` drains inline.** The physics stays a single un-threaded loop. | Constraint 8 says the sim must never block on the display, and constraint 6 forbids optimising the physics. A thread on the *display* side is the only way a genuinely slow sink cannot stall the producer, and it is not an optimisation of the solver — collide and stream are untouched. Measured with a 4 ms sink against 2 ms of physics per frame: 60 frames pushed, **9 delivered, 51 dropped, all 120 steps executed**, wall clock 0.04 s against 0.026 s for the same 120 steps headless. `drop=False` is the other half of `DOCS/IDEA2.md` § Three output sinks — a fixed-framerate recorder (T011) must see every frame in order, and it is allowed to make the sim wait. |
 
 ## Session log
 
@@ -417,3 +420,67 @@ Append one entry per session. Newest at the bottom.
   `(9, ny)` outlet `prev`, the cached `u_in` and its `(5, ny)` work array); constraint 11's
   bit-identical restart is the criterion most likely to bite, and `float64` creeping into the step
   path is how it breaks.
+
+### 2026-08-10 — Session 6: T006 — runner, ring buffer, bit-identical restart
+
+**Task worked:** T006 — `done`, every acceptance criterion run and green. No milestone (M3 is T007).
+
+**Done**
+- `lbm/runner.py` — new. `SimConfig` (scalars only, so a checkpoint carries it verbatim); `Sim`,
+  which owns `f`, `solid`, `step_count` and **every** buffer (`f_pre` pre-collision, `f_bb`
+  pre-stream, `buf`, `rho`, `u`, `u_prev`, `feq`, `work`, `omega`, `vort_work`, `res_work`,
+  `out_prev (9, ny)`, `inlet_work (5, ny)`, cached `u_in`, and `links` built once); `Sim.step()` in
+  the D-020 order; buffer-owning accessors `vorticity()`, `forces()`, `residual()`/`mark_residual()`;
+  `steps_per_frame(dt, fps, speed)`; `RingBuffer(maxlen)` with `dropped`/`pushed`; `Sink` (ABC) and
+  `NullSink`; `save_checkpoint` / `load_checkpoint`; `run(...)` with `RunStats`.
+- `lbm/__init__.py` — re-exports the ten new public names.
+- `tests/test_runner.py` — 46 tests, one or more per acceptance criterion.
+
+**Measured**
+- `myenv/Scripts/python.exe -m pytest tests/test_runner.py` → **`46 passed in 3.25s`**
+- `myenv/Scripts/python.exe -m pytest` → **`198 passed in 8.14s`** (152 existing + 46 new)
+- Allocation: `f.__array_interface__['data']` unchanged over 1000 steps; `tracemalloc` heap growth
+  over 1000 steps **< 20 kB** (one `(9, 24, 80)` `float32` buffer alone is ~69 kB).
+- **Bit-identical restart:** 500 steps → checkpoint → 500 more → reload → 500 →
+  `np.array_equal` **True**, on three configs (Zou–He inlet + convective outlet + cylinder; Guo body
+  force; plain-copy outlet). Auto-checkpoints resume identically too.
+- Slow-sink drop test (4 ms sink, ~0.2 ms of physics per frame, `RingBuffer(2)`): 60 frames pushed,
+  **9 delivered, 51 dropped, all 120 steps executed**; 0.04 s wall clock against 0.026 s for the same
+  120 steps headless. `step_count` is exactly `frames * steps_per_frame`.
+- `steps_per_frame(5e-4, 60) = 33`; halving `dt` gives 67 — the number tracks the grid, not a
+  hardcoded 20.
+- Runner vs Rung 1's hand-rolled loop, 400 steps, same mask and `tau`: `np.array_equal` **True** —
+  the runner's timestep order is byte-for-byte the order the passing rung uses.
+- `myenv/Scripts/python.exe -m validate.poiseuille` → **PASS**, L2 **0.3650%**, peak `|u|` 0.07955.
+- `myenv/Scripts/python.exe -m validate.cavity --re 100 --re 400 --re 1000` → **PASS**, max deviation
+  **0.75% / 0.42% / 1.01%**, vortex 0.21 / 0.29 / 0.59 cells. Both rungs identical to session 5.
+
+**Not done / deferred**
+- Nothing from the T006 contract. No `render()`, no live sink, no cylinder run — T007/T011 by the
+  contract, and the ring buffer was proven with a fake slow sink instead, which is what the contract
+  asked for.
+- `Sim` has no moving-lid path, so `validate/cavity.py` keeps its own loop. Rung 2 is a closed,
+  passing benchmark and rewriting it onto the runner buys nothing this session; the Rung 1
+  equivalence test is what pins the shared order.
+- No optimisation (constraint 6). Note for T010: `lbm.boundary.inlet_velocity` allocates a small
+  `(ny,)` boolean (`fluid = ~solid[:, col]`) per call — transient, freed each step, invisible to the
+  growth test, but it is the one allocation left in the loop.
+
+**Decisions made**
+- **D-022** (`out_prev` reconstructed from `f`, so the checkpoint stays four things),
+  **D-023** (`steps_per_frame` signature and where `dt` comes from), **D-024** (threaded consumer for
+  `drop=True`, inline drain for `drop=False`). All above.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- R1 🟩 · R2 🟩 · R3 ⬜ · R4 ⬜. R3 and R4 still have no script (T007, T008) — not attempted, not
+  failing.
+
+**Next**
+- Paste `PROMPTS/007-t007-render-live-sink-cylinder.md` into a fresh session. It runs
+  `/start-task T007`. `pygame` must be installed into `myenv` first and a row added to § Environment.
+  T007 is **M3** and the first rung since session 3; `DOCS/PLAN1.md` § Risks flags "cylinder shows no
+  shedding" — session 4 measured that a `D = 21` cylinder in a 121-row channel is 17.6% blockage and
+  `check_mask` warns, so Rung 3 needs roughly `ny >= 10 D` plus `>= 8 D` downstream.

@@ -16,7 +16,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T003 | Moving-lid BC + cavity benchmark | `done` | T002 | **Rung 2** |
 | T004 | Geometry primitives + mask sanity checks | `done` | T002 | unit tests |
 | T005 | Inlet / outlet BC + probes | `done` | T003, T004 | unit tests |
-| T006 | Runner: decoupled loop, ring buffer, restart | `not_started` | T005 | restart test |
+| T006 | Runner: decoupled loop, ring buffer, restart | `done` | T005 | restart test |
 | T007 | Render + live sink + cylinder benchmark | `not_started` | T006 | **Rung 3** |
 | T008 | Square cylinder benchmark | `not_started` | T007 | **Rung 4** |
 | T009 | Physical units + PNG/SVG mask | `not_started` | T004, T007 | unit tests |
@@ -294,7 +294,7 @@ buffer is **D-020**.
 
 ## T006 — Runner: decoupled loop, ring buffer, restart
 
-**Status:** `not_started`
+**Status:** `done` (session 6, 2026-08-10)
 
 ### Goal
 
@@ -314,14 +314,14 @@ at another, and a run that can die and resume bit-identically.
 
 ### Acceptance criteria
 
-- [ ] `Sim.step()` runs one full timestep; all buffers preallocated in `__init__`, verified by a test asserting no change in `f.__array_interface__['data']` and (via `tracemalloc`) no growth over 1000 steps.
-- [ ] `steps_per_frame` is **computed** from target physical playback speed, grid size and `dt` — a function with a docstring showing the arithmetic, not a constant.
-- [ ] `RingBuffer(maxlen)` drops the **oldest frame** when full and increments a `dropped` counter; a test with a deliberately slow sink confirms `dropped > 0` while `step_count` is unaffected.
-- [ ] `Sink` is an abstract base with `push(frame)` and `close()`; `NullSink` implemented. Live/record sinks are T007/T011.
-- [ ] `save_checkpoint(path)` pickles exactly `f`, `solid`, `step_count`, and the config.
-- [ ] **Bit-identical restart is a test:** run 500 steps, checkpoint, run 500 more, record `f`; reload the checkpoint, run 500, and assert `np.array_equal` with the recorded `f`.
-- [ ] Auto-checkpoint every N steps, N configurable, off by default.
-- [ ] `pytest tests/test_runner.py` green; Rungs 1–2 still green.
+- [x] `Sim.step()` runs one full timestep; all buffers preallocated in `__init__`, verified by a test asserting no change in `f.__array_interface__['data']` and (via `tracemalloc`) no growth over 1000 steps. — buffer identity held over 1000 steps, heap growth < 20 kB.
+- [x] `steps_per_frame` is **computed** from target physical playback speed, grid size and `dt` — a function with a docstring showing the arithmetic, not a constant. — `max(1, round(speed / (fps * dt)))`, D-023; halving `dt` doubles the answer (33 → 67).
+- [x] `RingBuffer(maxlen)` drops the **oldest frame** when full and increments a `dropped` counter; a test with a deliberately slow sink confirms `dropped > 0` while `step_count` is unaffected. — 4 ms sink: 60 pushed, 9 delivered, **51 dropped**, all 120 steps run.
+- [x] `Sink` is an abstract base with `push(frame)` and `close()`; `NullSink` implemented. Live/record sinks are T007/T011.
+- [x] `save_checkpoint(path)` pickles exactly `f`, `solid`, `step_count`, and the config. — plus a `format: 1` version integer so an unknown layout is refused rather than misread (D-022); the test asserts the key set exactly.
+- [x] **Bit-identical restart is a test:** run 500 steps, checkpoint, run 500 more, record `f`; reload the checkpoint, run 500, and assert `np.array_equal` with the recorded `f`. — passes on three configs, including the convective outlet (D-022) and the Guo body force.
+- [x] Auto-checkpoint every N steps, N configurable, off by default. — `SimConfig.checkpoint_every = 0`; an auto-checkpoint resumes bit-identically too.
+- [x] `pytest tests/test_runner.py` green; Rungs 1–2 still green. — `46 passed`; full suite `198 passed`; Rung 1 L2 0.3650%, Rung 2 0.75% / 0.42% / 1.01%.
 
 ### Constraints that bite here
 
