@@ -10,12 +10,12 @@ Never rewrite or condense the session log — append only.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 0 — D2Q9 LBM in NumPy (`DOCS/IDEA2.md`) |
-| **Current task** | `T008` |
+| **Current task** | `T010` (next; T009 closed) |
 | **Task status** | `not_started` |
-| **Completed tasks** | T001, T002, T003, T004, T005, T006, T007 |
+| **Completed tasks** | T001, T002, T003, T004, T005, T006, T007, T008, T009 |
 | **Milestone reached** | **M3** (2026-08-12, gate run: `python -m validate.cylinder` → PASS with the live window open; **St 0.1731** (band 0.155–0.175), **Cd 1.4031 ± 0.0086** (band 1.25–1.45), Cl amplitude 0.3915 = 27.9% of Cd, window costs **+2.09%** of steps/s) — next: M4 at T011 |
-| **Rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 ⬜ |
-| **Last updated** | 2026-08-12 — session 7 (T007 done; render, live pygame sink, Rung 3 green, **M3**) |
+| **Rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete** |
+| **Last updated** | 2026-08-12 — session 9 (T009 done; `lbm/units.py` + PNG/SVG masks, ladder re-run green, 308 tests pass) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -27,7 +27,15 @@ None.
 
 - ~~**Q-001** — wall-offset convention for bounce-back.~~ **Closed in session 2 by measurement** —
   see **D-009**. The wall sits halfway between the last fluid node and the solid node.
-- **Q-002** — SVG rasterisation dependency (T009) not chosen. Not blocking; PNG is what M4 needs.
+- ~~**Q-002** — SVG rasterisation dependency (T009) not chosen.~~ **Closed in session 9 by choosing
+  no dependency** — see **D-031**. `lbm.geometry.from_svg` parses the simple-closed-path subset
+  itself and fills it with T004's `polygon`; anything outside that subset raises an `ImportError`
+  naming the feature and the `cairosvg` install line.
+- **Q-004** — should `validate/cylinder.py::tau_for`'s floor rise from D-016's 0.53 to the 0.54 that
+  session 8 measured (**D-029**)? Rung 3 runs at 0.5378 and is measured stable, so nothing is red and
+  nothing is blocked; but the floor as written would let a future case through at 0.5346, which is
+  measured to produce `nan`. Editing a passing benchmark was out of T008's scope. Not blocking —
+  it is a `/new-task`, and T010 (which touches every rung) is the natural place.
 - ~~**Q-003** — do the two lid corner cells belong to the moving lid or to the side walls?~~
   **Closed in session 3 by measurement** — see **D-013**. They belong to the static side walls.
 
@@ -96,6 +104,10 @@ a past entry — supersede it with a new one that says so.
 | D-026 | 2026-08-12 | **Rung 3's lateral boundaries are periodic, not no-slip walls, and the fluid span is 24 D (4.2% blockage), well past constraint 12's 10% floor.** `validate/cylinder.py::WALL = 0`, `SPAN_D = 24`. | Measured, not argued. (a) With one-cell no-slip walls the free stream grows a boundary layer over the 8 D upstream fetch of thickness `~5 sqrt(nu x / U)` = **34 cells per wall**, so a *nominal* 9.5% blockage presents the cylinder with an effective ~13% and drag climbed straight through the band: `Cd` **1.49 → 1.58 → 1.64** at 5k/10k/15k steps on a 264x524 walled domain. Periodic sides have no boundary layer to grow, and `lbm.core.stream` is already periodic in `y`, so this is a deletion rather than a feature. (b) Blockage is then the only confinement left and it is not free either: at 15 D span (6.35%) the same case measured `Cd = 1.4635`, **1% over the top of the acceptance band**; at 24 D (4.17%) it measures **1.4031**. Constraint 12's 10% is a floor on the domain, not a target, and the reference value being compared against is an unconfined one. |
 | D-027 | 2026-08-12 | **The `Cl` series is low-passed (Gaussian, `sigma = 0.5 D/U`) before the FFT, and only for the frequency.** The shedding-amplitude check reads the **raw** series. `validate/cylinder.py::lowpass`. | The force history carries the wake *and* the domain's acoustics: the impulsive start radiates a pressure pulse, the convective outlet absorbs 0.6% of it (D-021) but the Zou–He velocity inlet reflects essentially all of it. Measured `Cl` spectrum on the walled domain: wake peak at period 2500 steps, power **1347**; acoustic peak at period 305 steps, power **1378** — the acoustic one marginally taller, so the unfiltered FFT reported `St = 1.49` for a run whose wake was visibly shedding at the right rate. It is not noise to be tuned away, it is a different real oscillation: its period barely moved (308 → 305) when `U` changed 0.06 → 0.055, which no convected structure does. The cutoff is set by the case (`D/U`), not by the answer — the shedding period is ~6 D/U, so the filter costs the wake peak ~10% and the acoustic peak four orders of magnitude — and the amplitude criterion deliberately still reads the unfiltered series so a filtered-away wake cannot pass as shedding. |
 | D-028 | 2026-08-12 | **`render` takes symmetric limits and refuses an asymmetric pair**; the colormap has **257** entries, not 256. | Constraint 9 asks for fixed symmetric limits and a diverging map, and both halves are enforced rather than documented: a lopsided `(vmin, vmax)` raises and names constraint 9, because on a diverging map it moves the neutral colour off zero and makes one sign of rotation look weaker than the other. The odd LUT length is the same argument at one-count resolution — with 256 entries zero falls between two of them and `+v`/`-v` are not mirror colours. `tests/test_render.py` asserts the mirror property and the byte-identical mapping across frames. |
+| D-029 | 2026-08-12 | **D-016's `TAU_FLOOR = 0.53` is not a safe floor for a bluff body in a free stream.** `validate/polygons.py` enforces its own measured `TAU_FLOOR = 0.54` through `tau_for_rung4`, which wraps `validate.cylinder.tau_for` rather than replacing it. Rung 3 is **not** changed: it runs at `tau = 0.5378`, which is measured stable. | Measured, not argued, and it cost a full 26728-step run that reported `Cd = nan`. Bisected on a small stand-in domain, 60000 steps a leg: square at `tau` **0.5346** blew up by step 3200, square at 0.5378 survived (peak 0.1177), square at 0.5512 survived (peak 0.1114) — and a **disc** at `tau` 0.5330 blew up by step **1500**. The disc dying *sooner* than the square at the same `tau` is the decisive number: this is a relaxation-time limit, not a staircased-corner one, so constraint 1 is not implicated and no boundary-condition change would help. The threshold sits between 0.5346 and 0.5378; 0.54 is the next round number above it. Rung 3's floor is left alone because raising it would edit a passing benchmark from a task that does not own it — see § Open questions **Q-004**. |
+| D-030 | 2026-08-12 | **Solid cells start at the rest equilibrium `w_i rho0`** in `validate/polygons.py` (`seed_solid_at_rest`), applied once at setup, never in the step loop. `Sim` itself is unchanged. | `Sim._init_equilibrium` seeds the whole domain with the equilibrium of the inlet profile, solid included, so at step 0 there is fluid moving at `U` *inside* the body. Bounce-back does not clear it — it writes `f[i] = f_pre[opp[i]]`, which **reverses** the momentum every step — so the interior oscillates at `±U` forever and T008's acceptance criterion ("no fluid velocity inside the solid") would have been measuring the initial condition rather than the boundary condition. Measured both ways: seeded, the interior is still **bit-identically** `w_i rho0` after 300 steps (the rest state is a fixed point of both bounce-back, since `W` is symmetric under `OPP`, and of streaming, since it is uniform); unseeded, it reads `|u| > 1e-3`. Both are tests. It is left out of `Sim` because changing the initial condition inside `lbm/` would perturb T006's bit-identical restart claim and Rung 3's published numbers for no physical gain — nothing on the fluid side of the surface depends on it. |
+| D-031 | 2026-08-12 | **Closes Q-002. SVG needs no new dependency.** `lbm.geometry.from_svg` parses `M/L/H/V/C/Q/Z` (absolute and relative, Béziers flattened to 12 segments) plus `<polygon points=...>`, and fills the result with T004's even-odd `polygon`. Arcs (`A`), the smooth shorthands (`S`, `T`), `transform` attributes and anything unfillable **raise an `ImportError`** naming the feature and giving the `myenv/Scripts/pip.exe install cairosvg` line. Subpaths combine even-odd, so a donut has a hole. | The acceptance criterion asks for "at least simple closed paths" and a clear install message if a dependency is missing — it does not ask for a rasteriser. The subset above is ~150 lines on top of code T004 already had and covers what a user exports from a drawing tool as an outline; `cairosvg` would add a Cairo binary dependency to a project whose whole point is pure NumPy, for the half of T009 that M4 does not need (`DOCS/TASKS1.md` § T009 Notes). Refusing loudly rather than partially rendering is the load-bearing half: a silently dropped `transform` produces a plausible mask of the wrong shape, which is the failure mode `DOCS/IDEA2.md` § Validation ladder exists to prevent. Even-odd across subpaths differs from SVG's nonzero default only for self-intersecting or nested same-direction outlines; documented in the docstring as a limit. |
+| D-032 | 2026-08-12 | **`lbm/units.py` enforces `tau > 0.51` and `U < 0.1` and nothing stricter**, and ships `LatticeUnits.stability_note()` alongside. It is the third `tau` floor in the project, below Rung 2's 0.53 (D-016) and Rung 4's measured 0.54 (D-029). | D-029 measured a disc dying at `tau = 0.5330` by step 1500, so 0.51 is demonstrably **not** a stability guarantee — but the other two floors were measured on *bluff bodies in a free stream*, and this module converts units for cases it has never seen (a channel at `tau = 0.52` is fine). Refusing everything under 0.54 would reject valid configs; accepting silently would imply a safety the number does not have. So the floor is a floor on nonsense, the rejection message quotes D-029's measured deaths, and `stability_note()` grades the margin for the geometry the caller knows about and the module does not. `BLUFF_BODY_SPEEDUP = 1.8` (session 8's measured `peak = 1.79 U`) is exposed the same way, so the constraint-3 headroom is a number rather than folklore. |
 
 ## Session log
 
@@ -567,3 +579,182 @@ Append one entry per session. Newest at the bottom.
   span, and the cylinder-only force links — with `lbm.geometry.regular_polygon` in place of
   `circle`. The staircase corners are the expected answer (constraint 1); the band is ±0.1 for
   exactly that reason.
+
+### 2026-08-12 — Session 8: T008 — square cylinder + convex polygon → Rung 4
+
+**Task worked:** T008 — `done`, every acceptance criterion run and green. **The validation ladder is
+complete.** No milestone of its own (M4 is T011).
+
+**Done**
+- `validate/polygons.py` — new, Rung 4. `square_body` / `convex_body` (thin wrappers over T004's
+  `regular_polygon` and `polygon` — **no new geometry code**), `POLY_VERTS`, `Case` + `cases()`,
+  `body_mask`, `tau_for_rung4`, `seed_solid_at_rest`, `interior_solid`, `run_case`, `report`, `main`
+  with `--headless` / `--case {square,polygon,both}`. Rung 3's setup is imported, not copied:
+  `tau_for`, `lowpass`, `make_config`, and the D-026 / D-021 / D-025 / D-027 constants all come from
+  `validate.cylinder`.
+- `tests/test_polygons.py` — 21 tests: both masks pass `check_mask` silently, the three numeric
+  rules, the square is square *and its bbox is full*, `POLY_VERTS` is convex and asymmetric, both
+  factories equal the primitives they claim to wrap, `tau` from `Re` alone, the contract band is
+  1.4–1.6, the marginal-`tau` refusal, the corner criterion and the rest-state interior, the
+  no-seed control, and the walls-in-the-link-list trap re-pinned for Rung 4's mask builder.
+- **No change to anything under `lbm/`.** T008 needed no solver code at all.
+
+**Measured**
+- `myenv/Scripts/python.exe -m validate.polygons --headless` → **PASS**.
+  - **square** — 744 x 557, `D = 30` measured, periodic sides, blockage **4.03%**, 9.30 D
+    downstream, `tau = 0.5477`, `U = 0.053`, 73585 steps in 1358.6 s (54 steps/s), 783 frames, 0
+    dropped. **Cd 1.5279 ± 0.0271** (band 1.4–1.6, ref 1.5, **+1.9%**), **St 0.1489** (ref 0.145),
+    Cl amplitude **0.6510** = 42.6% of Cd, mean Cl +0.0043, peak `|u|` **0.09758**.
+  - **polygon** — `D = 29`, 38302 steps in 595.0 s. **Cd 1.4276 ± 0.0226**, Cl amplitude 0.3689,
+    St 0.1667, peak `|u|` 0.08944, no `nan`. No reference value asserted, per the contract.
+- `myenv/Scripts/python.exe -m pytest` → **`251 passed`** (230 existing + 21 new).
+- `myenv/Scripts/python.exe -m validate.poiseuille` → **PASS**, L2 **0.3650%**, peak 0.07955.
+- `myenv/Scripts/python.exe -m validate.cavity --re 100 --re 400 --re 1000` → **PASS**, max
+  deviation **0.75% / 0.42% / 1.01%**, vortex 0.21 / 0.29 / 0.59 cells.
+- `myenv/Scripts/python.exe -m validate.cylinder --headless` → **PASS**, **St 0.1731**,
+  **Cd 1.4031 ± 0.0086**, peak 0.09685 — identical to session 7 to every printed digit.
+
+**Three runs, three different constraints** — the corners were never the problem
+- The staircase was fine on the first run that stayed finite: `Cd = 1.5323` at `D = 27`, +2.2%.
+  What took three runs was the **case setup**, and each failure was a different constraint:
+  1. `U = 0.06` (Rung 3's inlet) gives peak `|u|` **0.10211** on a square against the disc's 0.09685
+     — constraint 3. A square blocks more, so the flow accelerates further round it; the measured
+     ratio is **peak = 1.79 U** over a full run (a 20 D/U look-ahead reads 1.70 and is optimistic,
+     which is what cost the third run).
+  2. Dropping to `U = 0.055` took `tau` to 0.5346 and the sim produced `nan` — **D-029**. D-016's
+     0.53 floor is not safe for a bluff body in a free stream, and the *disc* at `tau` 0.5330 blows
+     up **sooner** (step 1500) than the square at 0.5346 (step 3200), which is what rules out the
+     corners and with them constraint 1.
+  3. `U = 0.056, D = 27` was stable and correct and still failed, at peak `|u|` 0.10031.
+- `U = 0.053, D = 30` clears both. The two constraints pull against each other and `D` is the only
+  knob that buys `tau` without moving the peak — at a cost that grows with the area of the domain.
+
+**Not done / deferred**
+- Nothing from the T008 contract. No physical units or PNG/SVG (T009), no performance pass (T010),
+  no recording sinks or CLI (T011). No live-window run: T008 sets no window criterion, and T007
+  already measured `--headless` to be byte-identical.
+- No optimisation, though constraint 6 is lifted. Note for T010: 414k cells runs at ~54–64 steps/s,
+  and this rung's `per_step` probe costs an extra `forces` call per step on top.
+- `validate/cylinder.py::tau_for` keeps its 0.53 floor — see **Q-004**. Editing a passing benchmark
+  was out of scope; Rung 3 at 0.5378 is measured stable, so nothing is red.
+
+**Decisions made**
+- **D-029** (Rung 4's measured `TAU_FLOOR = 0.54`, and why the disc's earlier death rules out the
+  corners), **D-030** (solid cells seeded at rest, and why it stays out of `lbm/`). Both above.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete.** Every rung has been run in this
+  session and every one is green.
+
+**Next**
+- Paste `PROMPTS/009-t009-units-png-mask.md` into a fresh session. It runs `/start-task T009`.
+  Q-002 (the SVG rasteriser) has to be answered there; PNG is what M4 actually needs, so SVG is the
+  half to cut if the session runs long. T009's own acceptance criterion — the cylinder reproduced
+  through the units path within 2% of T007's `Cd` — means Rung 3 gets re-run, and its numbers are
+  above to compare against.
+
+### 2026-08-12 — Session 9: T009 — physical units + PNG / SVG mask
+
+**Task worked:** T009 — `done`, every acceptance criterion run and green. No milestone (M4 is T011,
+which this task unblocks).
+
+**Done**
+- `lbm/units.py` — new, and the **only** module in `lbm/` that holds metres or seconds.
+  `LatticeUnits` (frozen dataclass: `dx`, `dt`, `tau`, `U`, `Re`, `cells_per_length`, and the three
+  physical inputs) with `from_physical(...)`, the conversions
+  `to_lattice_/to_physical_ velocity|length|time|viscosity`, `reynolds()` (the round trip),
+  `resolution_for_tau`, `peak_velocity_estimate`, `stability_note()` and `summary()`. Module
+  docstring derives `Re -> dx -> dt -> nu -> tau` in four steps and states what is refused and why.
+  Constants `U_LATTICE_MAX = 0.1`, `TAU_FLOOR = 0.51`, `U_LATTICE_DEFAULT = 0.05`,
+  `BLUFF_BODY_SPEEDUP = 1.8`.
+- `lbm/geometry.py` — `from_png(path, shape, ...)` (alpha when present and non-uniform, luminance
+  fallback, box-filter resample **then** threshold, `flip_y` so a picture loads upright against
+  `LiveSink`'s row-0-at-bottom, `fit="stretch"|"contain"`, and `check_mask` run automatically) and
+  `from_svg(path, shape, ...)` (built-in `M/L/H/V/C/Q/Z` + `<polygon>` parser, Béziers flattened,
+  even-odd across subpaths, `check_mask` automatic). Private helpers `_fit_to_grid`,
+  `_parse_path_d`, `_parse_svg`, `_flatten_bezier`, `_svg_dependency_error`. **No new dependency**
+  (D-031); Pillow was already present.
+- `lbm/__init__.py` — re-exports `LatticeUnits`, the three units constants, `from_png`, `from_svg`.
+- `validate/cylinder.py` — added `--physical` (and `run_cylinder(physical=...)`), which derives
+  `tau`, the lattice `U` and `dt` through `LatticeUnits.from_physical` instead of `tau_for`. **Off
+  by default**, so Rung 3's published numbers still come from the code that produced them; the
+  default path is otherwise untouched.
+- `tests/test_units.py` — 57 tests. `tests/data/test_body.png` — committed, **959 bytes**, generated
+  by `write_test_png()` *in that test file*, so the expected solid-cell count is derived arithmetic
+  (`pi r^2 + w h`, scaled) rather than a magic number; a test asserts the committed bytes match a
+  fresh regeneration.
+
+**Measured** — every acceptance criterion run, not read
+- `LatticeUnits.from_physical` returns `dx`, `dt`, `tau`, lattice `U` and `Re`; derivation is in the
+  module and method docstrings.
+- Round trip: `reynolds()` (which goes through `tau`, `U` and the resolution only — no metres)
+  reproduces `Re` within **1e-3 relative** on four cases spanning Re 80 … 1000, criterion 0.1%.
+- Rejections, both with the fixing number in the message: `u_lattice = 0.1` raises naming the
+  lattice velocity and constraint 3; `Re 1000, U 0.05, N 40` gives `tau = 0.5` and raises naming
+  `tau` and `cells_per_length >= 134`, and running at the suggested 134 clears the floor. A test
+  parses the number out of the message and re-runs with it.
+- `tests/data/test_body.png` on a 128x128 grid: **3387 solid cells against 3416.99 expected,
+  −0.88%** (criterion ±2%). A 97x97 non-integer downscale is inside 2% too.
+- `from_png` runs `check_mask` itself: the committed image is 50% blockage and warns without the
+  caller asking; `strict=True` raises. A 6-px bar downscaled 4x reads `min_thickness` **1 < 3** and
+  warns — the hairline case constraint 12 exists for.
+- `from_svg`: a `M/L/Z` square, the same square as `m/h/v/z` (byte-identical masks), the same square
+  as `<polygon>` (byte-identical), a cubic-Bezier circle within **5%** of `pi r^2`, and a two-subpath
+  donut with a hole. Arcs and `transform` raise `ImportError` naming `cairosvg`.
+- **Cylinder through the units path** — `myenv/Scripts/python.exe -m validate.cylinder --headless
+  --physical` → **PASS**: **Cd 1.4031 ± 0.0086**, **St 0.1731**, Cl amplitude 0.3915, peak `|u|`
+  0.09685, 45500 steps, 633.3 s. T007's `Cd` is **1.4031** — identical to every printed digit,
+  **0.00%** against a 2% criterion, because `tau` and `dt` come out of `LatticeUnits` equal to
+  `tau_for`'s to float precision (pinned in milliseconds by
+  `test_the_physical_path_sets_rung_3_up_identically`).
+- **The ladder, all four, re-run this session:**
+  - R1 `validate.poiseuille` → **PASS**, L2 **0.3650%**, peak `|u|` 0.07955
+  - R2 `validate.cavity --re 100 --re 400 --re 1000` → **PASS**, max deviation
+    **0.75% / 0.42% / 1.01%**, vortex 0.21 / 0.29 / 0.59 cells
+  - R3 `validate.cylinder --headless` → **PASS**, **St 0.1731**, **Cd 1.4031 ± 0.0086**, peak 0.09685
+  - R4 `validate.polygons --headless` → **PASS**, square **Cd 1.5279** (+1.9% vs 1.5), St 0.1489,
+    peak 0.09758; polygon **Cd 1.4276 ± 0.0226**, St 0.1667, peak 0.08944
+  - Every number identical to session 8. Nothing regressed.
+- `myenv/Scripts/python.exe -m pytest` → **`308 passed in 11.62s`** (251 existing + 57 new).
+
+**One thing measurement changed**
+- The first `summary()` printed `peak |u| ~ 0.1080 (limit 0.1)` for Rung 3 — a case whose *measured*
+  peak is 0.09685 and which passes. The estimate is `BLUFF_BODY_SPEEDUP * U` with the **square**
+  cylinder's 1.79 applied to a disc, so it reads as a violation of constraint 3 on a config that
+  does not violate it. Reworded to `peak |u| <= ...` and explicitly labelled an upper bound whose
+  arbiter is the run's own measured peak. The number was not softened — only stopped from lying
+  about what it is.
+
+**Not done / deferred**
+- Nothing from the T009 contract. All eight criteria are green, SVG included, so the `/new-task`
+  escape hatch in § Notes ("if SVG drags, ship PNG") was not needed.
+- No demo script putting a PNG body in a flow. Not in the contract; the CLI is **T011**, and D-030's
+  `seed_solid_at_rest` is where that work should start when it happens.
+- No optimisation (T010). Geometry and unit conversion are setup code and run once.
+- SVG's `fill-rule` is even-odd across subpaths where SVG's default is nonzero. They differ only for
+  self-intersecting or nested same-direction outlines; documented in the `from_svg` docstring as a
+  known limit rather than fixed, since the fix is a full rasteriser (**D-031**).
+- `validate/cylinder.py::tau_for` still has its 0.53 floor — **Q-004**, still open, still not this
+  task's to edit. `lbm/units.py`'s 0.51 is a *third* floor and says so in its docstring (**D-032**).
+
+**Decisions made**
+- **D-031** (SVG needs no new dependency — closes **Q-002**), **D-032** (`lbm/units.py` enforces
+  0.51 and not 0.54, plus `stability_note()` and `BLUFF_BODY_SPEEDUP`). Both in § Decisions.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and every rung was re-run here.
+
+**Next**
+- Paste `PROMPTS/010-t010-performance-pass.md` into a fresh session. It runs `/start-task T010`.
+  Constraint 6 is lifted (Rung 3 has been green since session 7). The budget table in
+  `DOCS/STATE1.md` § Performance baseline is still empty and T010 fills it. Known starting points:
+  504x440 = 222k cells runs at ~130 steps/s, 414k cells at ~54–64 steps/s, and
+  `lbm.boundary.inlet_velocity` allocates a `(ny,)` boolean per call — the one allocation left in
+  the step loop. T010 re-runs **all four** rungs, and `DOCS/PLAN1.md` § Risks says revert rather
+  than debug a fused kernel.

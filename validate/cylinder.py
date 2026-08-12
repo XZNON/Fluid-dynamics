@@ -10,6 +10,9 @@ This is the gate for **M3**. Run it from the repo root::
 
     myenv/Scripts/python.exe -m validate.cylinder              # live window
     myenv/Scripts/python.exe -m validate.cylinder --headless   # no display
+    myenv/Scripts/python.exe -m validate.cylinder --headless --physical
+                                                  # same case, set up from
+                                                  # metres and seconds (T009)
 
 What the script actually does
 -----------------------------
@@ -77,6 +80,7 @@ from lbm.geometry import bounding_box, channel_walls, check_mask, circle
 from lbm.probe import boundary_links, forces, strouhal
 from lbm.render import render
 from lbm.runner import NullSink, RingBuffer, Sim, SimConfig, Sink, run, steps_per_frame
+from lbm.units import LatticeUnits
 
 # --- reference values ---------------------------------------------------------
 #
@@ -151,9 +155,14 @@ MEASURE_TC: float = 60.0
 
 #: Display. ``dt`` is what makes ``steps_per_frame`` a *computed* number
 #: (constraint 7, D-023): pick a physical scale for the case — a 10 cm cylinder
-#: in a 1 m/s stream — and the seconds-per-timestep follow. ``lbm/units.py``
-#: (T009) is where this arithmetic moves; a validate script may hold physical
-#: units, ``lbm/`` may not.
+#: in a 1 m/s stream — and the seconds-per-timestep follow. A validate script
+#: may hold physical units; ``lbm/`` may not.
+#:
+#: ``--physical`` (T009) runs the **same case** through
+#: :meth:`lbm.units.LatticeUnits.from_physical` instead: the physical numbers
+#: below plus ``nu = U_phys D_phys / Re`` go in, and ``tau``, the lattice ``U``
+#: and ``dt`` come out. It is off by default so Rung 3's published numbers keep
+#: coming from the code that produced them.
 D_PHYS_M: float = 0.10
 U_PHYS_MS: float = 1.0
 FPS: float = 60.0
@@ -421,6 +430,7 @@ def run_cylinder(
     vmax: float | None = None,
     bench_steps: int = 4000,
     verbose_mask: bool = True,
+    physical: bool = False,
 ) -> CylinderResult:
     """Set up, benchmark the window, run the wake, and measure.
 
@@ -438,7 +448,24 @@ def run_cylinder(
     box = bounding_box(cylinder)
     assert box is not None
     d_measured = float(box[1] - box[0] + 1)
-    nu, tau = tau_for(re, u, d_measured)
+
+    units: LatticeUnits | None = None
+    if physical:
+        # T009's acceptance criterion: the same case, described in metres and
+        # seconds. Re fixes the fluid — nu = U_phys D_phys / Re — and the
+        # resolution is the *measured* extent of the digitised disc (D-019), so
+        # this is the identical case and not merely a similar one. tau then
+        # comes out of lbm.units and nothing here computes a viscosity.
+        units = LatticeUnits.from_physical(
+            u_phys=U_PHYS_MS,
+            l_phys=D_PHYS_M,
+            nu_phys=U_PHYS_MS * D_PHYS_M / re,
+            cells_per_length=d_measured,
+            u_lattice=u,
+        )
+        nu, tau = units.nu, units.tau
+    else:
+        nu, tau = tau_for(re, u, d_measured)
 
     print("Rung 3 — circular cylinder at Re 100 "
           "(DOCS/IDEA2.md § Validation ladder)")
@@ -448,8 +475,12 @@ def run_cylinder(
           f"(nominal {d_cells})   centre ({cx:.1f}, {cy:.1f})   "
           f"offset {OFFSET_CELLS} cell   "
           f"sides {'periodic' if WALL == 0 else f'{WALL}-cell no-slip'}")
-    print(f"  nu = U D / Re = {u} * {d_measured:.0f} / {re:.0f} = {nu:.6f}   "
-          f"tau = 0.5 + 3 nu = {tau:.6f}")
+    if units is None:
+        print(f"  nu = U D / Re = {u} * {d_measured:.0f} / {re:.0f} = {nu:.6f}   "
+              f"tau = 0.5 + 3 nu = {tau:.6f}")
+    else:
+        print("  lattice numbers derived by lbm.units.LatticeUnits.from_physical:")
+        print(units.summary())
     print(f"  inlet: Zou-He uniform U = {u}   "
           f"outlet: convective, lam = "
           f"{'sqrt(cs2)' if outlet_lam is None else f'{outlet_lam}'} (D-021)")
@@ -476,7 +507,9 @@ def run_cylinder(
 
     blockage = d_measured / (ny - 2 * WALL)
 
-    dt_seconds = (u / U_PHYS_MS) * (D_PHYS_M / d_measured)
+    dt_seconds = (
+        units.dt if units is not None else (u / U_PHYS_MS) * (D_PHYS_M / d_measured)
+    )
     spf = steps_per_frame(dt_seconds, FPS, PLAYBACK_SPEED)
     if vmax is None:
         vmax = VMAX_FACTOR * u / d_measured
@@ -755,6 +788,13 @@ def main(argv: list[str] | None = None) -> int:
         help=f"fixed symmetric colour limit; default {VMAX_FACTOR} U / D",
     )
     parser.add_argument(
+        "--physical",
+        action="store_true",
+        help="derive tau, the lattice U and dt through lbm.units.LatticeUnits "
+        "from a physical description of the same case (T009). Off by default: "
+        "Rung 3's published numbers come from tau_for.",
+    )
+    parser.add_argument(
         "--bench-steps",
         type=int,
         default=4000,
@@ -778,6 +818,7 @@ def main(argv: list[str] | None = None) -> int:
         scale=args.scale,
         vmax=args.vmax,
         bench_steps=args.bench_steps,
+        physical=args.physical,
     )
     return 0 if report(res) else 1
 

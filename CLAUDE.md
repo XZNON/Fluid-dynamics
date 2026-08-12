@@ -137,7 +137,8 @@ line in `DOCS/STATE1.md` § Environment.
 
 ## Current state
 
-T001 → T007 done; **M3 reached** (2026-08-12). `lbm/` has `core`, `boundary`, `geometry`, `probe`,
-`runner`, `render`; `validate/` has `poiseuille`, `cavity`, `cylinder`. Rungs R1 🟩 · R2 🟩 · R3 🟩 ·
-R4 ⬜. `units`, `record` and Rung 4 are still stubs-in-waiting (T008 → T011).
+T001 → T009 done; **M3 reached** (2026-08-12). `lbm/` has `core`, `boundary`, `geometry`, `probe`,
+`runner`, `render`, `units`; `validate/` has `poiseuille`, `cavity`, `cylinder`, `polygons`.
+Rungs R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete**. `record` and the CLI are what
+remain: T010 (performance pass) then T011 (**M4**).
 Task order T001 → T011, see `DOCS/TASKS1.md`. Live status in `DOCS/STATE1.md`.

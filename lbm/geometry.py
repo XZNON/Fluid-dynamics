@@ -30,7 +30,9 @@ potential flow, is read-only, and never becomes a dependency of ``lbm``.
 
 from __future__ import annotations
 
+import re as _re
 import warnings
+from pathlib import Path
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -45,6 +47,8 @@ __all__ = [
     "bounding_box",
     "min_thickness",
     "check_mask",
+    "from_png",
+    "from_svg",
 ]
 
 
@@ -626,3 +630,490 @@ def check_mask(
             warnings.warn(msg, MaskWarning, stacklevel=2)
 
     return messages
+
+
+# --------------------------------------------------------------------------
+# Image sources — DOCS/IDEA2.md § Geometry from a mask, sources 2 and 3
+# --------------------------------------------------------------------------
+
+
+def _fit_to_grid(
+    coverage: NDArray[np.float32], ny: int, nx: int, fit: str
+) -> NDArray[np.float32]:
+    """Place an ``(h, w)`` coverage field on an ``(ny, nx)`` grid.
+
+    Args:
+        coverage: solid fraction per source pixel, already resampled to the size
+            implied by ``fit``.
+        ny: rows of the target grid.
+        nx: columns of the target grid.
+        fit: ``"stretch"`` (already the grid size) or ``"contain"`` (centred,
+            padded with fluid).
+
+    Returns:
+        ``(ny, nx)`` ``float32`` coverage.
+    """
+    if fit == "stretch":
+        return coverage
+    out = np.zeros((ny, nx), dtype=np.float32)
+    h, w = coverage.shape
+    y0 = (ny - h) // 2
+    x0 = (nx - w) // 2
+    out[y0 : y0 + h, x0 : x0 + w] = coverage
+    return out
+
+
+def from_png(
+    path: str | Path,
+    shape: tuple[int, int],
+    *,
+    threshold: float = 0.5,
+    invert: bool = False,
+    fit: str = "stretch",
+    flip_y: bool = True,
+    check: bool = True,
+    inlet_axis: str = "x",
+    strict: bool = False,
+    verbose: bool = True,
+) -> NDArray[np.bool_]:
+    """Mask from an image file, shape ``(ny, nx)``, ``bool``.
+
+    ``DOCS/IDEA2.md`` § Geometry from a mask, **source 2**: "PNG — load,
+    threshold alpha or luminance, resize to grid".
+
+    Which channel decides
+    ---------------------
+    **Alpha, when the image has one and it is not uniformly opaque** — a cut-out
+    PNG of a wing is the case this exists for, and there the shape is exactly
+    the opaque region whatever colour it was drawn in. Otherwise **luminance**,
+    with *dark* meaning solid (ink on white paper). ``invert`` swaps the sense
+    of whichever channel was chosen; the channel actually used is printed when
+    ``verbose``.
+
+    Resampling
+    ----------
+    The chosen channel is resampled with a **box filter** (area average) and
+    thresholded afterwards, never the other way round. Area-averaging then
+    thresholding at 0.5 preserves the solid *area* of a downscaled shape to
+    within a boundary cell, which is what makes the committed test image's
+    solid-cell count predictable to 2%; nearest-neighbour would lose or gain
+    whole features depending on where the grid landed.
+
+    Orientation
+    -----------
+    Image row 0 is the **top** of the picture, while the solver's ``y``
+    increases upward and :class:`lbm.render.LiveSink` draws row 0 at the bottom
+    (``flip_y`` there). ``flip_y=True`` here — the default — mirrors the image
+    vertically on load so a wing loaded from a PNG appears the right way up in
+    the live window.
+
+    Constraint 12
+    -------------
+    :func:`check_mask` runs **automatically** (``check=True``). A downscaled PNG
+    is the most likely source of a one-cell-thin wall in this whole project:
+    the trailing edge of an aerofoil at 200 cells of chord is a couple of cells
+    thick, it leaks through bounce-back, and the resulting flow looks entirely
+    plausible. ``min_thickness`` (**D-017**) is what catches it, and its known
+    limit applies here more than anywhere — a hairline *fused* to a thick body
+    shares the body's connected component and is not reported.
+
+    Args:
+        path: image file. Anything Pillow can open; PNG is what is tested.
+        shape: ``(ny, nx)`` target grid.
+        threshold: solid when the resampled channel exceeds this, in ``[0, 1]``.
+        invert: flip the solid/fluid sense of the chosen channel.
+        fit: ``"stretch"`` resizes to exactly ``(ny, nx)``; ``"contain"``
+            preserves the aspect ratio and pads the rest with fluid.
+        flip_y: mirror vertically on load — see Orientation above.
+        check: run :func:`check_mask` on the result.
+        inlet_axis: passed to :func:`check_mask`.
+        strict: passed to :func:`check_mask` — raise instead of warn.
+        verbose: print the channel, the resize and the solid-cell count, and
+            pass through to :func:`check_mask`.
+
+    Returns:
+        ``(ny, nx)`` bool array, ``True`` on solid.
+
+    Raises:
+        ImportError: if Pillow is not installed, with the install command.
+        FileNotFoundError: if ``path`` does not exist.
+        ValueError: on a bad ``shape``, ``threshold`` or ``fit``.
+    """
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover - pillow is in myenv
+        raise ImportError(
+            "from_png needs Pillow. Install it into the project venv with:\n"
+            "    myenv/Scripts/pip.exe install pillow\n"
+            "and add a row to DOCS/STATE1.md § Environment in the same session."
+        ) from exc
+
+    ny, nx = int(shape[0]), int(shape[1])
+    if ny < 1 or nx < 1:
+        raise ValueError(f"shape must be at least 1x1, got {shape}")
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError(f"threshold must be in [0, 1], got {threshold}")
+    if fit not in ("stretch", "contain"):
+        raise ValueError(f"fit must be 'stretch' or 'contain', got {fit!r}")
+
+    src = Path(path)
+    if not src.exists():
+        raise FileNotFoundError(f"no such image: {src}")
+
+    img = Image.open(src)
+    img.load()
+
+    alpha = None
+    if "A" in img.getbands():
+        alpha = np.asarray(img.getchannel("A"), dtype=np.float32) / 255.0
+    elif img.mode == "P" and "transparency" in img.info:
+        alpha = np.asarray(img.convert("RGBA").getchannel("A"), dtype=np.float32) / 255.0
+
+    if alpha is not None and float(alpha.min()) < 1.0:
+        channel = alpha
+        channel_name = "alpha (opaque = solid)"
+    else:
+        lum = np.asarray(img.convert("L"), dtype=np.float32) / 255.0
+        channel = 1.0 - lum  # dark = solid
+        channel_name = "luminance (dark = solid)"
+
+    if invert:
+        channel = 1.0 - channel
+        channel_name += ", inverted"
+
+    if flip_y:
+        channel = channel[::-1, :]
+
+    h, w = channel.shape
+    if fit == "stretch":
+        target = (ny, nx)
+    else:
+        scale = min(ny / h, nx / w)
+        target = (max(int(round(h * scale)), 1), max(int(round(w * scale)), 1))
+
+    # Box-filter resample through Pillow: float image, area average, no clipping.
+    resized = np.asarray(
+        Image.fromarray(channel.astype(np.float32), mode="F").resize(
+            (target[1], target[0]), Image.Resampling.BOX
+        ),
+        dtype=np.float32,
+    )
+    coverage = _fit_to_grid(resized, ny, nx, fit)
+    solid = coverage > threshold
+
+    if verbose:
+        print(
+            f"from_png: {src.name} {w}x{h} px -> {nx}x{ny} cells ({fit}), "
+            f"channel {channel_name}, threshold {threshold:g}"
+            f"{', flipped in y' if flip_y else ''}. "
+            f"{int(solid.sum())} solid cells "
+            f"({solid.mean() * 100:.2f}% of the grid)."
+        )
+
+    if check:
+        check_mask(
+            solid, inlet_axis, strict=strict, verbose=verbose
+        )
+    return solid
+
+
+# SVG parsing. Q-002 is answered here: no new dependency. The parser below
+# handles the subset DOCS/TASKS1.md § T009 asks for ("at least simple closed
+# paths") and refuses everything else by name, pointing at cairosvg — which is
+# what "fails obscurely" would otherwise look like.
+
+_SVG_NUM = _re.compile(r"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?")
+_SVG_CMD = _re.compile(r"([MmLlHhVvCcQqZz])|([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)")
+_SVG_UNSUPPORTED = _re.compile(r"[AaSsTt]")
+
+#: Segments per cubic/quadratic Bezier when flattening. Twelve is well past the
+#: point where a curve's digitised outline stops changing at typical grid
+#: resolutions, and flattening happens once at setup (constraint 6 is about the
+#: step loop).
+_SVG_BEZIER_SEGMENTS: int = 12
+
+
+def _svg_dependency_error(what: str) -> ImportError:
+    """The clear install message the acceptance criterion asks for."""
+    return ImportError(
+        f"lbm.geometry.from_svg cannot handle {what} with its built-in parser. "
+        "Install a full rasteriser into the project venv:\n"
+        "    myenv/Scripts/pip.exe install cairosvg\n"
+        "and add a row to DOCS/STATE1.md § Environment in the same session. "
+        "Alternatively export the artwork to PNG and use from_png, which is the "
+        "supported path (DOCS/TASKS1.md § T009 Notes)."
+    )
+
+
+def _flatten_bezier(
+    p0: tuple[float, float],
+    ctrl: list[tuple[float, float]],
+    p3: tuple[float, float],
+    segments: int = _SVG_BEZIER_SEGMENTS,
+) -> list[tuple[float, float]]:
+    """Sample a quadratic or cubic Bezier, excluding its start point."""
+    pts: list[tuple[float, float]] = []
+    for k in range(1, segments + 1):
+        t = k / segments
+        s = 1.0 - t
+        if len(ctrl) == 2:  # cubic
+            c1, c2 = ctrl
+            x = s**3 * p0[0] + 3 * s * s * t * c1[0] + 3 * s * t * t * c2[0] + t**3 * p3[0]
+            y = s**3 * p0[1] + 3 * s * s * t * c1[1] + 3 * s * t * t * c2[1] + t**3 * p3[1]
+        else:  # quadratic
+            (c1,) = ctrl
+            x = s * s * p0[0] + 2 * s * t * c1[0] + t * t * p3[0]
+            y = s * s * p0[1] + 2 * s * t * c1[1] + t * t * p3[1]
+        pts.append((x, y))
+    return pts
+
+
+def _parse_path_d(d: str) -> list[list[tuple[float, float]]]:
+    """Flatten an SVG ``d`` attribute into subpaths of ``(x, y)`` points.
+
+    Supports ``M/m L/l H/h V/v C/c Q/q Z/z`` — the "simple closed paths" of the
+    acceptance criterion, with cubic and quadratic curves flattened to line
+    segments. Arcs (``A``) and the smooth shorthands (``S``, ``T``) raise.
+
+    Args:
+        d: the attribute text.
+
+    Returns:
+        One list of points per subpath, in user coordinates. Subpaths are closed
+        implicitly — the fill of an open path is the fill of the closed one.
+
+    Raises:
+        ImportError: on an unsupported command, naming it.
+        ValueError: on a malformed ``d``.
+    """
+    bad = _SVG_UNSUPPORTED.search(d)
+    if bad:
+        raise _svg_dependency_error(
+            f"path command {bad.group(0)!r} (arcs and smooth-curve shorthands)"
+        )
+
+    tokens: list[str | float] = []
+    for m in _SVG_CMD.finditer(d):
+        tokens.append(m.group(1) if m.group(1) else float(m.group(2)))
+
+    subpaths: list[list[tuple[float, float]]] = []
+    current: list[tuple[float, float]] = []
+    pos = (0.0, 0.0)
+    start = (0.0, 0.0)
+    cmd: str | None = None
+    i = 0
+
+    def take(n: int) -> list[float]:
+        nonlocal i
+        if i + n > len(tokens) or any(isinstance(t, str) for t in tokens[i : i + n]):
+            raise ValueError(f"malformed SVG path: {cmd!r} wants {n} numbers")
+        vals = [float(t) for t in tokens[i : i + n]]  # type: ignore[arg-type]
+        i += n
+        return vals
+
+    while i < len(tokens):
+        tok = tokens[i]
+        if isinstance(tok, str):
+            cmd = tok
+            i += 1
+            if cmd in ("Z", "z"):
+                if current:
+                    subpaths.append(current)
+                    current = []
+                pos = start
+                continue
+        elif cmd is None:
+            raise ValueError("malformed SVG path: numbers before any command")
+        elif cmd in ("M", "m"):
+            # A repeated coordinate pair after M is an implicit lineto.
+            cmd = "L" if cmd == "M" else "l"
+
+        rel = cmd.islower()
+        base = pos if rel else (0.0, 0.0)
+
+        if cmd in ("M", "m"):
+            x, y = take(2)
+            if current:
+                subpaths.append(current)
+            pos = (base[0] + x, base[1] + y)
+            start = pos
+            current = [pos]
+        elif cmd in ("L", "l"):
+            x, y = take(2)
+            pos = (base[0] + x, base[1] + y)
+            current.append(pos)
+        elif cmd in ("H", "h"):
+            (x,) = take(1)
+            pos = (base[0] + x, pos[1])
+            current.append(pos)
+        elif cmd in ("V", "v"):
+            (y,) = take(1)
+            pos = (pos[0], base[1] + y)
+            current.append(pos)
+        elif cmd in ("C", "c"):
+            x1, y1, x2, y2, x, y = take(6)
+            c1 = (base[0] + x1, base[1] + y1)
+            c2 = (base[0] + x2, base[1] + y2)
+            end = (base[0] + x, base[1] + y)
+            current.extend(_flatten_bezier(pos, [c1, c2], end))
+            pos = end
+        elif cmd in ("Q", "q"):
+            x1, y1, x, y = take(4)
+            c1 = (base[0] + x1, base[1] + y1)
+            end = (base[0] + x, base[1] + y)
+            current.extend(_flatten_bezier(pos, [c1], end))
+            pos = end
+        else:  # pragma: no cover - the regex above admits nothing else
+            raise ValueError(f"malformed SVG path: unknown command {cmd!r}")
+
+    if current:
+        subpaths.append(current)
+    return [sp for sp in subpaths if len(sp) >= 3]
+
+
+def _parse_svg(text: str) -> tuple[list[list[tuple[float, float]]], tuple[float, float, float, float] | None]:
+    """Subpaths and ``viewBox`` from SVG source text.
+
+    Reads ``<path d=...>`` and ``<polygon points=...>`` elements. A ``transform``
+    attribute on either raises rather than being silently ignored, because an
+    ignored transform produces a mask that is the wrong shape *and* looks
+    deliberate.
+    """
+    for tag in ("path", "polygon"):
+        for m in _re.finditer(rf"<{tag}\b[^>]*>", text):
+            if "transform" in m.group(0):
+                raise _svg_dependency_error("elements with a 'transform' attribute")
+
+    subpaths: list[list[tuple[float, float]]] = []
+    for m in _re.finditer(r"<path\b[^>]*\bd\s*=\s*([\"'])(.*?)\1", text, _re.S):
+        subpaths.extend(_parse_path_d(m.group(2)))
+    for m in _re.finditer(r"<polygon\b[^>]*\bpoints\s*=\s*([\"'])(.*?)\1", text, _re.S):
+        nums = [float(v) for v in _SVG_NUM.findall(m.group(2))]
+        pts = list(zip(nums[0::2], nums[1::2]))
+        if len(pts) >= 3:
+            subpaths.append(pts)
+
+    view = None
+    vb = _re.search(r"\bviewBox\s*=\s*([\"'])(.*?)\1", text, _re.S)
+    if vb:
+        nums = [float(v) for v in _SVG_NUM.findall(vb.group(2))]
+        if len(nums) == 4 and nums[2] > 0 and nums[3] > 0:
+            view = (nums[0], nums[1], nums[2], nums[3])
+    return subpaths, view
+
+
+def from_svg(
+    path: str | Path,
+    shape: tuple[int, int],
+    *,
+    margin: float = 0.0,
+    fit: bool = True,
+    flip_y: bool = True,
+    check: bool = True,
+    inlet_axis: str = "x",
+    strict: bool = False,
+    verbose: bool = True,
+) -> NDArray[np.bool_]:
+    """Mask from an SVG file, shape ``(ny, nx)``, ``bool``.
+
+    ``DOCS/IDEA2.md`` § Geometry from a mask, **source 3**: "SVG path —
+    rasterise".
+
+    Q-002, answered
+    ---------------
+    No new dependency. Simple closed paths are parsed here — ``M/L/H/V/C/Q/Z``,
+    absolute and relative, curves flattened to :data:`_SVG_BEZIER_SEGMENTS`
+    segments — and filled with :func:`polygon`, which is the even-odd test T004
+    already had. Anything outside that subset (arcs, the smooth shorthands,
+    ``transform`` attributes, strokes, text, embedded images) raises an
+    :class:`ImportError` naming the feature and giving the ``cairosvg`` install
+    line. That is the acceptance criterion's "clear install message rather than
+    failing obscurely", and it is deliberately an error and not a silent partial
+    render: a silently dropped ``transform`` gives a plausible mask of the wrong
+    shape, which is this project's stated main failure mode.
+
+    Multiple subpaths are combined with the **even-odd** rule (``^=``), so a
+    donut drawn as two rings has a hole. SVG's default fill rule is nonzero and
+    the two differ only for self-intersecting or nested-same-direction outlines;
+    that is a documented limit, not an oversight.
+
+    Args:
+        path: ``.svg`` file.
+        shape: ``(ny, nx)`` target grid.
+        margin: clear cells to leave around the artwork when fitting.
+        fit: scale the artwork (aspect preserved) to fill the grid inside
+            ``margin``. ``False`` uses the SVG's own coordinates as cells.
+        flip_y: SVG's ``y`` axis points **down** and the solver's points up;
+            ``True`` mirrors so the artwork appears upright.
+        check: run :func:`check_mask` on the result.
+        inlet_axis: passed to :func:`check_mask`.
+        strict: passed to :func:`check_mask`.
+        verbose: print what was parsed and the solid-cell count.
+
+    Returns:
+        ``(ny, nx)`` bool array, ``True`` on solid.
+
+    Raises:
+        FileNotFoundError: if ``path`` does not exist.
+        ImportError: on an SVG feature the built-in parser refuses, with the
+            install command for a full rasteriser.
+        ValueError: on a bad ``shape`` or an SVG with no fillable path.
+    """
+    ny, nx = int(shape[0]), int(shape[1])
+    if ny < 1 or nx < 1:
+        raise ValueError(f"shape must be at least 1x1, got {shape}")
+
+    src = Path(path)
+    if not src.exists():
+        raise FileNotFoundError(f"no such SVG: {src}")
+
+    subpaths, view = _parse_svg(src.read_text(encoding="utf-8", errors="replace"))
+    if not subpaths:
+        raise ValueError(
+            f"{src.name} has no fillable <path d=...> or <polygon points=...>: "
+            "nothing to rasterise. Strokes, text and embedded images are not "
+            "filled shapes — export to PNG and use from_png instead."
+        )
+
+    pts = np.concatenate([np.asarray(sp, dtype=np.float64) for sp in subpaths], axis=0)
+    if view is not None:
+        x0, y0, vw, vh = view
+    else:
+        x0, y0 = float(pts[:, 0].min()), float(pts[:, 1].min())
+        vw = max(float(pts[:, 0].max()) - x0, 1e-12)
+        vh = max(float(pts[:, 1].max()) - y0, 1e-12)
+
+    if fit:
+        scale = min((nx - 1 - 2 * margin) / vw, (ny - 1 - 2 * margin) / vh)
+        if scale <= 0.0:
+            raise ValueError(
+                f"margin {margin} leaves no room in a {ny}x{nx} grid for the "
+                f"artwork's {vw:g} x {vh:g} viewBox"
+            )
+        ox = (nx - 1 - vw * scale) / 2.0
+        oy = (ny - 1 - vh * scale) / 2.0
+    else:
+        scale, ox, oy = 1.0, 0.0, 0.0
+
+    solid = np.zeros((ny, nx), dtype=bool)
+    for sp in subpaths:
+        v = np.asarray(sp, dtype=np.float64)
+        gx = (v[:, 0] - x0) * scale + ox
+        gy = (v[:, 1] - y0) * scale + oy
+        if flip_y:
+            gy = (ny - 1) - gy
+        solid ^= polygon(ny, nx, np.stack([gx, gy], axis=1))
+
+    if verbose:
+        print(
+            f"from_svg: {src.name} -> {nx}x{ny} cells, {len(subpaths)} subpath(s), "
+            f"{'viewBox' if view is not None else 'point bbox'} "
+            f"{vw:g} x {vh:g}, scale {scale:.4g} cells/unit"
+            f"{', flipped in y' if flip_y else ''}. "
+            f"{int(solid.sum())} solid cells "
+            f"({solid.mean() * 100:.2f}% of the grid)."
+        )
+
+    if check:
+        check_mask(solid, inlet_axis, strict=strict, verbose=verbose)
+    return solid

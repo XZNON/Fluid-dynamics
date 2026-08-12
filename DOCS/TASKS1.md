@@ -18,8 +18,8 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T005 | Inlet / outlet BC + probes | `done` | T003, T004 | unit tests |
 | T006 | Runner: decoupled loop, ring buffer, restart | `done` | T005 | restart test |
 | T007 | Render + live sink + cylinder benchmark | `done` | T006 | **Rung 3** |
-| T008 | Square cylinder benchmark | `not_started` | T007 | **Rung 4** |
-| T009 | Physical units + PNG/SVG mask | `not_started` | T004, T007 | unit tests |
+| T008 | Square cylinder benchmark | `done` | T007 | **Rung 4** 🟩 |
+| T009 | Physical units + PNG/SVG mask | `done` | T004, T007 | unit tests 🟩 |
 | T010 | Performance pass | `not_started` | T007 | all rungs |
 | T011 | Recording sinks + CLI | `not_started` | T009 | **M4** |
 
@@ -407,7 +407,7 @@ may now optimise; the case runs 222k cells at ~130 steps/s.
 
 ## T008 — Square cylinder benchmark → Rung 4
 
-**Status:** `not_started`
+**Status:** `done` (session 8, 2026-08-12) — **Rung 4 green, the ladder is complete**
 
 ### Goal
 
@@ -425,11 +425,11 @@ Confirm bluff bodies with sharp corners work: square cylinder at Re 100, `Cd ≈
 
 ### Acceptance criteria
 
-- [ ] `validate/polygons.py` runs a square cylinder at Re 100 and prints Cd, St, PASS/FAIL.
-- [ ] **`Cd` within 1.4–1.6 (ref ~1.5).**
-- [ ] A second case — an arbitrary convex polygon — runs to completion without `nan` and reports finite Cd/Cl, no reference value asserted.
-- [ ] Corner cells behave: a test asserts no fluid velocity inside the solid (`|u| < 1e-6` on solid cells).
-- [ ] Rungs 1–3 re-run and still green.
+- [x] `validate/polygons.py` runs a square cylinder at Re 100 and prints Cd, St, PASS/FAIL. — 744 x 557, `D = 30` cells measured, periodic sides, blockage **4.03%**, 9.30 D downstream, `tau = 0.5477`, `U = 0.053`, 73585 steps in 1358.6 s; **St 0.1489** (ref 0.145), Cl amplitude **0.6510 = 42.6% of Cd**, peak `|u|` **0.09758**.
+- [x] **`Cd` within 1.4–1.6 (ref ~1.5).** — **Cd 1.5279 ± 0.0271** (+1.9% vs ref), on the high side exactly as the contract anticipates for staircased corners.
+- [x] A second case — an arbitrary convex polygon — runs to completion without `nan` and reports finite Cd/Cl, no reference value asserted. — an irregular convex hexagon (`POLY_VERTS`, convexity asserted by test), `D = 29`, 38302 steps in 595.0 s: **Cd 1.4276 ± 0.0226**, Cl amplitude 0.3689, St 0.1667, peak `|u|` 0.08944, no `nan`. No band is applied to it.
+- [x] Corner cells behave: a test asserts no fluid velocity inside the solid (`|u| < 1e-6` on solid cells). — `test_no_fluid_velocity_inside_the_solid`, both bodies, after 300 steps. Strengthened by `test_the_body_interior_holds_exactly_the_rest_state`, which asserts the interior is still **bit-identically** `w_i rho0`. The surface layer is excluded deliberately (`interior_solid`): it holds the reflection in flight and is *supposed* to be non-zero.
+- [x] Rungs 1–3 re-run and still green. — R1 L2 **0.3650%**; R2 **0.75% / 0.42% / 1.01%**; R3 **St 0.1731, Cd 1.4031 ± 0.0086**, identical to session 7 to every printed digit. Suite **`251 passed`** (230 existing + 21 new).
 
 ### Constraints that bite here
 
@@ -440,11 +440,40 @@ Confirm bluff bodies with sharp corners work: square cylinder at Re 100, `Cd ≈
 
 Staircase corners give slightly high `Cd` — that's why the window is ±0.1 rather than ±0.02.
 
+**Outcome (session 8).** Delivered as specified; no criterion relaxed, no band widened, no scope
+added. The corners were never the problem — `Cd` landed at 1.5279, +1.9% from the reference, on the
+first run that stayed finite. **The case setup was the problem, and it took three runs**, each
+failing on a different constraint:
+
+1. **`U = 0.06` (Rung 3's inlet) breaks constraint 3 on a square.** Measured peak `|u|` **0.10211**
+   against the disc's 0.09685 at the same inlet — a square blocks more, so the flow accelerates
+   further round it. The contract's own § Constraints predicted this.
+2. **Dropping to `U = 0.055` broke the sim instead** (**D-029**). `tau = 0.5346` produced `nan`:
+   both cases ran their full length and reported `Cd = nan`. D-016's `TAU_FLOOR` of 0.53 is **not a
+   safe floor for a bluff body in a free stream**. Bisected on a small domain, 60000 steps a leg —
+   square `tau` 0.5346 blew up at step 3200, disc `tau` 0.5330 at step **1500**, square 0.5378 and
+   0.5512 survived. The *disc* dying sooner at the same `tau` is what rules out the staircase and
+   with it constraint 1: nothing a better boundary condition would fix. `validate/polygons.py`
+   carries its own measured `TAU_FLOOR = 0.54` and refuses a marginal case at setup.
+3. **`U = 0.056, D = 27` then got the physics right and still failed** — `Cd = 1.5323`, stable over
+   62679 steps, peak `|u|` **0.10031**. The peak-to-inlet ratio is **1.79** over a full run where a
+   20 D/U look-ahead reads 1.70; the short measurement was optimistic and cost a run.
+
+`U = 0.053, D = 30` clears both at once (`tau` 0.5477, peak 0.09758). The two pull against each
+other — constraint 3 caps `U`, stability floors `tau = 0.5 + 3 U D / Re` — and `D` is the only knob
+that buys `tau` without touching the peak, at a cost that grows with the square of the domain.
+
+One thing the criterion forced into the open: `Sim` seeds the **whole** domain, solid included, with
+the equilibrium of the inlet profile, so there is fluid moving at `U` inside the body at step 0, and
+bounce-back reverses it rather than clearing it. `seed_solid_at_rest` fixes the initial condition
+(**D-030**) so that "no fluid velocity inside the solid" is a statement about the solver;
+`test_without_the_rest_seed_the_interior_never_clears_itself` pins the reason it is there.
+
 ---
 
 ## T009 — Physical units + PNG/SVG mask
 
-**Status:** `not_started`
+**Status:** `done` (session 9, 2026-08-12)
 
 ### Goal
 
@@ -463,14 +492,14 @@ The user speaks physics ("air, 20 m/s, 1.5 m object, PNG of a wing") and the cod
 
 ### Acceptance criteria
 
-- [ ] `LatticeUnits.from_physical(...)` returns `dx`, `dt`, `tau`, lattice `U`, and `Re`, with the derivation in the docstring.
-- [ ] Round-trip test: physical → lattice → physical reproduces `Re` to within 0.1%.
-- [ ] It **raises** with a message naming the offending quantity when the config implies lattice `U >= 0.1` or `tau <= 0.51`, and suggests the resolution that would fix it.
-- [ ] `from_png(path, shape)` thresholds alpha (falling back to luminance), resizes to grid, returns a bool mask, and runs `check_mask` automatically.
-- [ ] `from_svg(path, shape)` rasterises at least simple closed paths; if a dependency is missing it raises a clear install message rather than failing obscurely.
-- [ ] A test PNG committed under `tests/data/` produces a mask with the expected solid-cell count ±2%.
-- [ ] Cylinder run reproduced through the physical-units path gives the same `Cd` as T007 to within 2%.
-- [ ] Rungs 1–4 still green.
+- [x] `LatticeUnits.from_physical(...)` returns `dx`, `dt`, `tau`, lattice `U`, and `Re`, with the derivation in the docstring. — `lbm/units.py`; the four-step derivation is in the module docstring and repeated in the method's.
+- [x] Round-trip test: physical → lattice → physical reproduces `Re` to within 0.1%. — `reynolds()` (through `tau`, `U`, `N` only) matches to **1e-3 relative** on Re 80 … 1000.
+- [x] It **raises** with a message naming the offending quantity when the config implies lattice `U >= 0.1` or `tau <= 0.51`, and suggests the resolution that would fix it. — both raise; a test parses `cells_per_length >= 134` out of the message and re-runs with it.
+- [x] `from_png(path, shape)` thresholds alpha (falling back to luminance), resizes to grid, returns a bool mask, and runs `check_mask` automatically. — box-filter resample **then** threshold; `check_mask` fires on the committed image without being asked.
+- [x] `from_svg(path, shape)` rasterises at least simple closed paths; if a dependency is missing it raises a clear install message rather than failing obscurely. — built-in `M/L/H/V/C/Q/Z` + `<polygon>` parser, **no new dependency** (D-031); arcs and `transform` raise naming `cairosvg`.
+- [x] A test PNG committed under `tests/data/` produces a mask with the expected solid-cell count ±2%. — `tests/data/test_body.png`, 959 bytes: **3387 cells against 3416.99 expected, −0.88%**.
+- [x] Cylinder run reproduced through the physical-units path gives the same `Cd` as T007 to within 2%. — `validate.cylinder --headless --physical` → **Cd 1.4031**, St 0.1731; T007's is **1.4031**, i.e. **0.00%**.
+- [x] Rungs 1–4 still green. — all four re-run in session 9: L2 0.3650% · 0.75/0.42/1.01% · St 0.1731 Cd 1.4031 · square Cd 1.5279, polygon Cd 1.4276. `pytest` **308 passed**.
 
 ### Constraints that bite here
 
@@ -482,6 +511,14 @@ The user speaks physics ("air, 20 m/s, 1.5 m object, PNG of a wing") and the cod
 
 SVG support may need a new dependency. If it drags, ship PNG and log SVG as a follow-up `/new-task`
 rather than burning the session — PNG is what M4 requires.
+
+**Outcome (session 9):** it did not drag and no `/new-task` was needed — **Q-002 closed by taking no
+dependency at all** (**D-031**). The `from_svg` parser covers `M/L/H/V/C/Q/Z` plus `<polygon>` and
+refuses everything else *loudly*, with the `cairosvg` install line. Even-odd fill across subpaths is
+a documented divergence from SVG's nonzero default. `lbm/units.py`'s `tau > 0.51` is deliberately the
+loosest of the project's three `tau` floors and says so in its docstring (**D-032**); `--physical` was
+added to `validate/cylinder.py` **off by default**, so Rung 3's published numbers still come from
+`tau_for`.
 
 ---
 
