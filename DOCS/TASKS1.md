@@ -17,7 +17,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T004 | Geometry primitives + mask sanity checks | `done` | T002 | unit tests |
 | T005 | Inlet / outlet BC + probes | `done` | T003, T004 | unit tests |
 | T006 | Runner: decoupled loop, ring buffer, restart | `done` | T005 | restart test |
-| T007 | Render + live sink + cylinder benchmark | `not_started` | T006 | **Rung 3** |
+| T007 | Render + live sink + cylinder benchmark | `done` | T006 | **Rung 3** |
 | T008 | Square cylinder benchmark | `not_started` | T007 | **Rung 4** |
 | T009 | Physical units + PNG/SVG mask | `not_started` | T004, T007 | unit tests |
 | T010 | Performance pass | `not_started` | T007 | all rungs |
@@ -338,7 +338,7 @@ a fake slow sink than with a real window in the way.
 
 ## T007 — Render + live sink + cylinder benchmark → Rung 3
 
-**Status:** `not_started`
+**Status:** `done` (session 7, 2026-08-12) — **M3 reached**
 
 ### Goal
 
@@ -358,15 +358,15 @@ Strouhal number and drag coefficient that match the literature. This is **M3** �
 
 ### Acceptance criteria
 
-- [ ] `render` maps a scalar field to `uint8` RGB with a **diverging** colormap and **symmetric fixed** limits passed in — never computed per frame.
-- [ ] A test renders two frames with different data and identical limits and asserts the mapping of a fixed value is byte-identical across them (no flicker).
-- [ ] `LiveSink` opens a pygame window, pulls from the ring buffer, and drops frames when behind — no `pygame` call sits inside the physics loop.
-- [ ] Measured: opening the window changes steps/s by **less than 10%** versus headless, printed by the validation script.
-- [ ] `validate/cylinder.py` sets up circular cylinder at Re 100 with the T004 sanity checks passing (≥8D downstream, <10% blockage), runs past transient, and prints St, Cd, PASS/FAIL.
-- [ ] **`St` within 0.155–0.175 (ref 0.164) and `Cd` within 1.25–1.45 (ref 1.34).**
-- [ ] Shedding is confirmed present, not assumed: the Cl series amplitude after transient exceeds 1% of Cd.
-- [ ] `--headless` flag runs the same validation with no window.
-- [ ] Rungs 1–2 still green.
+- [x] `render` maps a scalar field to `uint8` RGB with a **diverging** colormap and **symmetric fixed** limits passed in — never computed per frame. — `lbm/render.py::render(field, limits, ...)`; 257-entry cool-warm LUT so zero lands on one entry and `±v` are mirror colours, and an asymmetric `(vmin, vmax)` **raises** naming constraint 9 (**D-028**).
+- [x] A test renders two frames with different data and identical limits and asserts the mapping of a fixed value is byte-identical across them (no flicker). — `test_a_fixed_value_maps_to_identical_bytes_across_two_different_frames`, plus `test_render_never_looks_at_the_data_range` (a huge outlier elsewhere in the frame changes nothing).
+- [x] `LiveSink` opens a pygame window, pulls from the ring buffer, and drops frames when behind — no `pygame` call sits inside the physics loop. — the window opens lazily on the first `push`, so every SDL call is on the consumer thread; `test_no_pygame_call_happens_on_the_physics_thread` records the thread ids and asserts they are disjoint, and `test_a_slow_window_costs_display_frames_and_never_a_step` asserts `dropped > 0` with every step run.
+- [x] Measured: opening the window changes steps/s by **less than 10%** versus headless, printed by the validation script. — **129.9 → 132.6 steps/s, +2.09%**, two 4000-step legs differing only in the sink.
+- [x] `validate/cylinder.py` sets up circular cylinder at Re 100 with the T004 sanity checks passing (≥8D downstream, <10% blockage), runs past transient, and prints St, Cd, PASS/FAIL. — 504 x 440, `D = 21` measured, **11.95 D** downstream, blockage **4.17%**, no warning; 70 D/U transient then 60 D/U measured.
+- [x] **`St` within 0.155–0.175 (ref 0.164) and `Cd` within 1.25–1.45 (ref 1.34).** — **St 0.1731** (+5.5%), **Cd 1.4031 ± 0.0086** (+4.7%).
+- [x] Shedding is confirmed present, not assumed: the Cl series amplitude after transient exceeds 1% of Cd. — **0.3915 = 27.9% of Cd**, mean Cl **-0.0040**. Measured on the **raw** series; only the frequency estimate sees the low-passed one (**D-027**).
+- [x] `--headless` flag runs the same validation with no window. — same numbers to every printed digit, 345.1 s.
+- [x] Rungs 1–2 still green. — Rung 1 L2 **0.3650%**, Rung 2 **0.75% / 0.42% / 1.01%**; whole suite **`230 passed`**.
 
 ### Constraints that bite here
 
@@ -380,6 +380,28 @@ Strouhal number and drag coefficient that match the literature. This is **M3** �
 `pygame` needs installing into `myenv`; record it in `DOCS/STATE1.md` § Environment. If shedding
 doesn't start, perturb the initial condition slightly or offset the cylinder half a cell — a
 perfectly symmetric setup on a symmetric grid can stay symmetric far longer than physics would.
+
+**Outcome (session 7).** Delivered as specified; no criterion relaxed, no scope added. The renderer
+and the window were the easy half — the rung was three measurement problems, and all three would
+have produced a converged, plausible, wrong number:
+
+1. **The force integral included the channel walls.** `Sim.links` comes from the whole mask, so the
+   first run reported the channel's friction plus the body's drag, `Cd = 6.65` against **1.57**.
+   Rung 3 now integrates over a cylinder-only link list, and a test builds a deliberately walled
+   mask to pin it.
+2. **No-slip walls made blockage a lie** (**D-026**). Over the 8 D upstream fetch each wall grows a
+   ~34-cell boundary layer, so a nominal 9.5% blockage is an effective ~13% and `Cd` climbed to
+   1.64. Sides are periodic now — `lbm.core.stream` already was — and the span is 24 D (4.17%),
+   because even 15 D (6.35%) read `Cd = 1.4635`, one percent over the band.
+3. **The FFT locked onto the domain's acoustics** (**D-027**). The startup pulse rings against the
+   Zou–He inlet forever; its peak (period 305, power 1378) narrowly outvoted the wake's (period
+   2500, power 1347) and the script printed `St = 1.49` for a wake shedding at the right rate.
+   Diagnosed by changing `U` — the acoustic period did not move. A case-scaled Gaussian low-pass
+   now feeds the frequency estimate only; the shedding-amplitude check still reads the raw series.
+
+The runner gained one thing, `run(..., per_step=...)` (**D-025**), because `Cl` must be sampled at
+the step rate and the alternative was a second copy of the loop. **Constraint 6 lifts here** — T010
+may now optimise; the case runs 222k cells at ~130 steps/s.
 
 ---
 

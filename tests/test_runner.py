@@ -509,6 +509,39 @@ def test_run_stops_on_the_predicate():
     assert stats.frames == 8
 
 
+def test_per_step_fires_once_per_timestep_on_the_physics_thread():
+    """D-025 — the probe hook Rung 3 samples ``Cl`` with.
+
+    Sampling at the *frame* rate would alias a shedding period of a couple of
+    thousand steps, so the hook has to be per step, and it has to see the sim
+    between steps rather than a copy.
+    """
+    import threading
+
+    sim = Sim(flow_config(), channel_with_cylinder())
+    counts: list[int] = []
+    threads: set[int] = set()
+
+    def probe(s):
+        counts.append(s.step_count)
+        threads.add(threading.get_ident())
+
+    stats = run(sim, steps=25, steps_per_frame=5, per_step=probe)
+
+    assert stats.steps == 25
+    assert counts == list(range(1, 26))  # every step, in order, none repeated
+    assert threads == {threading.get_ident()}  # the caller's thread: the physics
+
+
+def test_run_without_per_step_is_unchanged():
+    """The hook defaults off and costs the existing behaviour nothing."""
+    a = Sim(flow_config(), channel_with_cylinder())
+    b = Sim(flow_config(), channel_with_cylinder())
+    run(a, steps=30, steps_per_frame=10)
+    run(b, steps=30, steps_per_frame=10, per_step=lambda s: None)
+    assert np.array_equal(a.f, b.f)
+
+
 def test_the_default_frame_is_a_copy_of_the_vorticity_field():
     """Constraint 9 — vorticity, not speed; and a copy, since the buffer moves on."""
     sim = Sim(flow_config(), channel_with_cylinder())

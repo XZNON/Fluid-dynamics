@@ -799,6 +799,7 @@ def run(
     drop: bool = True,
     stop: Callable[[Sim], bool] | None = None,
     buffer: RingBuffer | None = None,
+    per_step: Callable[[Sim], None] | None = None,
 ) -> RunStats:
     """Run the simulation, feeding frames to a sink through a ring buffer.
 
@@ -841,6 +842,15 @@ def run(
         stop: optional predicate; the run ends when it returns ``True``.
         buffer: an existing :class:`RingBuffer` to use, so a caller can inspect
             its counters afterwards.
+        per_step: optional probe called with ``sim`` after **every** timestep,
+            on the physics thread. A time series that has to be sampled at the
+            step rate — the ``Cl`` history Rung 3 hands to
+            :func:`lbm.probe.strouhal` — cannot be sampled at the *frame* rate
+            through ``field``: one frame is many timesteps and the shedding
+            period is only a couple of thousand steps, so frame-rate sampling
+            aliases. This hook exists so that measurement does not need a
+            second copy of the loop (``DOCS/STATE1.md`` **D-025**). It must not
+            render or touch a sink — that is what the ring buffer is for.
 
     Returns:
         A :class:`RunStats`.
@@ -895,6 +905,8 @@ def run(
             for _ in range(steps_per_frame):
                 sim.step()
                 stats.steps += 1
+                if per_step is not None:
+                    per_step(sim)
                 if every > 0 and ckpt_path and sim.step_count % every == 0:
                     save_checkpoint(sim, ckpt_path)
                     stats.checkpoints += 1

@@ -10,12 +10,12 @@ Never rewrite or condense the session log — append only.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 0 — D2Q9 LBM in NumPy (`DOCS/IDEA2.md`) |
-| **Current task** | `T007` |
+| **Current task** | `T008` |
 | **Task status** | `not_started` |
-| **Completed tasks** | T001, T002, T003, T004, T005, T006 |
-| **Milestone reached** | **M2** (2026-08-10, gate run: `python -m validate.cavity --re 100 --re 400 --re 1000` → PASS; max deviation from Ghia 0.75% / 0.42% / 1.01%, vortex centre 0.21 / 0.29 / 0.59 cells) — next: M3 at T007 |
-| **Rung status** | R1 🟩 · R2 🟩 · R3 ⬜ · R4 ⬜ |
-| **Last updated** | 2026-08-10 — session 6 (T006 done; runner, ring buffer, bit-identical restart) |
+| **Completed tasks** | T001, T002, T003, T004, T005, T006, T007 |
+| **Milestone reached** | **M3** (2026-08-12, gate run: `python -m validate.cylinder` → PASS with the live window open; **St 0.1731** (band 0.155–0.175), **Cd 1.4031 ± 0.0086** (band 1.25–1.45), Cl amplitude 0.3915 = 27.9% of Cd, window costs **+2.09%** of steps/s) — next: M4 at T011 |
+| **Rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 ⬜ |
+| **Last updated** | 2026-08-12 — session 7 (T007 done; render, live pygame sink, Rung 3 green, **M3**) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -41,8 +41,9 @@ Project venv: `myenv/` (gitignored). Python 3.11.15.
 | matplotlib | 3.11.1 | pre-existing |
 | pillow | 12.3.0 | pre-existing |
 | pytest | 9.1.1 | T001 (session 1) |
+| pygame | 2.6.1 | T007 (session 7) |
 
-Not yet installed, needed later: `pygame` (T007), `imageio[ffmpeg]` (T011).
+Not yet installed, needed later: `imageio[ffmpeg]` (T011).
 
 Tests are run from the repo root so that `import lbm` resolves (no `pip install -e .`; there is no
 packaging config in Phase 0). `python -m pytest` from the root works; a script run from elsewhere
@@ -91,6 +92,10 @@ a past entry — supersede it with a new one that says so.
 | D-022 | 2026-08-10 | **`out_prev` is not a fourth piece of state, and the checkpoint stays exactly `f` / `solid` / `step_count` / config** (plus a `format: 1` integer so a future layout change is refused rather than misread). `load_checkpoint` rebuilds the convective outlet's previous column as `f[:, :, outlet_col]`. | D-021's convective outlet carries a `(9, ny)` column across steps, which naively breaks constraint 11's "`f`, `mask` and step count are the entire state". It does not: nothing after `outlet_zero_gradient` writes the outlet column — the inlet is a different column — so at the end of every step `out_prev` is byte-identical to `f[:, :, outlet_col]`. Pinned by `tests/test_runner.py::test_the_outlet_prev_column_equals_f_at_the_end_of_a_step`, asserted every step for 25 steps, and the 500/500/500 restart test runs **with the convective outlet on** so a wrong reconstruction fails on the first resumed step rather than silently drifting. The alternative — pickling the buffer — would have made the checkpoint's contents depend on which boundary conditions were enabled. |
 | D-023 | 2026-08-10 | **`steps_per_frame(dt, fps=60.0, speed=1.0) -> max(1, round(speed / (fps * dt)))`**, with `dt` = *seconds of physical time per lattice timestep*, a plain scalar the caller supplies (`lbm/units.py`, T009). Grid size enters only through `dt`. | Constraint 7 wants the number computed from playback speed, grid size and `dt`; the convention forbids physical units inside `lbm/`. Taking `dt` as an already-converted scalar satisfies both — the runner does arithmetic on a number, not a unit conversion — and grid size enters exactly where it enters physically (refine by 2, `dt` halves, the same playback speed asks for twice the steps, which `test_steps_per_frame_halves_with_dt` asserts). Handing the function a `SimConfig` instead would have put a physical quantity into the config, which is the thing the convention exists to prevent. |
 | D-024 | 2026-08-10 | **`run(..., drop=True)` drains the ring buffer into the sink from one consumer thread; `drop=False` drains inline.** The physics stays a single un-threaded loop. | Constraint 8 says the sim must never block on the display, and constraint 6 forbids optimising the physics. A thread on the *display* side is the only way a genuinely slow sink cannot stall the producer, and it is not an optimisation of the solver — collide and stream are untouched. Measured with a 4 ms sink against 2 ms of physics per frame: 60 frames pushed, **9 delivered, 51 dropped, all 120 steps executed**, wall clock 0.04 s against 0.026 s for the same 120 steps headless. `drop=False` is the other half of `DOCS/IDEA2.md` § Three output sinks — a fixed-framerate recorder (T011) must see every frame in order, and it is allowed to make the sim wait. |
+| D-025 | 2026-08-12 | **`run(..., per_step=callable)`** — an optional probe called with `sim` after every timestep, on the physics thread. `validate/cylinder.py` samples `Cd`/`Cl` through it. | The `Cl` history has to be sampled at the **step** rate: the shedding period is ~2000 steps and one frame is 58 steps, so frame-rate sampling through `field` aliases. The alternative was a second copy of the loop in the validate script, which would have drifted from `run`'s ring-buffer and drop semantics the first time either changed. The hook defaults to `None` and `test_run_without_per_step_is_unchanged` asserts the two paths produce byte-identical `f`. |
+| D-026 | 2026-08-12 | **Rung 3's lateral boundaries are periodic, not no-slip walls, and the fluid span is 24 D (4.2% blockage), well past constraint 12's 10% floor.** `validate/cylinder.py::WALL = 0`, `SPAN_D = 24`. | Measured, not argued. (a) With one-cell no-slip walls the free stream grows a boundary layer over the 8 D upstream fetch of thickness `~5 sqrt(nu x / U)` = **34 cells per wall**, so a *nominal* 9.5% blockage presents the cylinder with an effective ~13% and drag climbed straight through the band: `Cd` **1.49 → 1.58 → 1.64** at 5k/10k/15k steps on a 264x524 walled domain. Periodic sides have no boundary layer to grow, and `lbm.core.stream` is already periodic in `y`, so this is a deletion rather than a feature. (b) Blockage is then the only confinement left and it is not free either: at 15 D span (6.35%) the same case measured `Cd = 1.4635`, **1% over the top of the acceptance band**; at 24 D (4.17%) it measures **1.4031**. Constraint 12's 10% is a floor on the domain, not a target, and the reference value being compared against is an unconfined one. |
+| D-027 | 2026-08-12 | **The `Cl` series is low-passed (Gaussian, `sigma = 0.5 D/U`) before the FFT, and only for the frequency.** The shedding-amplitude check reads the **raw** series. `validate/cylinder.py::lowpass`. | The force history carries the wake *and* the domain's acoustics: the impulsive start radiates a pressure pulse, the convective outlet absorbs 0.6% of it (D-021) but the Zou–He velocity inlet reflects essentially all of it. Measured `Cl` spectrum on the walled domain: wake peak at period 2500 steps, power **1347**; acoustic peak at period 305 steps, power **1378** — the acoustic one marginally taller, so the unfiltered FFT reported `St = 1.49` for a run whose wake was visibly shedding at the right rate. It is not noise to be tuned away, it is a different real oscillation: its period barely moved (308 → 305) when `U` changed 0.06 → 0.055, which no convected structure does. The cutoff is set by the case (`D/U`), not by the answer — the shedding period is ~6 D/U, so the filter costs the wake peak ~10% and the acoustic peak four orders of magnitude — and the amplitude criterion deliberately still reads the unfiltered series so a filtered-away wake cannot pass as shedding. |
+| D-028 | 2026-08-12 | **`render` takes symmetric limits and refuses an asymmetric pair**; the colormap has **257** entries, not 256. | Constraint 9 asks for fixed symmetric limits and a diverging map, and both halves are enforced rather than documented: a lopsided `(vmin, vmax)` raises and names constraint 9, because on a diverging map it moves the neutral colour off zero and makes one sign of rotation look weaker than the other. The odd LUT length is the same argument at one-count resolution — with 256 entries zero falls between two of them and `+v`/`-v` are not mirror colours. `tests/test_render.py` asserts the mirror property and the byte-identical mapping across frames. |
 
 ## Session log
 
@@ -484,3 +489,81 @@ Append one entry per session. Newest at the bottom.
   T007 is **M3** and the first rung since session 3; `DOCS/PLAN1.md` § Risks flags "cylinder shows no
   shedding" — session 4 measured that a `D = 21` cylinder in a 121-row channel is 17.6% blockage and
   `check_mask` warns, so Rung 3 needs roughly `ny >= 10 D` plus `>= 8 D` downstream.
+
+### 2026-08-12 — Session 7: T007 — render, live sink, cylinder benchmark → Rung 3
+
+**Task worked:** T007 — `done`, every acceptance criterion run and green. **M3 reached.**
+
+**Done**
+- `lbm/render.py` — new. `colormap(n)` / `COOLWARM` (257-entry diverging cool-warm LUT, built once
+  at import), `NAN_RGB`, `render(field, limits, *, lut, nan_rgb, out)` and `LiveSink(Sink)`.
+  `render` takes the limits and never looks at the data range; a lopsided `(vmin, vmax)` raises
+  naming constraint 9. `LiveSink` imports `pygame` inside its methods, opens the window lazily on
+  the first `push` (so every SDL call is on the ring buffer's consumer thread), pumps events,
+  exposes `quit_requested`, and blits — it colours nothing.
+- `lbm/runner.py` — `run(..., per_step=...)` added (**D-025**), the only change to T006's code.
+- `lbm/__init__.py` — re-exports the five new public names.
+- `validate/cylinder.py` — new, Rung 3. `cylinder_mask` (disc **plus** a separately returned
+  cylinder-only mask for the force integral), `tau_for` (refuses `tau <= 0.53` and `U >= 0.1` at
+  setup, naming the fix), `lowpass`, `bench_steps_per_second`, `run_cylinder`, `report`, `main`
+  with `--headless`.
+- `tests/test_render.py` (22 tests) and `tests/test_cylinder.py` (8 tests); two more in
+  `tests/test_runner.py` for the `per_step` hook.
+- `pygame` 2.6.1 installed into `myenv`; § Environment row added.
+
+**Measured**
+- `myenv/Scripts/python.exe -m validate.cylinder` (gate, **window open**) → **PASS**.
+  504 x 440, `D = 21` cells measured, periodic sides, blockage **4.17%**, 11.95 D downstream,
+  `tau = 0.5378`, `U = 0.06`, 45500 steps in 368.9 s (123 steps/s), 785 frames, 0 dropped.
+  - **St 0.1731** (band 0.155–0.175, ref 0.164, +5.5%) — shedding period 2022 steps
+  - **Cd 1.4031 ± 0.0086** (band 1.25–1.45, ref 1.34, +4.7%)
+  - Cl amplitude **0.3915** = 27.9% of Cd, mean **-0.0040** (the startup kick left nothing behind)
+  - peak `|u|` **0.09685** (limit 0.1)
+  - **window cost 129.9 → 132.6 steps/s, +2.09%** (limit 10%)
+- `--headless` on the same defaults: byte-identical St, Cd, Cl and peak `|u|`; 345.1 s, 132 steps/s.
+- `myenv/Scripts/python.exe -m pytest` → **`230 passed`** (198 existing + 32 new).
+- `myenv/Scripts/python.exe -m validate.poiseuille` → **PASS**, L2 **0.3650%**, peak 0.07955.
+- `myenv/Scripts/python.exe -m validate.cavity --re 100 --re 400 --re 1000` → **PASS**, max deviation
+  **0.75% / 0.42% / 1.01%**, vortex 0.21 / 0.29 / 0.59 cells. Both identical to session 6.
+
+**Three things measurement changed** — none of them a relaxed tolerance
+- **The force integral was measuring the channel.** `Sim.links` is built from the whole mask, so the
+  first Rung 3 run reported the walls' friction plus the body's drag: `Cd` **6.65** against the
+  body's **1.57**. Fixed by integrating over a cylinder-only link list; `tests/test_cylinder.py`
+  pins it with an explicitly walled mask so it cannot come back.
+- **No-slip walls made the domain lie about its blockage** (**D-026**). The boundary layer over the
+  8 D upstream fetch is ~34 cells per wall, turning a nominal 9.5% blockage into an effective ~13%
+  and taking `Cd` to 1.64. Periodic sides removed it; the span then went 15 D → 24 D because 6.35%
+  blockage still read `Cd = 1.4635`, 1% over the band.
+- **The FFT was locking onto the domain's acoustics** (**D-027**). Wake peak at period 2500 (power
+  1347) against an acoustic peak at period 305 (power 1378) — the unfiltered answer was
+  `St = 1.49` for a wake that was visibly shedding correctly. Diagnosed by changing `U`: the
+  acoustic period moved 308 → 305 while the wake's moved with the flow.
+
+**Not done / deferred**
+- Nothing from the T007 contract. No recording sinks and no CLI (T011), no square cylinder (T008),
+  no PNG/units path (T009) — all named in the contract as other tasks.
+- No optimisation (constraint 6), which **lifts now that Rung 3 is green** — T010 owns it. Note for
+  it: 504 x 440 = 222k cells runs at ~130 steps/s, and `validate/cylinder.py` costs an extra
+  `forces` call per step on top.
+- `lowpass` lives in `validate/cylinder.py`, not `lbm/probe.py`. It is a property of *this domain's*
+  acoustics, not of the method; promoting it would make every future caller inherit a filter it may
+  not want.
+
+**Decisions made**
+- **D-025** (`per_step` probe hook), **D-026** (periodic sides + 24 D span, measured),
+  **D-027** (low-pass before the frequency estimate only, measured), **D-028** (symmetric limits
+  enforced, 257-entry LUT). All above.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- R1 🟩 · R2 🟩 · R3 🟩 · R4 ⬜. R4 has no script yet (T008) — not attempted, not failing.
+
+**Next**
+- Paste `PROMPTS/008-t008-square-cylinder.md` into a fresh session. It runs `/start-task T008`.
+  Rung 4 reuses `validate/cylinder.py`'s domain sizing wholesale — D-026's periodic sides and 24 D
+  span, and the cylinder-only force links — with `lbm.geometry.regular_polygon` in place of
+  `circle`. The staircase corners are the expected answer (constraint 1); the band is ±0.1 for
+  exactly that reason.

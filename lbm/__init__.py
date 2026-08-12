@@ -47,6 +47,13 @@ from lbm.probe import (
     strouhal,
     vorticity,
 )
+from lbm.render import (
+    COOLWARM,
+    NAN_RGB,
+    LiveSink,
+    colormap,
+    render,
+)
 from lbm.runner import (
     NullSink,
     RingBuffer,
@@ -61,11 +68,14 @@ from lbm.runner import (
 )
 
 __all__ = [
+    "COOLWARM",
     "CS2",
     "E",
+    "NAN_RGB",
     "OPP",
     "W",
     "BoundaryLinks",
+    "LiveSink",
     "MaskWarning",
     "NullSink",
     "RingBuffer",
@@ -81,6 +91,7 @@ __all__ = [
     "check_mask",
     "circle",
     "collide",
+    "colormap",
     "equilibrium",
     "force_velocity_shift",
     "forces",
@@ -95,6 +106,7 @@ __all__ = [
     "polygon",
     "rectangle",
     "regular_polygon",
+    "render",
     "residual",
     "run",
     "save_checkpoint",
