@@ -10,14 +10,80 @@ Never rewrite or condense the session log — append only.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 0 — D2Q9 LBM in NumPy (`DOCS/IDEA2.md`) |
-| **Current task** | `T011` (next; T010 closed) |
-| **Task status** | `not_started` |
-| **Completed tasks** | T001, T002, T003, T004, T005, T006, T007, T008, T009, T010 |
-| **Milestone reached** | **M3** (2026-08-12, gate run: `python -m validate.cylinder` → PASS with the live window open; **St 0.1731** (band 0.155–0.175), **Cd 1.4031 ± 0.0086** (band 1.25–1.45), Cl amplitude 0.3915 = 27.9% of Cd, window costs **+2.09%** of steps/s) — next: M4 at T011 |
+| **Current task** | `T011` (closed; **Phase 0 complete** — next session plans the product layer from root `idea.md`) |
+| **Task status** | `done` |
+| **Completed tasks** | T001, T002, T003, T004, T005, T006, T007, T008, T009, T010, T011 — **all of Phase 0** |
+| **Milestone reached** | **M4** (2026-08-13) — **Phase 0's last milestone; the gate is below.** Previously M3 (2026-08-12, gate run: `python -m validate.cylinder` → PASS with the live window open; **St 0.1731** (band 0.155–0.175), **Cd 1.4031 ± 0.0086** (band 1.25–1.45), Cl amplitude 0.3915 = 27.9% of Cd, window costs **+2.09%** of steps/s) |
 | **Rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete** |
-| **Last updated** | 2026-08-13 — session 10 (T010 done; fused kernel, ladder re-run green and bit-identical, 329 tests pass) |
+| **Last updated** | 2026-08-13 — session 11 (T011 done; recording sinks + CLI, **M4 reached**, ladder re-run green and identical to session 10, 367 tests pass) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
+
+### M4 gate — run, not asserted
+
+`DOCS/PLAN1.md` § Milestone gates: *"An arbitrary PNG becomes a mask, runs in physical units, and
+records an MP4 — end to end, one command."* Both halves of the command were run, and the first one
+is a **refusal**, on purpose (**D-038**):
+
+```
+$ myenv/Scripts/python.exe -m lbm.runner --geometry tests/data/test_body.png \
+      --fluid air --velocity 20 --length 1.5 --seconds 5 --out wake.mp4
+
+this case cannot be simulated as described:
+  tau = 0.5000 is at or below the floor of 0.51 for Re = 2e+06, U = 0.05, N = 30 cells
+  across L. tau -> 0.5 means nu -> 0 and the sim blows up (CLAUDE.md constraint 2,
+  DOCS/IDEA2.md § Stability). Use cells_per_length >= 133334, or raise u_lattice
+  (subject to the 0.1 ceiling). Note the floor is a floor on nonsense, not a stability
+  guarantee: a disc at tau = 0.5330 still produced nan by step 1500 (D-029), so a bluff
+  body wants >= 0.54.
+$ echo $?
+2
+```
+
+Air at 20 m/s past a 1.5 m body is **Re 2e6**; BGK with bounce-back and no turbulence model
+(constraint 1) cannot represent it, so the honest output is the refusal and the number that would
+fix it. The same command with the fluid given as `--re 100` is the gate proper:
+
+```
+$ myenv/Scripts/python.exe -m lbm.runner --geometry tests/data/test_body.png \
+      --re 100 --velocity 20 --length 1.5 --seconds 5 --out wake.mp4
+
+from test_body.png: body 30 x 34 cells (518 solid) rasterised in a 50-row box
+  physical: L = 1.5 m, U = 20 m/s, nu = 0.3 m^2/s  ->  Re = 100
+  grid:     30 cells across L, dx = 0.05 m/cell, dt = 0.000125 s/step
+  lattice:  U = 0.05, nu = 0.0155, tau = 0.5 + 3 U N / Re = 0.546500
+  checks:   peak |u| <= 0.0900 (upper bound ...); tau = 0.5465: adequate. Above Rung 4's
+            measured floor of 0.54 (D-029); Rung 3 runs at 0.5378 and is stable.
+  domain:   360 x 514 = 185k cells   D = 30 cells measured (D-019)   blockage 8.3%
+            sides periodic (D-026)
+  time:     5 s = 40000 steps = 67 convective times D/U
+  frames:   steps_per_frame = round(1 / (60 * dt)) = 133 (constraint 7, D-023)
+            -> 301 frames at 60 fps
+  colour:   vorticity, +-0.00667 fixed and symmetric (constraint 9, D-028)
+  geometry checks (constraint 12):
+check_mask: 360x514 grid, flow along x. Object bbox y 166..195, x 180..213 (30 x 34 cells,
+518 solid). Characteristic length D = 30 cells (cross-stream extent), streamwise extent 34.
+Downstream 300 cells = 10.00 D. Blockage 8.3% of a 360-cell fluid span. Min solid thickness
+3 cells.
+  sinks:    RecordSink, HeadlessSink   mode: drop=False (a file is being written, every
+            frame in order — D-024)
+
+  running 40000 steps ...
+  done: 40033 steps in 334.9 s (119.5 steps/s), 301 frames, 301 delivered, 0 dropped
+  peak |u| 0.06554 (limit 0.1, constraint 3)
+  wrote wake.mp4 — 301 frames at 60 fps (0.32 MB); sink pushed 301
+```
+
+Verified **from the file**, not from the counter: `imageio` reads back `frames 301, fps 60.0,
+size (528, 368), codec h264`, and frame 290 decoded out of `wake.mp4` shows a von Kármán vortex
+street — alternating signed vortices, the first pair shed by about 18 convective times. The video's
+528x368 differs from the 514x360 frame because H.264 wants dimensions divisible by 16 and imageio
+resizes the *video*; the bytes the sinks receive are the untouched `render()` output, which is what
+the byte-identical test pins.
+
+The 119.5 steps/s above was measured with `Win32_Processor.CurrentClockSpeed` = **3201 MHz of a
+3201 MHz maximum** (mains power) and with the validation ladder running beside it, per **D-035** —
+it is a demo's throughput, not an entry in § Performance baseline.
 
 ## Blockers
 
@@ -51,8 +117,13 @@ Project venv: `myenv/` (gitignored). Python 3.11.15.
 | pillow | 12.3.0 | pre-existing |
 | pytest | 9.1.1 | T001 (session 1) |
 | pygame | 2.6.1 | T007 (session 7) |
+| imageio | 2.37.4 | T011 (session 11) |
+| imageio-ffmpeg | 0.6.0 | T011 (session 11) — pulled in by the `[ffmpeg]` extra; ships the ffmpeg binary |
+| psutil | 7.2.2 | T011 (session 11) — transitive dependency of `imageio[ffmpeg]` |
 
-Not yet installed, needed later: `imageio[ffmpeg]` (T011).
+Installed with `myenv/Scripts/pip.exe install "imageio[ffmpeg]"`. GIF and PNG output go
+through Pillow and need no binary; only MP4 uses ffmpeg, and `lbm.record.check_ffmpeg`
+turns a missing one into that install line rather than a traceback.
 
 Tests are run from the repo root so that `import lbm` resolves (no `pip install -e .`; there is no
 packaging config in Phase 0). `python -m pytest` from the root works; a script run from elsewhere
@@ -159,6 +230,9 @@ a past entry — supersede it with a new one that says so.
 | D-037 | 2026-08-13 | **The preallocation audit's one fix — `inlet_velocity` taking a precomputed `fluid` mask — is kept even though it is not measurable.** | Honesty about a number that is not there. Session 6 flagged `~solid[:, col]` as "the one allocation left in the step loop", so T010 closed it; measured separately, it saves **0.37 us of the 79 us** `inlet_velocity` costs at `ny = 500` (0.5% of that function) and nothing detectable at step level (0.996× / 1.054× / 1.012×, which is noise). It stays because the convention it satisfies — "preallocate, never allocate inside the step loop" — is about the loop being *provably* allocation-free rather than about the microseconds, and because `tracemalloc` growth tests structurally cannot see a transient that is freed each step. It is a correctness-of-claim fix, not a performance one, and the § Performance baseline table should not be read as if it contributed. |
 | D-034 | 2026-08-13 | **"Skip `feq` on solid cells" is measured and deliberately not shipped.** `lbm.core.equilibrium` stays dense. The contract lists it as one of the four cheap wins; in NumPy it is not a win. | Measured, not argued. A `where=fluid` variant of exactly the same arithmetic runs **2–4× slower** than the dense one at every grid: 400×100 0.24×, 800×200 0.23×, 2000×500 0.42×, and at a deliberately huge 15.9% solid fraction it is still 0.19× / 0.22× / 0.50×. The mechanism is visible one level down — a masked `np.multiply` costs 0.060 ms against 0.018 ms dense, 3.3×, because the mask has to be read and the SIMD loop is broken, while the arithmetic it skips is the cheap part of a memory-bound kernel. Constraint 12 caps blockage at 10%, so the fraction that could ever be skipped is small by construction and the case that would pay does not exist in this project. Shipping it behind a toggle was rejected under `DOCS/TASKS1.md` § T010 Notes: ~25 lines of duplicated equilibrium for a *negative* speed. The measurement is the deliverable. |
 | D-033 | 2026-08-13 | **`lbm.core.collide_stream` fuses collide + bounce-back + the `f_bb` snapshot + stream into one pass per direction**, and `SimConfig.fused` (default `True`) selects it. The unfused T009 sequence stays selectable and is what the equality tests compare against. A body force falls back to the unfused path. | `DOCS/IDEA2.md` § Performance budget asks to "fuse collide+stream into one pass over `f`", but D-020's order puts `bounce_back` **between** them, so fusing only the two named steps removes nothing — the array is still walked for the reflection and again for the `f_bb` copy. Fusing across all four is what removes the passes, and it removes the `f_bb` snapshot copy outright. Measured, alternating rounds (D-035): **1.00× at 40k, 1.01× at 160k, 1.14× at 1M** — worth keeping precisely where the budget is tightest (the 1M floor is 15 and the reference path measures 15.0), and never a loss. The arithmetic is unchanged element by element and in order, so both paths are **bitwise** equal — asserted on `f`, on fluid cells alone, on the `f_bb`/`f` snapshots `probe.forces` consumes, and by a checkpoint written on one path and resumed on the other (`tests/test_perf.py`), which is what keeps constraint 11 true. The Guo body force is **not** folded in: its source term goes between collision and bounce-back, and the only case that uses it is Rung 1's 22×16 channel, where speed is irrelevant and the reference arithmetic is worth more than the pass. |
+| D-038 | 2026-08-13 | **The CLI's own acceptance command is refused, and that is the correct outcome.** `DOCS/TASKS1.md` § T011 names `--fluid air --velocity 20 --length 1.5 --seconds 5`; the gate in `DOCS/STATE1.md` § Snapshot runs the identical command with **`--re 100`** in place of `--fluid air`, and the literal form is run too and its refusal recorded. `--fluid` is kept, and so is the refusal. | Arithmetic, not preference: air at 20 m/s past a 1.5 m body is `Re = 20 * 1.5 / 1.5e-5` = **2e6**. `tau = 0.5 + 3 U N / Re` then reads **0.5000** at any resolution this project will run — `lbm/units.py` refuses it and names the fix, `cells_per_length >= 133334` (**D-032**). Two acceptance criteria of the same task therefore cannot both be met by one literal command: "produces a playable MP4 with a visible vortex street" and "the units module raises rather than run a case it cannot represent". The second wins, because a solver that quietly runs Re 2e6 on a 30-cell body with no turbulence model (constraint 1) produces exactly the artefact `DOCS/IDEA2.md` § Validation ladder exists to prevent — a converged, plausible, wrong video. The CLI's `--help` says so in as many words, so the next person meets the arithmetic before the run rather than after. |
+| D-039 | 2026-08-13 | **Any sink that writes a file selects `drop=False`; only a live-*only* run drops.** `lbm.runner._resolve_sinks` returns `drop = not (record or headless)`. `lbm.record.TeeSink` fans one frame out to several sinks and is **not** a third mode. | **D-024** allows exactly two modes and T011's contract says "record must not drop; live may". The contract names the recorder, but a numbered-PNG series has the same property for the same reason: a gap in `frame_00042.png` is wrong output, not slow output, and nothing in the file says a frame is missing. So the rule is about *files*, not about MP4. The tee needed no new mode because it is a sink, not a policy — it copies nothing (the byte-identical test asserts the members receive the **same object**), so `--live --record` is the recorder's policy with a window attached, which is what D-024 explicitly permits: "a fixed-framerate recorder must see every frame in order, and it is allowed to make the sim wait". Measured with a real window open: 9 frames pushed, 9 in the MP4, 0 dropped. |
+| D-040 | 2026-08-13 | **`--resolution N` is N cells across the *body*, not across the picture.** `lbm.runner._body_mask` rasterises, measures the solid bounding box, rescales the box by the shortfall and repeats (at most three passes). | The number is handed to `LatticeUnits.from_physical` as `cells_per_length`, so it is what `tau = 0.5 + 3 U N / Re` is computed from (D-019) — and a PNG with a margin makes the two diverge silently. Measured on the committed `tests/data/test_body.png`: rasterised into a 30-row box the body is **18** cells, which runs the case at **`tau = 0.527`** while the printed summary claims 30 cells of resolution. 0.527 is inside the band D-029 measured a disc dying in (0.5330, by step 1500). With the rescale the same request gives a 30-cell body at `tau = 0.5465`, and the min-thickness reading rises from **1** (a constraint-12 hairline, warned about) to **3**. The alternative — telling the user to pick a bigger number — hides a stability cliff behind an image's whitespace. |
 | D-032 | 2026-08-12 | **`lbm/units.py` enforces `tau > 0.51` and `U < 0.1` and nothing stricter**, and ships `LatticeUnits.stability_note()` alongside. It is the third `tau` floor in the project, below Rung 2's 0.53 (D-016) and Rung 4's measured 0.54 (D-029). | D-029 measured a disc dying at `tau = 0.5330` by step 1500, so 0.51 is demonstrably **not** a stability guarantee — but the other two floors were measured on *bluff bodies in a free stream*, and this module converts units for cases it has never seen (a channel at `tau = 0.52` is fine). Refusing everything under 0.54 would reject valid configs; accepting silently would imply a safety the number does not have. So the floor is a floor on nonsense, the rejection message quotes D-029's measured deaths, and `stability_note()` grades the margin for the geometry the caller knows about and the module does not. `BLUFF_BODY_SPEEDUP = 1.8` (session 8's measured `peak = 1.79 U`) is exposed the same way, so the constraint-3 headroom is a number rather than folklore. |
 
 ## Session log
@@ -910,3 +984,122 @@ which this task unblocks).
   which is **M4** and the last task of Phase 0. `imageio[ffmpeg]` must be installed into `myenv`
   first and a row added to § Environment. Constraint 10 (one `render()`, three sinks) and constraint
   8 (record must **not** drop; live may) are the two that bite.
+
+### 2026-08-13 — Session 11: T011 — recording sinks + CLI → M4
+
+**Task worked:** T011 — every acceptance criterion run. **M4 reached; Phase 0 closes here.**
+
+**Done**
+- `lbm/record.py` — new. `RecordSink` (MP4 via imageio/ffmpeg or GIF via Pillow, chosen by suffix;
+  fixed framerate written into the container; opens lazily on the first frame but validates ffmpeg
+  in `__init__`), `HeadlessSink` (zero-padded numbered PNGs, `prefix`/`digits`/`start`),
+  `TeeSink` (fan-out, passes the **same** array to each member), `check_ffmpeg`, `frame_count`,
+  `FFMPEG_HINT`, `IMAGEIO_HINT`, `VIDEO_SUFFIXES`. It colours nothing: every class takes
+  `(ny, nx, 3)` `uint8` from `render()` and refuses anything else by name.
+- `lbm/runner.py` — the `python -m lbm.runner` CLI: `main`, `_build_parser`, `_resolve_sinks`,
+  `_body_mask`, `demo_domain`, and the `FLUIDS` / `DEMO_*` constants. Geometry is loaded at body
+  scale and *placed* in a domain sized in its own diameters rather than stretched over the grid;
+  `LatticeUnits.from_physical` does the unit conversion and its refusals are printed verbatim;
+  `steps_per_frame` comes from `dt`; the solid is seeded at rest (**D-030**); a startup kick
+  (0.2 U for 5 D/U) is switched off in place through the `per_step` hook.
+- `lbm/__init__.py` — re-exports the five new public names.
+- `tests/test_record.py` — 38 tests, one or more per acceptance criterion.
+- `.gitignore` — `*.mp4`, `*.gif`, `frames/`, since the CLI now writes those into the working
+  directory. `CLAUDE.md` § Module map — `lbm/record.py` moved from T010 to T011 (it was mis-filed)
+  and `lbm/runner.py` credited with the CLI.
+- `imageio` 2.37.4 + `imageio-ffmpeg` 0.6.0 + `psutil` 7.2.2 installed into `myenv`; § Environment
+  rows added.
+
+**Measured** — every acceptance criterion run, not read
+- **The M4 gate is in § Snapshot above**, with both commands and their output: the literal
+  `--fluid air` form refuses (exit 2), and the `--re 100` form writes `wake.mp4` —
+  **40033 steps in 334.9 s (119.5 steps/s), 301 frames, 301 delivered, 0 dropped**, peak `|u|`
+  0.06554. Read back off the file: `frames 301, fps 60.0, size (528, 368), codec h264`, and a frame
+  decoded out of the MP4 shows the vortex street.
+- **50 frames in, 50 frames on disk** — `frame_count()` counts the container, not the sink.
+- **Never drops, under the setup that costs a live window 51 of 60 frames**: `RingBuffer(1)` plus a
+  2 ms sink, `drop=False` — 20 pushed, **20 delivered, 0 dropped, 40/40 steps run**.
+- **Byte-identical frames across the three sinks**, and stronger than the criterion asks:
+  `TeeSink` hands each member the *same object* (`id(frame)` asserted), so there is nothing for a
+  sink to diverge on.
+- **GIF**: 12 frames in, 12 read back, and it writes with `imageio_ffmpeg.get_ffmpeg_exe`
+  monkeypatched to raise — GIF and PNG need no binary at all.
+- **Missing ffmpeg**: `RecordSink(".mp4")` raises the install line at construction, before a single
+  timestep, for both failure modes (binary absent, package absent), and creates no file.
+- **`--live --record` with a real pygame window**: 9 frames pushed, **9 in the MP4**, 0 dropped.
+- `myenv/Scripts/python.exe -m pytest` → **`367 passed`** (329 existing + 38 new). No existing test
+  was modified.
+- **The ladder, all four, re-run this session** (started early and in the background, ~55 min wall
+  clock end to end, CPU at its rated 3201 MHz on mains):
+  - R1 `validate.poiseuille` → **PASS**, L2 **0.3650%**, ratio 1.99940, mass drift 5.186e-05,
+    peak `|u|` 0.07955
+  - R2 `validate.cavity --re 100 --re 400 --re 1000` → **PASS**, max deviation
+    **0.75% / 0.42% / 1.01%**, vortex 0.21 / 0.29 / 0.59 cells
+  - R3 `validate.cylinder --headless` → **PASS**, **St 0.1731** (+5.5% vs 0.164),
+    **Cd 1.4031 ± 0.0086** (+4.7% vs 1.34), Cl amplitude 0.3915 = 27.9% of Cd, peak 0.09685
+  - R4 `validate.polygons --headless` → **PASS**, square **Cd 1.5279 ± 0.0271** (+1.9% vs 1.5),
+    St 0.1489, Cl amplitude 0.6510, peak 0.09758; polygon **Cd 1.4276 ± 0.0226**, St 0.1667,
+    peak 0.08944, 529.0 s
+  - **Every number identical to session 10 to every printed digit.** Expected — T011 added a CLI and
+    two sinks and touched nothing in the step path — but run rather than assumed, which is what
+    constraint 5 asks for.
+
+**Three things measurement changed**
+- **The task's own acceptance command cannot be run** (**D-038**). `--fluid air --velocity 20
+  --length 1.5` is **Re 2e6**; `tau` reads 0.5000 and `lbm/units.py` refuses it, naming
+  `cells_per_length >= 133334`. Two criteria of the same task conflict — "produces a playable MP4"
+  and "the units module raises rather than run what it cannot represent" — and the refusal wins.
+  Both forms were run and both are recorded; `--help` states the arithmetic so the next person meets
+  it before the run.
+- **`--resolution` meant the picture, and that silently moved `tau`** (**D-040**). The committed
+  `tests/data/test_body.png` has a margin: rasterised into a 30-row box the body is **18** cells, so
+  a run advertising 30 cells of resolution was actually at **`tau = 0.527`** — inside the band D-029
+  measured a disc dying in — and `min_thickness` read **1**, a constraint-12 hairline. The loader now
+  rescales until the *measured* body is the requested size: 30 cells, `tau = 0.5465`, thickness 3.
+- **"Record must not drop" is about files, not about MP4** (**D-039**). A gap in a numbered PNG
+  series is exactly as wrong and exactly as silent, so `--headless` selects `drop=False` too;
+  `drop=True` is now reached only by a live-*only* run, which is the case constraint 8 describes.
+
+**Not done / deferred**
+- Nothing from the T011 contract.
+- **Phase 0 ends here.** No product-layer work, no M5 (Warp/Taichi), and `DOCS/IDEA2.md`
+  § Deliberately deferred stays deferred.
+- `python -m lbm.runner` prints a runpy `RuntimeWarning` about the double import, because
+  `lbm/__init__.py` imports `lbm.runner` and `-m` then executes it again as `__main__`. Cosmetic and
+  unavoidable for the entry point the contract names; the `__main__` block delegates to the
+  *package's* `main` so every `isinstance` in the process compares like with like.
+- `lbm/__init__.py` re-exports the function `render`, which shadows the module attribute
+  `lbm.render`. Pre-existing (T007); `tests/test_record.py` reaches the module through
+  `sys.modules` and a comment says why. Not renamed — that is a public-API change for no gain.
+- H.264 wants dimensions divisible by 16, so imageio resizes the *video* (514x360 → 528x368).
+  `macro_block_size=1` is exposed for an exact-size file and is not the default: with odd dimensions
+  libx264 refuses the stream outright (measured — broken pipe).
+- `DOCS/ISSUES.jsonl` is still untracked in git, as session 10 noted. Still the user's call.
+
+**Decisions made**
+- **D-038** (the acceptance command is refused, and why that is right), **D-039** (any file-writing
+  sink selects `drop=False`), **D-040** (`--resolution` is the body, not the picture). All in
+  § Decisions.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run this session, all four identical to session 10.
+
+**Next**
+- Paste **`PROMPTS/012-phase1-planning.md`** into a fresh session. **Phase 0 is closed**, so there is
+  no `T012` and no `/start-task` to run: that session **plans Phase 1** from the root `idea.md` and
+  produces documents — a Phase 1 spec, a phase plan with runnable milestone gates, and a task
+  backlog — not code. It also has to settle five things: whether Phase 1 keeps our kernel or adopts
+  XLB (`idea.md` puts XLB at Phase 3), whether the deliverable is a library, a CLI or a UI, what
+  Phase 1's validation ladder is, whether the state file continues or starts at `STATE2`, and which
+  of `CLAUDE.md`'s 12 constraints outlive Phase 0. The prompt quotes `idea.md` § Risks — "The
+  trap" — at it: the solver is not the product, and a planning session that ends with a change
+  under `lbm/` has failed.
+- What Phase 1 inherits: a validated
+  D2Q9/BGK solver in pure NumPy, four green rungs, bit-identical restart, three sinks behind one
+  `render()`, physical-unit configuration that refuses what it cannot represent, and a CLI another
+  person can run. M5 (a Warp/Taichi port of the kernel, same API) is a separate plan; the measured
+  starting point for it is in § Performance baseline — `equilibrium` is over half the step at 1M
+  cells.

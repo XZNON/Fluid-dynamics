@@ -4,6 +4,12 @@ myenv
 # images
 .claude
 
+# T011 CLI output: videos, GIFs and numbered PNG frames land in the working
+# directory by default. tests/data/*.png is committed geometry and stays.
+*.mp4
+*.gif
+frames/
+
 */__init__.py
 __init__.py
 

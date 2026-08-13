@@ -129,18 +129,20 @@ line in `DOCS/STATE1.md` § Environment.
 | `lbm/boundary.py` | bounce-back, walls, body force, inlet, outlet | T002, T005 |
 | `lbm/geometry.py` | mask from primitives / PNG / SVG, sanity checks | T004, T009 |
 | `lbm/probe.py` | vorticity, drag, lift, Strouhal, residuals | T005 |
-| `lbm/runner.py` | continuous loop, ring buffer, checkpoint / restart | T006 |
+| `lbm/runner.py` | continuous loop, ring buffer, checkpoint / restart, `python -m lbm.runner` CLI | T006, T011 |
 | `lbm/render.py` | field -> RGB, diverging colormap, fixed limits | T007 |
-| `lbm/record.py` | MP4 / GIF writer, headless sink | T010 |
+| `lbm/record.py` | MP4 / GIF writer, headless sink, tee | T011 |
 | `lbm/units.py` | physical <-> lattice conversion | T009 |
 | `validate/*.py` | the four rungs, each printing pass/fail | T002, T003, T007, T008 |
 
 ## Current state
 
-T001 → T010 done; **M3 reached** (2026-08-12). `lbm/` has `core`, `boundary`, `geometry`, `probe`,
-`runner`, `render`, `units`; `validate/` has `poiseuille`, `cavity`, `cylinder`, `polygons`;
-`bench.py` at the root prints the steps/s before/after table.
+**Phase 0 is complete.** T001 → T011 done; **M4 reached** (2026-08-13). `lbm/` has `core`,
+`boundary`, `geometry`, `probe`, `runner`, `render`, `record`, `units`; `validate/` has
+`poiseuille`, `cavity`, `cylinder`, `polygons`; `bench.py` at the root prints the steps/s
+before/after table.
 Rungs R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete**. The performance budget is met
-(696.7 / 161.7 / 16.8 steps/s at 40k / 160k / 1M cells, floors 400 / 120 / 15). `record` and the
-CLI are what remain: T011 (**M4**), and Phase 0 ends there.
-Task order T001 → T011, see `DOCS/TASKS1.md`. Live status in `DOCS/STATE1.md`.
+(696.7 / 161.7 / 16.8 steps/s at 40k / 160k / 1M cells, floors 400 / 120 / 15). `python -m
+lbm.runner` turns a PNG plus physical numbers into an MP4 in one command.
+The next session **plans the product layer** from the root `idea.md` — not another solver task. M5
+(Warp/Taichi port of the kernel, same API) is its own plan. Live status in `DOCS/STATE1.md`.

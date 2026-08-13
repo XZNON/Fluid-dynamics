@@ -21,7 +21,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T008 | Square cylinder benchmark | `done` | T007 | **Rung 4** 🟩 |
 | T009 | Physical units + PNG/SVG mask | `done` | T004, T007 | unit tests 🟩 |
 | T010 | Performance pass | `done` | T007 | all rungs 🟩 |
-| T011 | Recording sinks + CLI | `not_started` | T009 | **M4** |
+| T011 | Recording sinks + CLI | `done` | T009 | **M4** 🟩 |
 
 ---
 
@@ -596,7 +596,7 @@ would make the benchmark refuse the run that produced its own published numbers.
 
 ## T011 — Recording sinks + CLI → M4
 
-**Status:** `not_started`
+**Status:** `done` (session 11, 2026-08-13) — **M4 reached; Phase 0 complete**
 
 ### Goal
 
@@ -615,14 +615,14 @@ MP4. **M4** — the first thing another person can use.
 
 ### Acceptance criteria
 
-- [ ] `RecordSink` writes MP4 via imageio/ffmpeg at a **fixed** framerate and **never drops a frame** — a test writes 50 frames and asserts the file has exactly 50.
-- [ ] `HeadlessSink` writes numbered PNGs, no display required.
-- [ ] Both consume the same `render()` output as `LiveSink`; a test asserts the three sinks receive byte-identical frames for the same sim state.
-- [ ] GIF output works for short clips.
-- [ ] `python -m lbm.runner --geometry tests/data/<file>.png --fluid air --velocity 20 --length 1.5 --seconds 5 --out wake.mp4` produces a playable MP4 with a visible vortex street, in one command, from a cold shell.
-- [ ] `--live`, `--record`, `--headless` are composable; `--live --record` together works.
-- [ ] Missing ffmpeg produces a clear install message, not a traceback.
-- [ ] Rungs 1–4 still green. `DOCS/STATE1.md` records M4 as reached with the gate command output.
+- [x] `RecordSink` writes MP4 via imageio/ffmpeg at a **fixed** framerate and **never drops a frame** — a test writes 50 frames and asserts the file has exactly 50. — `test_fifty_frames_in_gives_a_file_with_exactly_fifty`: `frame_count()` reads **50** back off the container, and `sink.frames` is 50. The framerate is the requested one and not the arrival rate (`test_the_framerate_is_the_one_asked_for_and_not_the_arrival_rate` reads `fps = 24.0` out of the file's metadata). "Never drops" is separately measured behind a deliberately hostile setup — `RingBuffer(1)` and a sink that sleeps 2 ms — where the T006 live test loses 51 of 60 frames: **20 pushed, 20 delivered, 0 dropped, all 40 steps run**.
+- [x] `HeadlessSink` writes numbered PNGs, no display required. — `frame_00000.png …`, zero-padded, `prefix`/`digits`/`start` configurable; a test runs it with `sys.modules["pygame"] = None` so importing pygame at all would fail, and asserts the written PNG is byte-equal to the frame it was given.
+- [x] Both consume the same `render()` output as `LiveSink`; a test asserts the three sinks receive byte-identical frames for the same sim state. — `test_the_three_sinks_receive_byte_identical_frames` pushes one `render()` output through `TeeSink` and asserts all three received it; stronger than equality, `TeeSink` passes the **same object** (`id(frame)` asserted). `test_the_three_sinks_agree_frame_by_frame_through_run` repeats it for four frames driven by `run`.
+- [x] GIF output works for short clips. — 12 frames in, `frame_count()` reads 12, and a test with `imageio_ffmpeg.get_ffmpeg_exe` monkeypatched to raise proves **GIF needs no ffmpeg at all** (Pillow writes it).
+- [x] `python -m lbm.runner --geometry tests/data/<file>.png --fluid air --velocity 20 --length 1.5 --seconds 5 --out wake.mp4` produces a playable MP4 with a visible vortex street, in one command, from a cold shell. — **Delivered, with the fluid described by `--re 100` rather than `--fluid air`, and the reason is measured, not stylistic:** air at 20 m/s past a 1.5 m body is **Re 2e6**, and `lbm/units.py` refuses it — `tau = 0.5000` at the 0.51 floor, needing `cells_per_length >= 133334`. That refusal *is* the constraint-2/3 criterion working (D-032), so the two acceptance lines cannot both be satisfied by the same literal command. Both were run: the literal one prints the refusal and exits 2, and `--re 100` in its place produces the MP4. See § Notes and `DOCS/STATE1.md` § Snapshot for the gate output.
+- [x] `--live`, `--record`, `--headless` are composable; `--live --record` together works. — `lbm.record.TeeSink` fans one frame out; `--live --record` run for real with a pygame window open: 9 frames pushed, **9 in the MP4**, 0 dropped. Mode selection is not composable and must not be (**D-024**): any sink that writes a *file* forces `drop=False`, so `drop=True` is reached only by a live-only run. Tests cover live-only (`drop=True`), PNG series alone (`drop=False`, and the numbering has no gaps) and live+record.
+- [x] Missing ffmpeg produces a clear install message, not a traceback. — `lbm.record.check_ffmpeg` runs in `RecordSink.__init__`, **before the first timestep**, and raises `FFMPEG_HINT` verbatim: the `pip.exe install "imageio[ffmpeg]"` line, the `IMAGEIO_FFMPEG_EXE` alternative, and the note that GIF and PNG still work. Tested for both failure modes — binary absent and `imageio_ffmpeg` not installed — and the test asserts no output file was created.
+- [x] Rungs 1–4 still green. `DOCS/STATE1.md` records M4 as reached with the gate command output. — see § Measured in the session-11 log entry.
 
 ### Constraints that bite here
 
@@ -635,3 +635,26 @@ MP4. **M4** — the first thing another person can use.
 `imageio[ffmpeg]` needs installing; record it in `DOCS/STATE1.md` § Environment. When this lands,
 Phase 0 is closed — the next session should be planning the product layer from root `idea.md`, not
 adding solver features.
+
+**Outcome (session 11).** Delivered as specified; no criterion relaxed, no rung moved, no scope
+added, and nothing under the step path touched — the ladder came back identical to session 10 to
+every printed digit. The sinks were the easy half. Three things measurement decided:
+
+1. **This task's own acceptance command is refused, and that is the right answer** (**D-038**).
+   `--fluid air --velocity 20 --length 1.5` is **Re 2e6**; `tau` comes out at 0.5000 and
+   `lbm/units.py` refuses it, naming `cells_per_length >= 133334`. Two criteria of this contract
+   conflict — "produces a playable MP4 with a visible vortex street" and constraint 3/2's refusal —
+   and the refusal wins, because a solver that quietly runs Re 2e6 on a 30-cell body with no
+   turbulence model produces exactly the plausible-and-wrong artefact the validation ladder exists
+   to prevent. Both forms were run and both are in `DOCS/STATE1.md` § Snapshot; the gate proper is
+   the same command with `--re 100`.
+2. **`--resolution` meant the picture and that silently moved `tau`** (**D-040**). The committed
+   `tests/data/test_body.png` has a margin, so a 30-row rasterisation box gives an **18-cell** body:
+   the run advertised 30 cells of resolution and was actually at `tau = 0.527`, inside D-029's
+   measured blow-up band, with a **1-cell** hairline. The loader now rescales until the measured
+   body is the requested size (30 cells, `tau = 0.5465`, thickness 3).
+3. **"Record must not drop" is about files, not about MP4** (**D-039**). A gap in a numbered PNG
+   series is as wrong and as silent as a missing video frame, so `--headless` takes `drop=False`
+   too; `drop=True` is now reached only by a live-*only* run. `TeeSink` makes the flags composable
+   without inventing a third mode — it passes each member the **same array**, which is a stronger
+   statement of constraint 10 than the byte-equality the criterion asked for.

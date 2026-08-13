@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import abc
 import pickle
+import sys
 import threading
 import time
 import warnings
@@ -76,7 +77,7 @@ from lbm.boundary import (
     inlet_velocity,
     outlet_zero_gradient,
 )
-from lbm.core import Q, collide, collide_stream, equilibrium, macroscopic, stream
+from lbm.core import Q, W, collide, collide_stream, equilibrium, macroscopic, stream
 from lbm.geometry import bounding_box, check_mask
 from lbm.probe import BoundaryLinks, boundary_links, forces, residual, vorticity
 
@@ -91,6 +92,8 @@ __all__ = [
     "steps_per_frame",
     "save_checkpoint",
     "load_checkpoint",
+    "demo_domain",
+    "main",
 ]
 
 #: Bumped if the pickle layout ever changes. :func:`load_checkpoint` refuses a
@@ -988,3 +991,536 @@ def run(
             sink.close()
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# The command line — `python -m lbm.runner`
+# ---------------------------------------------------------------------------
+#
+# T011, ``DOCS/TASKS1.md``: "one command that takes a PNG plus physical numbers
+# and produces an MP4. M4 — the first thing another person can use."
+#
+# Everything below is the *boundary* of the package in the sense of
+# ``CLAUDE.md`` § Coding conventions: metres, seconds and m/s appear here and in
+# ``lbm/units.py`` and nowhere else. The conversion is
+# :meth:`lbm.units.LatticeUnits.from_physical` and the number that reaches the
+# solver is always lattice. Imports of ``lbm.units``, ``lbm.geometry``,
+# ``lbm.render`` and ``lbm.record`` are inside the functions, so ``import
+# lbm.runner`` stays as cheap and as headless as it was before T011.
+
+#: Kinematic viscosity in m^2/s for the fluids ``--fluid`` names. Ordinary
+#: reference values at 20 C; anything else is ``--nu`` or ``--re``.
+FLUIDS: dict[str, float] = {
+    "air": 1.5e-5,
+    "water": 1.0e-6,
+    "honey": 2.0e-3,
+}
+
+#: Domain around the body, in measured body diameters. The blockage that
+#: results is ``1 / span_d`` — 8.3% at 12, inside constraint 12's 10% — and the
+#: downstream fetch is over the 8 D the same constraint asks for. Rung 3 uses a
+#: 24 D span because it is comparing a *number* against an unconfined reference
+#: (D-026); a demo is comparing a picture against the eye, and 12 D halves the
+#: cell count for a wake that looks the same.
+DEMO_SPAN_D: float = 12.0
+DEMO_UPSTREAM_D: float = 6.0
+DEMO_DOWNSTREAM_D: float = 10.0
+
+#: Startup kick, as in ``validate/cylinder.py``: a cross-stream inlet velocity
+#: of ``KICK_FACTOR * U`` for the first ``KICK_TC`` convective times, then zero.
+#: A symmetric body on a symmetric grid stays symmetric far longer than physics
+#: would, and a five-second clip has no time to spare — Rung 3 measures shedding
+#: established by ~70 D/U *with* a 10% kick. The demo kicks harder because it is
+#: making a picture, not a measurement, and the kick is off long before the end.
+DEMO_KICK_FACTOR: float = 0.20
+DEMO_KICK_TC: float = 5.0
+
+#: Colour limits as a multiple of ``U / D``, the natural vorticity scale of the
+#: wake (constraint 9: fixed and symmetric, never per-frame).
+DEMO_VMAX_FACTOR: float = 4.0
+
+
+def _body_mask(
+    path: str | Path, cells: int, *, invert: bool = False, verbose: bool = True
+) -> tuple[NDArray[np.bool_], int, int]:
+    """Load a geometry file and crop it to the body's bounding box.
+
+    The mask a demo needs is the *body*, not a picture-shaped domain:
+    :func:`lbm.geometry.from_png` fills the grid it is given, so asking it for
+    the whole domain would stretch the body across the inlet and the outlet.
+    The body is loaded at its own scale here and placed into a domain by
+    :func:`demo_domain`.
+
+    ``check=False`` on this call and **not** because the check is unwanted —
+    constraint 12 is checked on the assembled domain instead, where blockage and
+    downstream distance mean something and where :class:`Sim` runs
+    :func:`lbm.geometry.check_mask` itself. On a grid cropped to the body the
+    blockage is 100% by construction and the report would be noise; the
+    thickness rule, the one that catches a hairline in a downscaled PNG (D-031),
+    is unaffected by where the body sits and still fires on the domain.
+
+    Args:
+        path: ``.png`` (or any Pillow format) or ``.svg``.
+        cells: target cross-stream size in cells — the resolution the physical
+            units are derived at. The *measured* extent that comes back may be
+            a cell or two less, and that measured number is what everything
+            downstream uses (D-019).
+        invert: swap the solid/fluid sense of the image. Applied by the loader,
+            before the crop: inverting a mask that has already been cropped to
+            its own bounding box would produce an empty body.
+        verbose: print what was loaded.
+
+    Returns:
+        ``(body, bh, bw)`` — the cropped mask and its shape.
+    """
+    from lbm.geometry import bounding_box, from_png, from_svg
+
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"geometry file not found: {path}")
+
+    aspect = 1.0
+    if path.suffix.lower() != ".svg":
+        from PIL import Image
+
+        with Image.open(path) as im:
+            w_img, h_img = im.size
+        aspect = w_img / h_img
+
+    def load(box_rows: int) -> NDArray[np.bool_] | None:
+        """Rasterise into a ``box_rows``-tall box and crop to the body."""
+        rows = max(3, int(box_rows))
+        cols = max(3, int(round(rows * aspect)))
+        if path.suffix.lower() == ".svg":
+            mask = from_svg(path, (rows, cols), check=False, verbose=False)
+            if invert:
+                mask = ~mask
+        else:
+            mask = from_png(
+                path, (rows, cols), invert=invert, check=False, verbose=False
+            )
+        box = bounding_box(mask)
+        if box is None:
+            return None
+        y0, y1, x0, x1 = box
+        return np.ascontiguousarray(mask[y0 : y1 + 1, x0 : x1 + 1])
+
+    # `cells` is the size of the **body**, not of the picture, because it is
+    # what `LatticeUnits.from_physical` is handed as `cells_per_length` and
+    # therefore what `tau = 0.5 + 3 U N / Re` is computed from (D-019). A PNG
+    # with a wide margin would otherwise quietly run at a fraction of the
+    # requested resolution — and `tau` with it, straight into D-029's measured
+    # blow-up band. So: rasterise, measure the body, rescale the box by the
+    # shortfall, repeat. Two passes are enough for any margin; the loop stops
+    # early when the body is already big enough.
+    box_rows = int(cells)
+    body = load(box_rows)
+    for _ in range(3):
+        if body is None:
+            break
+        if body.shape[0] >= cells:
+            break
+        box_rows = int(np.ceil(box_rows * cells / body.shape[0]))
+        body = load(box_rows)
+
+    if body is None:
+        raise ValueError(
+            f"{path} produced an empty mask at {cells} cells across: nothing "
+            f"was solid after thresholding. Try --invert, or a larger "
+            f"--resolution."
+        )
+    if verbose:
+        print(
+            f"from {path.name}: body {body.shape[0]} x {body.shape[1]} cells "
+            f"({int(body.sum())} solid) rasterised in a {box_rows}-row box"
+        )
+    return body, body.shape[0], body.shape[1]
+
+
+def demo_domain(
+    body: NDArray[np.bool_],
+    *,
+    span_d: float = DEMO_SPAN_D,
+    upstream_d: float = DEMO_UPSTREAM_D,
+    downstream_d: float = DEMO_DOWNSTREAM_D,
+    offset: int = 1,
+) -> tuple[NDArray[np.bool_], int]:
+    """Place a body in an open channel sized in its own diameters.
+
+    ``CLAUDE.md`` constraint 12: object at least 8 diameters from the outlet,
+    blockage under ~10%. Both follow from the two arguments — the blockage is
+    ``1 / span_d`` exactly, because ``D`` is the body's cross-stream extent and
+    the lateral boundaries are periodic (D-026), so there are no wall rows to
+    take out of the denominator.
+
+    Args:
+        body: the cropped body mask, ``(bh, bw)``.
+        span_d: cross-stream fluid span, in diameters.
+        upstream_d: inlet-to-leading-edge distance, in diameters.
+        downstream_d: trailing-edge-to-outlet distance, in diameters.
+        offset: cross-stream displacement of the body from the centre line, in
+            cells. One cell breaks the grid's mirror symmetry, which is half of
+            why shedding starts; the startup kick is the other half.
+
+    Returns:
+        ``(solid, d_measured)`` — the domain mask ``(ny, nx)`` and the body's
+        cross-stream extent in cells (the ``D`` of D-019).
+    """
+    bh, bw = body.shape
+    d = float(bh)
+    ny = int(round(span_d * d))
+    nx = int(round((upstream_d + downstream_d) * d)) + bw
+    if ny <= bh + 2 or nx <= bw + 2:
+        raise ValueError(
+            f"domain {ny}x{nx} is not larger than the body {bh}x{bw}: raise "
+            f"--span-d / --upstream-d / --downstream-d."
+        )
+
+    solid = np.zeros((ny, nx), dtype=bool)
+    y0 = (ny - bh) // 2 + offset
+    x0 = int(round(upstream_d * d))
+    solid[y0 : y0 + bh, x0 : x0 + bw] = body
+    return solid, bh
+
+
+def _build_parser() -> Any:
+    """The ``python -m lbm.runner`` argument parser."""
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog="python -m lbm.runner",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Run a 2D lattice-Boltzmann flow past a shape and watch it, record "
+            "it, or both.\n\n"
+            "The geometry is a picture, the flow is described in physical "
+            "units, and the lattice numbers (dx, dt, tau, U) are derived by "
+            "lbm.units.LatticeUnits.from_physical — which refuses a case it "
+            "cannot represent instead of running it badly."
+        ),
+        epilog=(
+            "examples:\n"
+            "  python -m lbm.runner --geometry tests/data/test_body.png "
+            "--re 100 --velocity 20 --length 1.5 --seconds 5 --out wake.mp4\n"
+            "  python -m lbm.runner --demo cylinder --re 100 --velocity 20 "
+            "--length 1.5 --seconds 3 --live\n"
+            "  python -m lbm.runner --demo cylinder --re 100 --velocity 20 "
+            "--length 1.5 --seconds 2 --out clip.gif --live\n"
+            "\n"
+            "note: --fluid air at 20 m/s past a 1.5 m body is Re 2e6, which "
+            "BGK with bounce-back\n"
+            "and no turbulence model cannot resolve; the run is refused with "
+            "the resolution it\n"
+            "would need. --re describes a case this solver can actually "
+            "represent.\n"
+        ),
+    )
+
+    g = p.add_argument_group("geometry")
+    g.add_argument("--geometry", metavar="PATH", help="PNG or SVG of the body")
+    g.add_argument(
+        "--demo",
+        choices=("cylinder",),
+        help="a built-in body instead of --geometry",
+    )
+    g.add_argument(
+        "--resolution",
+        type=int,
+        default=30,
+        metavar="N",
+        help="cells across the body (default 30). Raises tau: "
+        "tau = 0.5 + 3 U N / Re",
+    )
+    g.add_argument("--invert", action="store_true", help="swap solid and fluid")
+    g.add_argument("--span-d", type=float, default=DEMO_SPAN_D, metavar="D")
+    g.add_argument("--upstream-d", type=float, default=DEMO_UPSTREAM_D, metavar="D")
+    g.add_argument("--downstream-d", type=float, default=DEMO_DOWNSTREAM_D, metavar="D")
+
+    ph = p.add_argument_group("physics (metres, seconds, m/s)")
+    fluid = ph.add_mutually_exclusive_group()
+    fluid.add_argument("--fluid", choices=sorted(FLUIDS), help="named fluid")
+    fluid.add_argument("--nu", type=float, metavar="M2/S", help="kinematic viscosity")
+    fluid.add_argument("--re", type=float, metavar="RE", help="Reynolds number")
+    ph.add_argument("--velocity", type=float, required=True, metavar="M/S")
+    ph.add_argument("--length", type=float, required=True, metavar="M",
+                    help="cross-stream size of the body")
+    ph.add_argument("--seconds", type=float, required=True, metavar="S",
+                    help="physical time to simulate")
+    ph.add_argument("--u-lattice", type=float, default=None, metavar="U",
+                    help="lattice velocity representing --velocity "
+                         "(default 0.05, ceiling 0.1 — constraint 3)")
+
+    o = p.add_argument_group("output")
+    o.add_argument("--out", metavar="PATH", help=".mp4 / .gif — implies --record")
+    o.add_argument("--frames-dir", metavar="DIR",
+                   help="directory of numbered PNGs — implies --headless")
+    o.add_argument("--live", action="store_true", help="pygame window")
+    o.add_argument("--record", action="store_true", help="write --out")
+    o.add_argument("--headless", action="store_true", help="write --frames-dir")
+    o.add_argument("--fps", type=float, default=60.0)
+    o.add_argument("--speed", type=float, default=1.0,
+                   help="playback rate: 1.0 real time, 10.0 ten times faster")
+    o.add_argument("--scale", type=int, default=1, help="live window magnification")
+    o.add_argument("--vmax", type=float, default=None,
+                   help="colour limit; default 4 U / D (symmetric, fixed)")
+    o.add_argument("--quality", type=float, default=8.0, help="MP4 quality 0-10")
+
+    r = p.add_argument_group("run")
+    r.add_argument("--checkpoint", metavar="PATH")
+    r.add_argument("--checkpoint-every", type=int, default=0, metavar="N")
+    r.add_argument("--tau-floor", type=float, default=None,
+                   help="override lbm.units' 0.51 floor (it is already the "
+                        "loosest floor in the project — D-032)")
+    r.add_argument("--quiet", action="store_true")
+    return p
+
+
+def _resolve_sinks(args: Any) -> tuple[Sink, list[Sink], bool]:
+    """Build the sinks the flags ask for.
+
+    ``--live``, ``--record`` and ``--headless`` are composable
+    (``DOCS/TASKS1.md`` § T011), which is what :class:`lbm.record.TeeSink` is
+    for. The *mode* is not composable and must not be: **D-024** allows exactly
+    two, and any sink that writes a **file** picks ``drop=False`` — a video with
+    a missing frame and a PNG series with a gap in the numbering are both wrong
+    output rather than slow output, and the sim is allowed to wait for a writer.
+    ``drop=True`` is therefore reached only by a live-only run, which is exactly
+    the case constraint 8 describes.
+
+    Returns:
+        ``(sink, members, drop)``.
+    """
+    from lbm.record import HeadlessSink, RecordSink, TeeSink
+    from lbm.render import LiveSink
+
+    want_record = args.record or bool(args.out)
+    want_headless = args.headless or bool(args.frames_dir)
+    want_live = args.live or not (want_record or want_headless)
+
+    if want_record and not args.out:
+        raise ValueError("--record needs --out PATH (.mp4 or .gif)")
+    if want_headless and not args.frames_dir:
+        args.frames_dir = "frames"
+
+    members: list[Sink] = []
+    if want_live:
+        members.append(LiveSink(scale=args.scale, title="lbm — vorticity"))
+    if want_record:
+        members.append(RecordSink(args.out, fps=args.fps, quality=args.quality))
+    if want_headless:
+        members.append(HeadlessSink(args.frames_dir))
+
+    sink: Sink = members[0] if len(members) == 1 else TeeSink(*members)
+    return sink, members, not (want_record or want_headless)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """``python -m lbm.runner`` — picture in, physical numbers in, video out.
+
+    The whole of ``DOCS/PLAN1.md`` § Milestone gates for **M4**: "An arbitrary
+    PNG becomes a mask, runs in physical units, and records an MP4 — end to end,
+    one command."
+
+    What it does, in order: load the geometry and crop it to the body; place it
+    in a domain sized in its own diameters (constraint 12); convert the physical
+    case with :meth:`lbm.units.LatticeUnits.from_physical`, which **raises**
+    rather than run an unrepresentable case (constraint 3 / 2, D-032); compute
+    ``steps_per_frame`` from ``dt`` (constraint 7, D-023); render vorticity with
+    fixed symmetric limits (constraint 9, D-028); and feed the one ``render()``
+    output to whichever sinks the flags asked for (constraint 10).
+
+    Returns:
+        Process exit status: ``0`` on success, ``2`` on a refused configuration
+        or a missing tool — with the message, never a traceback.
+    """
+    from lbm.geometry import circle
+    from lbm.record import HeadlessSink, RecordSink, frame_count
+    from lbm.render import LiveSink, render
+    from lbm.units import LatticeUnits, TAU_FLOOR, U_LATTICE_DEFAULT
+
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    say = (lambda *a, **k: None) if args.quiet else print
+
+    if not args.geometry and not args.demo:
+        parser.error("give --geometry PATH or --demo cylinder")
+    if args.fluid is None and args.nu is None and args.re is None:
+        parser.error("describe the fluid: --fluid air | --nu 1.5e-5 | --re 100")
+
+    # --- geometry ---------------------------------------------------------
+    try:
+        if args.demo == "cylinder":
+            n = max(6, int(args.resolution))
+            body = circle(n + 1, n + 1, n / 2.0, n / 2.0, n / 2.0)
+            rows = body.any(axis=1)
+            cols = body.any(axis=0)
+            body = np.ascontiguousarray(body[rows][:, cols])
+        else:
+            body, _bh, _bw = _body_mask(
+                args.geometry,
+                int(args.resolution),
+                invert=args.invert,
+                verbose=not args.quiet,
+            )
+        solid, d_measured = demo_domain(
+            body,
+            span_d=args.span_d,
+            upstream_d=args.upstream_d,
+            downstream_d=args.downstream_d,
+        )
+    except (FileNotFoundError, ValueError, ImportError) as exc:
+        print(f"geometry: {exc}", file=sys.stderr)
+        return 2
+    ny, nx = solid.shape
+
+    # --- physical -> lattice ---------------------------------------------
+    # The one place metres and seconds exist. lbm/units.py raises on a case
+    # that would violate constraint 3 or sit on the tau floor, and names the
+    # resolution that fixes it (D-032); the CLI prints that message and stops.
+    # Softening it here would be the project's stated main failure mode with a
+    # command-line switch attached.
+    try:
+        units = LatticeUnits.from_physical(
+            u_phys=args.velocity,
+            l_phys=args.length,
+            nu_phys=(FLUIDS[args.fluid] if args.fluid else args.nu),
+            re=args.re,
+            cells_per_length=float(d_measured),
+            u_lattice=(U_LATTICE_DEFAULT if args.u_lattice is None else args.u_lattice),
+            tau_floor=(TAU_FLOOR if args.tau_floor is None else args.tau_floor),
+        )
+    except ValueError as exc:
+        print(f"\nthis case cannot be simulated as described:\n  {exc}",
+              file=sys.stderr)
+        print(
+            "\n  Nothing here is a tolerance that can be loosened: nu = "
+            "(tau - 0.5) / 3 (CLAUDE.md constraint 2) and the lattice velocity "
+            "ceiling is compressibility error (constraint 3).\n"
+            "  Raise --resolution to the number above, or describe a "
+            "resolvable case with --re.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.seconds <= 0.0:
+        parser.error("--seconds must be positive")
+
+    u = units.U
+    spf = steps_per_frame(units.dt, args.fps, args.speed)
+    total_steps = max(1, int(round(args.seconds / units.dt)))
+    vmax = args.vmax if args.vmax is not None else DEMO_VMAX_FACTOR * u / d_measured
+    t_conv = d_measured / u
+    kick_steps = int(round(DEMO_KICK_TC * t_conv))
+
+    say(f"\nlbm — {args.demo or args.geometry}")
+    say(units.summary())
+    say(f"  domain:   {ny} x {nx} = {ny * nx / 1e3:.0f}k cells   "
+        f"D = {d_measured:.0f} cells measured (D-019)   "
+        f"blockage {d_measured / ny * 100:.1f}%   sides periodic (D-026)")
+    say(f"  time:     {args.seconds:g} s = {total_steps} steps "
+        f"= {total_steps / t_conv:.0f} convective times D/U")
+    say(f"  frames:   steps_per_frame = round({args.speed:g} / "
+        f"({args.fps:g} * dt)) = {spf} (constraint 7, D-023)   "
+        f"-> {-(-total_steps // spf)} frames at {args.fps:g} fps")
+    say(f"  colour:   vorticity, +-{vmax:.5f} fixed and symmetric "
+        f"(constraint 9, D-028)")
+    say("  geometry checks (constraint 12):")
+
+    # --- the sim ----------------------------------------------------------
+    cfg = SimConfig(
+        ny=ny,
+        nx=nx,
+        tau=units.tau,
+        inlet_U=u,
+        profile="uniform",
+        inlet_uy=DEMO_KICK_FACTOR * u,
+        use_inlet=True,
+        use_outlet=True,
+        convective_outlet=True,
+        inlet_axis="x",
+        check_geometry=True,
+        verbose_mask=not args.quiet,
+        checkpoint_every=int(args.checkpoint_every),
+        checkpoint_path=args.checkpoint,
+    )
+    sim = Sim(cfg, solid)
+
+    # D-030: Sim seeds the whole domain, solid included, with the equilibrium of
+    # the inlet profile, so at step 0 there is fluid moving at U *inside* the
+    # body and bounce-back reverses it every step rather than clearing it. The
+    # rest state is a fixed point of both bounce-back and streaming.
+    rest = np.float32(cfg.rho0) * W.astype(np.float32)
+    for i in range(Q):
+        sim.f[i][sim.solid] = rest[i]
+
+    try:
+        sink, members, drop = _resolve_sinks(args)
+    except (ValueError, RuntimeError) as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        return 2
+
+    kinds = ", ".join(type(s).__name__ for s in members)
+    say(f"  sinks:    {kinds}   mode: "
+        f"{'drop=True (live only, display frames may be dropped — constraint 8)' if drop else 'drop=False (a file is being written, every frame in order — D-024)'}")
+    say(f"\n  running {total_steps} steps ...", flush=True)
+
+    def probe(s: Sim) -> None:
+        """Switch the startup kick off in place (see DEMO_KICK_FACTOR)."""
+        if s.step_count == kick_steps:
+            s.u_in[1].fill(0.0)
+
+    live = next((s for s in members if isinstance(s, LiveSink)), None)
+
+    stats = run(
+        sim,
+        sink,
+        steps=total_steps,
+        steps_per_frame=spf,
+        field=lambda s: render(s.vorticity(), vmax),
+        drop=drop,
+        per_step=probe,
+        stop=(lambda _s: bool(getattr(live, "quit_requested", False)))
+        if live is not None
+        else None,
+    )
+    sink.close()
+
+    say(f"  done: {stats.steps} steps in {stats.elapsed:.1f} s "
+        f"({stats.steps_per_second:.1f} steps/s), {stats.frames} frames, "
+        f"{stats.delivered} delivered, {stats.dropped} dropped")
+
+    peak = float(np.abs(sim.u[:, ~sim.solid]).max())
+    say(f"  peak |u| {peak:.5f} (limit 0.1, constraint 3)"
+        f"{'  ** OVER THE LIMIT **' if peak >= 0.1 else ''}")
+    if not np.isfinite(sim.f).all():
+        print("  the simulation produced nan — the case was unstable.",
+              file=sys.stderr)
+        return 1
+
+    for s in members:
+        if isinstance(s, RecordSink):
+            written = frame_count(s.path)
+            size = s.path.stat().st_size
+            say(f"  wrote {s.path} — {written} frames at {s.fps:g} fps "
+                f"({size / 1e6:.2f} MB); sink pushed {s.frames}")
+            if written != s.frames:
+                print(f"  frame count mismatch: pushed {s.frames}, file has "
+                      f"{written}", file=sys.stderr)
+                return 1
+        elif isinstance(s, HeadlessSink):
+            say(f"  wrote {s.frames} PNGs to {s.directory}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised as a subprocess
+    # ``python -m lbm.runner`` imports the package first (which imports this
+    # module) and then executes this file a second time under the name
+    # ``__main__``, so there are two copies of every class defined above. The
+    # package's copy is the one ``lbm.record`` and ``lbm.render`` subclass
+    # ``Sink`` from, so the CLI runs from that copy and every isinstance check
+    # in the process compares like with like. runpy's RuntimeWarning about the
+    # double import is cosmetic and is the price of the entry point the
+    # contract names.
+    from lbm.runner import main as _package_main
+
+    raise SystemExit(_package_main())
