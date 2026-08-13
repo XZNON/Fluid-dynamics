@@ -10,12 +10,12 @@ Never rewrite or condense the session log — append only.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 0 — D2Q9 LBM in NumPy (`DOCS/IDEA2.md`) |
-| **Current task** | `T010` (next; T009 closed) |
+| **Current task** | `T011` (next; T010 closed) |
 | **Task status** | `not_started` |
-| **Completed tasks** | T001, T002, T003, T004, T005, T006, T007, T008, T009 |
+| **Completed tasks** | T001, T002, T003, T004, T005, T006, T007, T008, T009, T010 |
 | **Milestone reached** | **M3** (2026-08-12, gate run: `python -m validate.cylinder` → PASS with the live window open; **St 0.1731** (band 0.155–0.175), **Cd 1.4031 ± 0.0086** (band 1.25–1.45), Cl amplitude 0.3915 = 27.9% of Cd, window costs **+2.09%** of steps/s) — next: M4 at T011 |
 | **Rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete** |
-| **Last updated** | 2026-08-12 — session 9 (T009 done; `lbm/units.py` + PNG/SVG masks, ladder re-run green, 308 tests pass) |
+| **Last updated** | 2026-08-13 — session 10 (T010 done; fused kernel, ladder re-run green and bit-identical, 329 tests pass) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -31,11 +31,12 @@ None.
   no dependency** — see **D-031**. `lbm.geometry.from_svg` parses the simple-closed-path subset
   itself and fills it with T004's `polygon`; anything outside that subset raises an `ImportError`
   naming the feature and the `cairosvg` install line.
-- **Q-004** — should `validate/cylinder.py::tau_for`'s floor rise from D-016's 0.53 to the 0.54 that
-  session 8 measured (**D-029**)? Rung 3 runs at 0.5378 and is measured stable, so nothing is red and
-  nothing is blocked; but the floor as written would let a future case through at 0.5346, which is
-  measured to produce `nan`. Editing a passing benchmark was out of T008's scope. Not blocking —
-  it is a `/new-task`, and T010 (which touches every rung) is the natural place.
+- ~~**Q-004** — should `validate/cylinder.py::tau_for`'s floor rise from D-016's 0.53 to the 0.54
+  that session 8 measured (**D-029**)?~~ **Closed in session 10 — see D-036.** Answer: it rises, but
+  to **0.537**, not to 0.54. 0.54 would make Rung 3 refuse its own published case (`tau = 0.5378`)
+  and so would force a re-tuned, re-published Rung 3; 0.537 sits inside the measured death bracket
+  `(0.5346, 0.5378]`, above everything measured to blow up and below Rung 3's measured-stable
+  operating point. Rung 4 keeps its stricter 0.54 and now owns the band between them.
 - ~~**Q-003** — do the two lid corner cells belong to the moving lid or to the side walls?~~
   **Closed in session 3 by measurement** — see **D-013**. They belong to the static side walls.
 
@@ -61,13 +62,59 @@ Install with `myenv/Scripts/pip.exe install <pkg>` and **add a row above in the 
 
 ## Performance baseline
 
-Not yet measured. Recorded in T010.
+Measured in T010 (session 10, 2026-08-13) with `bench.py`, on `Sim.step` for an open
+channel with a Zou–He inlet, a convective outlet and an immersed disc — the whole step, not
+`collide` in isolation. numpy 2.4.6, Python 3.11.15, AMD64.
 
-| Grid | Cells | Baseline steps/s | Post-optimisation | Budget floor |
-|---|---|---|---|---|
-| 400×100 | 40k | — | — | ≥400 |
-| 800×200 | 160k | — | — | ≥120 |
-| 2000×500 | 1M | — | — | ≥15 |
+| Grid | Cells | Baseline steps/s | Post-optimisation | Budget floor | Budget |
+|---|---|---|---|---|---|
+| 400×100 | 40k | **739.9** | **696.7** | ≥400 🟩 | ~500 |
+| 800×200 | 160k | **158.6** | **161.7** | ≥120 🟩 | ~150 |
+| 2000×500 | 1M | **15.0** | **16.8** | ≥15 🟩 | ~20 |
+
+**Every floor is cleared, and was already cleared before the optimisation.** The honest
+reading of this table is that the kernel was never far off the budget; T010's fusion buys
+the 1M case its margin (+12–14%) and is a wash on the two smaller ones.
+
+Two baselines exist and they disagree, which is the measurement being honest rather than a
+contradiction:
+
+- **Archived, captured before the first edit** (`DOCS/bench_baseline.json`, the criterion's
+  "before any change"): **739.9 / 182.6 / 17.4** steps/s.
+- **The `before` column above**, which is the *same code path* (`SimConfig(fused=False)` is
+  the T009 solver, kept selectable) re-measured in the same process as the `after` column.
+
+The gap between them is machine drift, not code: two back-to-back runs of the identical
+reference path measured **726.8 and 811.5** steps/s at 400×100 (12% apart) and **146.1 and
+177.2** at 800×200 (21% apart). Any speed claim smaller than that spread is unmeasurable
+by sequential runs, which is why `bench.py` alternates variants round by round and keeps
+the best round per variant — see **D-035**. The `after` column is the number to trust; the
+archived file is the audit trail the contract asked for.
+
+**The table above holds at the CPU's rated clock, and the machine's power state moves it more than
+any optimisation in this task did.** Later in the same session, with the *identical* build, the
+numbers read **383.6 / 117.8 / 15.5** (before) and **402.7 / 117.0 / 16.8** (after) — and **800×200
+misses its floor of 120 at 117.0**. The cause is not the kernel and was diagnosed, not guessed:
+
+| | early session | late session |
+|---|---|---|
+| `Win32_Processor.CurrentClockSpeed` | 3201 MHz rated | **1802 MHz** (56%) |
+| power | mains | **battery, 42%**, Balanced scheme |
+| after-column steps/s | 696.7 / 161.7 / 16.8 | 383.6→402.7 / 117.0 / 16.8 |
+
+So the honest statement of the acceptance criterion is: **the floors are cleared on this machine at
+its rated clock; on battery at ~56% clock the 160k case sits 2.5% under its floor.** A future session
+re-measuring this table must plug the laptop in and check `CurrentClockSpeed` first, or it will be
+measuring the power plan. Nothing in `lbm/` changed between the two readings.
+
+The relative `before`/`after` ratios survive all of it (1.01–1.08× while throttled, 1.00–1.14× cool),
+because both columns throttle together — which is the whole reason D-035 alternates them.
+
+Where the time goes at 1M cells (per step, measured): `equilibrium` **39.9 ms**,
+`collide` 15.1 ms, `stream` 6.1 ms, `macroscopic` 7.2 ms, the two snapshot copies 5.8 ms,
+`bounce_back` 0.8 ms. **`equilibrium` is over half the step** and is the obvious target for
+M5's port; it is deliberately untouched here (`DOCS/TASKS1.md` § T010 Notes — Phase 0's job
+is understanding, and M5 replaces this kernel).
 
 ## Decisions
 
@@ -107,6 +154,11 @@ a past entry — supersede it with a new one that says so.
 | D-029 | 2026-08-12 | **D-016's `TAU_FLOOR = 0.53` is not a safe floor for a bluff body in a free stream.** `validate/polygons.py` enforces its own measured `TAU_FLOOR = 0.54` through `tau_for_rung4`, which wraps `validate.cylinder.tau_for` rather than replacing it. Rung 3 is **not** changed: it runs at `tau = 0.5378`, which is measured stable. | Measured, not argued, and it cost a full 26728-step run that reported `Cd = nan`. Bisected on a small stand-in domain, 60000 steps a leg: square at `tau` **0.5346** blew up by step 3200, square at 0.5378 survived (peak 0.1177), square at 0.5512 survived (peak 0.1114) — and a **disc** at `tau` 0.5330 blew up by step **1500**. The disc dying *sooner* than the square at the same `tau` is the decisive number: this is a relaxation-time limit, not a staircased-corner one, so constraint 1 is not implicated and no boundary-condition change would help. The threshold sits between 0.5346 and 0.5378; 0.54 is the next round number above it. Rung 3's floor is left alone because raising it would edit a passing benchmark from a task that does not own it — see § Open questions **Q-004**. |
 | D-030 | 2026-08-12 | **Solid cells start at the rest equilibrium `w_i rho0`** in `validate/polygons.py` (`seed_solid_at_rest`), applied once at setup, never in the step loop. `Sim` itself is unchanged. | `Sim._init_equilibrium` seeds the whole domain with the equilibrium of the inlet profile, solid included, so at step 0 there is fluid moving at `U` *inside* the body. Bounce-back does not clear it — it writes `f[i] = f_pre[opp[i]]`, which **reverses** the momentum every step — so the interior oscillates at `±U` forever and T008's acceptance criterion ("no fluid velocity inside the solid") would have been measuring the initial condition rather than the boundary condition. Measured both ways: seeded, the interior is still **bit-identically** `w_i rho0` after 300 steps (the rest state is a fixed point of both bounce-back, since `W` is symmetric under `OPP`, and of streaming, since it is uniform); unseeded, it reads `|u| > 1e-3`. Both are tests. It is left out of `Sim` because changing the initial condition inside `lbm/` would perturb T006's bit-identical restart claim and Rung 3's published numbers for no physical gain — nothing on the fluid side of the surface depends on it. |
 | D-031 | 2026-08-12 | **Closes Q-002. SVG needs no new dependency.** `lbm.geometry.from_svg` parses `M/L/H/V/C/Q/Z` (absolute and relative, Béziers flattened to 12 segments) plus `<polygon points=...>`, and fills the result with T004's even-odd `polygon`. Arcs (`A`), the smooth shorthands (`S`, `T`), `transform` attributes and anything unfillable **raise an `ImportError`** naming the feature and giving the `myenv/Scripts/pip.exe install cairosvg` line. Subpaths combine even-odd, so a donut has a hole. | The acceptance criterion asks for "at least simple closed paths" and a clear install message if a dependency is missing — it does not ask for a rasteriser. The subset above is ~150 lines on top of code T004 already had and covers what a user exports from a drawing tool as an outline; `cairosvg` would add a Cairo binary dependency to a project whose whole point is pure NumPy, for the half of T009 that M4 does not need (`DOCS/TASKS1.md` § T009 Notes). Refusing loudly rather than partially rendering is the load-bearing half: a silently dropped `transform` produces a plausible mask of the wrong shape, which is the failure mode `DOCS/IDEA2.md` § Validation ladder exists to prevent. Even-odd across subpaths differs from SVG's nonzero default only for self-intersecting or nested same-direction outlines; documented in the docstring as a limit. |
+| D-036 | 2026-08-13 | **Closes Q-004. `validate/cylinder.py` grows its own `TAU_FLOOR = 0.537`**, replacing the 0.53 it inherited from Rung 2 (D-016). Rung 4's stricter measured 0.54 is unchanged, and the band 0.537 … 0.54 is now Rung 4's alone, pinned by `test_rung_4_keeps_its_own_stricter_floor_above_rung_3s`. | The floor as written admitted configurations **measured to produce `nan`**: D-029 bisected a square dying at `tau = 0.5346` by step 3200 and a disc at 0.5330 by step 1500, after a 26728-step run reported `Cd = nan`. 0.53 lets both through, and a benchmark that refuses a marginal case at setup rather than after half an hour is the whole point of having a floor. **0.54 was rejected as the answer**, even though it is the measured-safe round number, because Rung 3 itself runs at `tau = 0.5378`: a 0.54 floor makes the benchmark refuse the very run that produced its published `St` and `Cd`, so adopting it means re-tuning `D`/`U` and re-publishing Rung 3's numbers — a physics change, not a performance pass. The measured death threshold is bracketed by `(0.5346, 0.5378]`; 0.537 sits inside that bracket, above everything measured to die and below Rung 3's own measured-stable operating point. T010 re-ran every rung anyway, so the claim that nothing moved is measured rather than asserted. |
+| D-035 | 2026-08-13 | **Benchmark protocol: variants are timed in alternating rounds with only one `Sim` resident, and the best round per variant is kept** (`bench.py::compare`). A/B measured by running all of A then all of B is not used, and the pre-change baseline file is kept as an audit artifact rather than as the comparison column. **An absolute steps/s number from this machine is only meaningful with the CPU clock quoted beside it: run straight after the 40-minute ladder, the passing build measured 375.2 / 107.6 / 14.2 and failed all three floors, with the CPU at 1882 MHz of a 3201 MHz maximum. Ratios survive throttling because both columns throttle together; absolute numbers do not.** | Measured, not argued. Two consecutive runs of the **identical** reference path differ by 12% at 400×100 (726.8 vs 811.5 steps/s) and 21% at 800×200 (146.1 vs 177.2) — larger than every effect this task set out to measure, so sequential A/B awards the win to whichever variant ran during the quieter minute. The first cross-process comparison did exactly that and reported the fusion as a **0.85× regression**; alternating rounds put it at 1.00–1.14×. Co-residency was tried as the fix and is worse: holding both variants' buffers at once (~500 MB at 1M cells) dropped *both* to ~16 steps/s from ~21, because a cache-locality change cannot be measured under cache pressure. Best-of-N rather than mean for the same reason session 7 saw Rung 3 take 368.9 s alone and 633.3 s under contention: the slow samples measure Windows, not the kernel. |
+| D-037 | 2026-08-13 | **The preallocation audit's one fix — `inlet_velocity` taking a precomputed `fluid` mask — is kept even though it is not measurable.** | Honesty about a number that is not there. Session 6 flagged `~solid[:, col]` as "the one allocation left in the step loop", so T010 closed it; measured separately, it saves **0.37 us of the 79 us** `inlet_velocity` costs at `ny = 500` (0.5% of that function) and nothing detectable at step level (0.996× / 1.054× / 1.012×, which is noise). It stays because the convention it satisfies — "preallocate, never allocate inside the step loop" — is about the loop being *provably* allocation-free rather than about the microseconds, and because `tracemalloc` growth tests structurally cannot see a transient that is freed each step. It is a correctness-of-claim fix, not a performance one, and the § Performance baseline table should not be read as if it contributed. |
+| D-034 | 2026-08-13 | **"Skip `feq` on solid cells" is measured and deliberately not shipped.** `lbm.core.equilibrium` stays dense. The contract lists it as one of the four cheap wins; in NumPy it is not a win. | Measured, not argued. A `where=fluid` variant of exactly the same arithmetic runs **2–4× slower** than the dense one at every grid: 400×100 0.24×, 800×200 0.23×, 2000×500 0.42×, and at a deliberately huge 15.9% solid fraction it is still 0.19× / 0.22× / 0.50×. The mechanism is visible one level down — a masked `np.multiply` costs 0.060 ms against 0.018 ms dense, 3.3×, because the mask has to be read and the SIMD loop is broken, while the arithmetic it skips is the cheap part of a memory-bound kernel. Constraint 12 caps blockage at 10%, so the fraction that could ever be skipped is small by construction and the case that would pay does not exist in this project. Shipping it behind a toggle was rejected under `DOCS/TASKS1.md` § T010 Notes: ~25 lines of duplicated equilibrium for a *negative* speed. The measurement is the deliverable. |
+| D-033 | 2026-08-13 | **`lbm.core.collide_stream` fuses collide + bounce-back + the `f_bb` snapshot + stream into one pass per direction**, and `SimConfig.fused` (default `True`) selects it. The unfused T009 sequence stays selectable and is what the equality tests compare against. A body force falls back to the unfused path. | `DOCS/IDEA2.md` § Performance budget asks to "fuse collide+stream into one pass over `f`", but D-020's order puts `bounce_back` **between** them, so fusing only the two named steps removes nothing — the array is still walked for the reflection and again for the `f_bb` copy. Fusing across all four is what removes the passes, and it removes the `f_bb` snapshot copy outright. Measured, alternating rounds (D-035): **1.00× at 40k, 1.01× at 160k, 1.14× at 1M** — worth keeping precisely where the budget is tightest (the 1M floor is 15 and the reference path measures 15.0), and never a loss. The arithmetic is unchanged element by element and in order, so both paths are **bitwise** equal — asserted on `f`, on fluid cells alone, on the `f_bb`/`f` snapshots `probe.forces` consumes, and by a checkpoint written on one path and resumed on the other (`tests/test_perf.py`), which is what keeps constraint 11 true. The Guo body force is **not** folded in: its source term goes between collision and bounce-back, and the only case that uses it is Rung 1's 22×16 channel, where speed is irrelevant and the reference arithmetic is worth more than the pass. |
 | D-032 | 2026-08-12 | **`lbm/units.py` enforces `tau > 0.51` and `U < 0.1` and nothing stricter**, and ships `LatticeUnits.stability_note()` alongside. It is the third `tau` floor in the project, below Rung 2's 0.53 (D-016) and Rung 4's measured 0.54 (D-029). | D-029 measured a disc dying at `tau = 0.5330` by step 1500, so 0.51 is demonstrably **not** a stability guarantee — but the other two floors were measured on *bluff bodies in a free stream*, and this module converts units for cases it has never seen (a channel at `tau = 0.52` is fine). Refusing everything under 0.54 would reject valid configs; accepting silently would imply a safety the number does not have. So the floor is a floor on nonsense, the rejection message quotes D-029's measured deaths, and `stability_note()` grades the margin for the geometry the caller knows about and the module does not. `BLUFF_BODY_SPEEDUP = 1.8` (session 8's measured `peak = 1.79 U`) is exposed the same way, so the constraint-3 headroom is a number rather than folklore. |
 
 ## Session log
@@ -758,3 +810,103 @@ which this task unblocks).
   `lbm.boundary.inlet_velocity` allocates a `(ny,)` boolean per call — the one allocation left in
   the step loop. T010 re-runs **all four** rungs, and `DOCS/PLAN1.md` § Risks says revert rather
   than debug a fused kernel.
+
+### 2026-08-13 — Session 10: T010 — performance pass
+
+**Task worked:** T010 — `done`, every acceptance criterion run and green. No milestone (M4 is T011).
+
+**Done**
+- `bench.py` — new, repo root. `GRIDS` / `STEPS` / `FLOORS` / `BUDGET`, `make_sim`, `measure`
+  (best-of-N), `compare` (alternating rounds, one `Sim` resident — **D-035**), `print_table`,
+  `print_variants`, and `--save-baseline` / `--variants`. Benchmarks the **whole** `Sim.step`
+  (Zou–He inlet, convective outlet, immersed disc), not `collide` in isolation.
+- `lbm/core.py` — new `collide_stream(f, feq, tau, buf, *, f_pre, solid, f_bb)`: collide,
+  bounce-back, the `f_bb` snapshot and the shift, **one pass per direction** (**D-033**). The
+  unfused sequence is untouched and still exported.
+- `lbm/runner.py` — `SimConfig.fused` (default `True`); `Sim` gained `_fused`, `_has_solid` and
+  `_inlet_fluid` (the precomputed inlet row mask); `Sim.step` branches to the fused kernel unless a
+  body force is present, in which case the T009 sequence runs so Rung 1's arithmetic is untouched.
+- `lbm/boundary.py` — `inlet_velocity(..., fluid=None)`, closing session 6's "one allocation left in
+  the step loop" (**D-037**).
+- `validate/cylinder.py` — `TAU_FLOOR = 0.537` as a documented module constant, replacing the
+  inherited literal `0.53` inside `tau_for`; the rejection message now quotes D-029's measured
+  deaths. **Closes Q-004** (**D-036**). One stale docstring paragraph (`D = 24`, `254 x 552`, 9.5%
+  blockage) corrected — it had described the pre-D-026 walled domain.
+- `tests/test_perf.py` — new, 18 tests: fused vs unfused bitwise on `f`, on fluid cells alone, on the
+  two force snapshots, with an empty domain and with a body force; `collide_stream` against
+  `collide`+`bounce_back`+`stream` directly; buffer identity; restart bit-identical on the fused path
+  **and across the toggle**; the `float32` audit; the preallocation checks.
+- `tests/test_cylinder.py` (+2), `tests/test_polygons.py` (+1) — pin the new floor, that it still
+  admits Rung 3's own `tau = 0.5378`, and that the 0.537–0.54 band is Rung 4's alone.
+- `CLAUDE.md` § Current state — refreshed to T010.
+
+**Measured** — every acceptance criterion run, not read
+- **Baseline, captured before the first edit:** **739.9 / 182.6 / 17.4** steps/s at 40k / 160k / 1M,
+  archived in `DOCS/bench_baseline.json`.
+- **After:** **696.7 / 161.7 / 16.8** against floors of 400 / 120 / 15 — all cleared, at the CPU's
+  rated clock. See § Performance baseline for the power-state caveat, which is large.
+- Each win separately: **fusion** 1.00× / 1.01× / **1.14×** · **skip `feq` on solid** 0.24× / 0.23× /
+  0.42× (0.19×–0.50× even at 15.9% solid) — a 2–4× **loss**, not shipped · **preallocation** 0.37 µs
+  of 79 µs in `inlet_velocity`, nothing at step level · **`float32`** already end to end, now proven:
+  **125 ufunc results in a real timestep, every one `float32`**.
+- Where the time goes at 1M cells: `equilibrium` **39.9 ms**, `collide` 15.1, `macroscopic` 7.2,
+  `stream` 6.1, the snapshot copies 5.8, `bounce_back` 0.8.
+- **The ladder, all four, re-run on the optimised build:**
+  - R1 `validate.poiseuille` → **PASS**, L2 **0.3650%**, peak `|u|` 0.07955
+  - R2 `validate.cavity --re 100 --re 400 --re 1000` → **PASS**, **0.75% / 0.42% / 1.01%**,
+    vortex 0.21 / 0.29 / 0.59 cells
+  - R3 `validate.cylinder --headless` → **PASS**, **St 0.1731**, **Cd 1.4031 ± 0.0086**, peak
+    0.09685, 45500 steps in 359.7 s (127 steps/s)
+  - R4 `validate.polygons --headless` → **PASS**, square **Cd 1.5279 ± 0.0271**, St 0.1489, peak
+    0.09758; polygon **Cd 1.4276 ± 0.0226**, St 0.1667, peak 0.08944
+  - **Every number identical to session 9 to every printed digit** — which is the fusion's real
+    acceptance test, not the stopwatch.
+- `myenv/Scripts/python.exe -m pytest` → **`329 passed`** (308 existing + 21 new).
+
+**Three things measurement changed**
+- **The first before/after run said the fusion was a 0.85× regression.** It is not. Two consecutive
+  runs of the *identical* reference path differ by 12–21% on this machine, so cross-process
+  sequential A/B measures the quiet minute, not the code. Alternating rounds put the fusion at
+  1.00–1.14× (**D-035**). Co-residency was tried as the fix and is worse — two variants' buffers are
+  ~500 MB at 1M cells, and a cache-locality effect cannot be measured under cache pressure.
+- **One of the contract's four named wins is not a win.** Skipping `feq` on solid cells via
+  `where=fluid` is 2–4× slower at every grid, because a masked ufunc costs 3.3× and the arithmetic
+  it saves is the cheap part of a memory-bound kernel. Measured and dropped (**D-034**), rather than
+  shipped behind a toggle for ~25 lines of duplicated equilibrium.
+- **The laptop's power state moves the budget table further than the optimisation does.** Re-measured
+  late in the session on battery at 42% (CPU **1802 MHz of 3201**), the passing build reads
+  402.7 / **117.0** / 16.8 and the 160k case sits 2.5% under its floor. Nothing in `lbm/` changed
+  between the readings. Recorded in full rather than quietly reporting the good run.
+
+**Not done / deferred**
+- Nothing from the T010 contract. No recording sinks, no CLI — T011.
+- `equilibrium` is **over half** the step at 1M cells and is deliberately untouched: restructuring it
+  is not one of the four cheap wins, and § Notes settles it — Phase 0's job is understanding and M5
+  replaces this kernel. It is the obvious first target when M5 starts.
+- The Guo body force is not folded into the fused kernel, so Rung 1 runs the T009 sequence. Its
+  22×16 grid makes the pass worthless and its arithmetic is worth more untouched.
+- `f_pre` is still a full `(9, ny, nx)` copy every step whose only consumer is solid cells; gathering
+  just those cells would remove one of the seven whole-array passes. Not one of the four wins, not
+  attempted, noted for M5.
+- `DOCS/ISSUES.jsonl` is **untracked in git** despite `CLAUDE.md` saying the queue is committed —
+  noticed, not acted on, since committing is the user's call.
+
+**Decisions made**
+- **D-033** (fused collide/bounce-back/snapshot/stream, and why it must cross `bounce_back`),
+  **D-034** (skip-`feq`-on-solid measured and dropped), **D-035** (benchmark protocol, and that an
+  absolute steps/s needs its CPU clock quoted), **D-036** (**closes Q-004** — `TAU_FLOOR = 0.537`,
+  not 0.54, and why), **D-037** (the preallocation fix is kept although unmeasurable). All in
+  § Decisions.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run this session on the optimised kernel, all four
+  bit-identical to session 9.
+
+**Next**
+- Paste `PROMPTS/011-t011-recording-sinks-cli.md` into a fresh session. It runs `/start-task T011`,
+  which is **M4** and the last task of Phase 0. `imageio[ffmpeg]` must be installed into `myenv`
+  first and a row added to § Environment. Constraint 10 (one `render()`, three sinks) and constraint
+  8 (record must **not** drop; live may) are the two that bite.

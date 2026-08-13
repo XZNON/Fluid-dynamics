@@ -307,6 +307,7 @@ def inlet_velocity(
     uy: float = 0.0,
     u_in: NDArray[np.float32] | None = None,
     work: NDArray[np.float32] | None = None,
+    fluid: NDArray[np.bool_] | None = None,
 ) -> NDArray[np.float32]:
     """Zou–He velocity inlet on a left-facing column, in place.
 
@@ -338,10 +339,15 @@ def inlet_velocity(
     Solid rows in the inlet column are left untouched — :func:`bounce_back` owns
     them.
 
-    Allocation (``CLAUDE.md`` § conventions): pass ``u_in`` and ``work`` and the
-    call allocates nothing. Building the profile every step would allocate
-    ``O(ny)``, so the runner (T006) keeps the returned ``u_in`` and hands it
-    back (``DOCS/STATE1.md`` D-006).
+    Allocation (``CLAUDE.md`` § conventions): pass ``u_in``, ``work`` **and**
+    ``fluid`` and the call allocates nothing. Building the profile every step
+    would allocate ``O(ny)``, so the runner (T006) keeps the returned ``u_in``
+    and hands it back (``DOCS/STATE1.md`` D-006). ``fluid`` closes the same hole
+    for the row mask: without it this function evaluates ``~solid[:, col]``, an
+    ``O(ny)`` boolean, on **every** step — transient, freed immediately, and
+    therefore invisible to a heap-growth test, but an allocation inside the step
+    loop all the same. Session 6 recorded it as the last one; T010's
+    preallocation audit is what closed it.
 
     Args:
         f: distribution, shape ``(9, ny, nx)``, ``float32``. Modified in place
@@ -359,6 +365,9 @@ def inlet_velocity(
         u_in: prescribed profile, shape ``(2, ny)``, ``float32``. Built by
             :func:`inlet_profile` when ``None``.
         work: optional scratch, shape ``(>=5, ny)``, ``float32``.
+        fluid: precomputed ``~solid[:, col]``, shape ``(ny,)``, ``bool``. Supply
+            it to make the call allocation-free; ``None`` derives it from
+            ``solid`` each call.
 
     Returns:
         ``u_in`` — the profile that was imposed, for the caller to cache.
@@ -375,7 +384,8 @@ def inlet_velocity(
     fc = f[:, :, col]  # (9, ny) view into f
     ux, uy_arr = u_in[0], u_in[1]
 
-    fluid = None if solid is None else ~solid[:, col]
+    if fluid is None and solid is not None:
+        fluid = ~solid[:, col]
 
     # rho = (f0 + f2 + f4 + 2 (f3 + f6 + f7)) / (1 - ux)
     np.add(fc[3], fc[6], out=rho)

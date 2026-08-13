@@ -1,0 +1,27 @@
+{
+  "rows": [
+    {
+      "ny": 100,
+      "nx": 400,
+      "cells": 40000,
+      "steps_per_s": 739.8540119821266
+    },
+    {
+      "ny": 200,
+      "nx": 800,
+      "cells": 160000,
+      "steps_per_s": 182.60233155431678
+    },
+    {
+      "ny": 500,
+      "nx": 2000,
+      "cells": 1000000,
+      "steps_per_s": 17.43916347801919
+    }
+  ],
+  "numpy": "2.4.6",
+  "python": "3.11.15",
+  "machine": "AMD64",
+  "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+  "kind": "baseline"
+}

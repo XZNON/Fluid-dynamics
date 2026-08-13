@@ -76,7 +76,7 @@ from lbm.boundary import (
     inlet_velocity,
     outlet_zero_gradient,
 )
-from lbm.core import Q, collide, equilibrium, macroscopic, stream
+from lbm.core import Q, collide, collide_stream, equilibrium, macroscopic, stream
 from lbm.geometry import bounding_box, check_mask
 from lbm.probe import BoundaryLinks, boundary_links, forces, residual, vorticity
 
@@ -145,6 +145,15 @@ class SimConfig:
         checkpoint_every: auto-checkpoint interval in steps. ``0`` is **off**,
             which is the default.
         checkpoint_path: where auto-checkpoints are written.
+        fused: use :func:`lbm.core.collide_stream`, which walks each direction
+            once instead of walking the whole array for collide, bounce-back,
+            the ``f_bb`` snapshot and the shift separately (T010). Bitwise
+            identical to the unfused sequence — ``tests/test_perf.py`` asserts
+            it — so this is a speed switch and never a physics one. ``False``
+            selects the T009 path, which is what the equality test compares
+            against. Ignored when a body force is present: the Guo source term
+            (D-010) is applied between collision and bounce-back, and Rung 1,
+            the only case that uses it, is 22x16 cells.
     """
 
     ny: int
@@ -168,6 +177,7 @@ class SimConfig:
     verbose_mask: bool = False
     checkpoint_every: int = 0
     checkpoint_path: str | None = None
+    fused: bool = True
 
     def replace(self, **changes: Any) -> "SimConfig":
         """A copy with fields overridden (``dataclasses.replace``)."""
@@ -473,6 +483,23 @@ class Sim:
         self._g: tuple[float, float] = (float(cfg.g[0]), float(cfg.g[1]))
         self._forced: bool = self._g != (0.0, 0.0)
 
+        # The inlet's fluid-row mask, built once. Without it
+        # lbm.boundary.inlet_velocity evaluates `~solid[:, col]` every step —
+        # the last allocation inside the step loop (session 6's note, closed by
+        # T010's preallocation audit).
+        self._inlet_fluid: NDArray[np.bool_] = np.ascontiguousarray(
+            ~self.solid[:, cfg.inlet_col]
+        )
+
+        # Fusion is a speed switch, never a physics one (T010). It is skipped
+        # when a body force is present: Guo's source term goes between collision
+        # and bounce-back, and the only forced case is Rung 1's 22x16 channel.
+        self._fused: bool = bool(cfg.fused) and not self._forced
+
+        # Solid cells cost nothing to skip only if there are any at all; with an
+        # empty domain the reflection is a no-op and the mask need not be read.
+        self._has_solid: bool = bool(self.solid.any())
+
         if f is None:
             self._init_equilibrium()
         else:
@@ -555,6 +582,13 @@ class Sim:
         created in :meth:`__init__`, which is what
         ``tests/test_runner.py::test_step_allocates_nothing`` asserts with
         ``tracemalloc`` and the buffer identity of ``f``.
+
+        Collision, the reflection, the ``f_bb`` snapshot and the shift are one
+        fused pass per direction (:func:`lbm.core.collide_stream`, T010) unless
+        ``config.fused`` is off or a body force is present. The fused and
+        unfused paths are **bitwise** equal — ``tests/test_perf.py`` asserts it
+        — so the switch cannot change a rung's answer or break constraint 11's
+        bit-identical restart.
         """
         cfg = self.config
         f = self.f
@@ -566,14 +600,26 @@ class Sim:
             force_velocity_shift(self.rho, self.u, self._g, self.work)
 
         equilibrium(self.rho, self.u, self.feq, self.work)
-        collide(f, self.feq, cfg.tau)
 
-        if self._forced:
-            apply_body_force(f, self.rho, self.u, cfg.tau, self._g, self.work)
+        if self._fused:
+            collide_stream(
+                f,
+                self.feq,
+                cfg.tau,
+                self.buf,
+                f_pre=self.f_pre if self._has_solid else None,
+                solid=self.solid if self._has_solid else None,
+                f_bb=self.f_bb,
+            )
+        else:
+            collide(f, self.feq, cfg.tau)
 
-        bounce_back(f, self.f_pre, self.solid)
-        np.copyto(self.f_bb, f)  # pre-stream copy, for probe.forces (D-020)
-        stream(f, self.buf)
+            if self._forced:
+                apply_body_force(f, self.rho, self.u, cfg.tau, self._g, self.work)
+
+            bounce_back(f, self.f_pre, self.solid)
+            np.copyto(self.f_bb, f)  # pre-stream copy, for probe.forces (D-020)
+            stream(f, self.buf)
 
         if cfg.use_outlet:
             outlet_zero_gradient(
@@ -590,6 +636,7 @@ class Sim:
                 col=cfg.inlet_col,
                 u_in=self.u_in,
                 work=self.inlet_work,
+                fluid=self._inlet_fluid,
             )
 
         self.step_count += 1

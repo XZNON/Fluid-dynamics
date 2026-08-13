@@ -40,12 +40,16 @@ Why these numbers
   0.1, and the flow accelerates to roughly ``1.5 U`` around the cylinder, so an
   inlet of 0.06 puts the peak near 0.09 — the same reasoning that set Rung 2's
   ``U = 0.09`` from its lid (**D-016**).
-* ``D = 24`` cells. ``tau = 0.5 + 3 U D / Re`` rises with ``D``, and ``D = 24``
-  at ``U = 0.06`` gives ``tau = 0.5432`` — clear of Rung 2's ``TAU_FLOOR``
-  of 0.53 — while keeping the domain inside a few minutes of wall clock.
-* Domain ``254 x 552``: fluid span ``10.5 D`` so blockage is 9.5% (under the
-  10% of constraint 12), ``8 D`` upstream and ``14 D`` downstream (over the
-  ``8 D`` of constraint 12).
+* ``D`` follows from ``tau = 0.5 + 3 U D / Re``, which rises with ``D``: the
+  case as run measures ``D = 21`` cells and ``tau = 0.5378``, clear of
+  :data:`TAU_FLOOR` (T010 raised that floor from D-016's inherited 0.53 to the
+  measured 0.537 — see the constant), while keeping the domain inside a few
+  minutes of wall clock.
+* The sizing paragraph that stood here — ``254 x 552``, 9.5% blockage, one-cell
+  no-slip walls — was **superseded by D-026**: those walls grow a ~34-cell
+  boundary layer over the 8 D fetch, so the nominal blockage was a lie and
+  ``Cd`` climbed out of the band. Sides are periodic and the fluid span is
+  24 D (4.17% blockage); see :data:`WALL` and :data:`SPAN_D`.
 * The cylinder centre is offset **half a cell** from the channel centreline.
   ``DOCS/TASKS1.md`` § T007 Notes: "a perfectly symmetric setup on a symmetric
   grid can stay symmetric far longer than physics would". Half a cell is the
@@ -272,6 +276,31 @@ def cylinder_mask(
     return solid, cylinder, cx, cy
 
 
+#: Lowest ``tau`` this benchmark will set up a case at (**closes Q-004**).
+#:
+#: Was 0.53, inherited from Rung 2 (**D-016**) where it was chosen as a round
+#: number rather than measured. Session 8 then measured what actually happens to
+#: a bluff body in a free stream (**D-029**): a disc at ``tau = 0.5330`` blows up
+#: by step 1500, a square at 0.5346 by step 3200, while 0.5378 and 0.5512 both
+#: survive 60000 steps. **A floor of 0.53 therefore admits configurations that
+#: are measured to produce `nan`** — 0.5346 is one of them, and it reports
+#: ``Cd = nan`` after running its full length rather than failing at setup.
+#:
+#: The measured death threshold is bracketed by ``(0.5346, 0.5378]``. This floor
+#: is set just under the surviving end of that bracket rather than at Rung 4's
+#: round 0.54, for one reason: **Rung 3 itself runs at ``tau = 0.5378``**, which
+#: is inside its own published, measured-stable case, and a floor of 0.54 would
+#: make this benchmark refuse the very run that produced its reference numbers.
+#: Raising the floor to 0.54 is defensible only together with a re-tuned Rung 3
+#: case (larger ``D``, lower ``U``) and a re-published ``St``/``Cd``, which is a
+#: physics change and not a performance pass.
+#:
+#: Rung 4 keeps its own stricter 0.54 (``validate/polygons.py::TAU_FLOOR``): a
+#: square accelerates the flow further than a disc, so it has less margin, and
+#: nothing here loosens it.
+TAU_FLOOR: float = 0.537
+
+
 def tau_for(re: float, u: float, d_cells: float) -> tuple[float, float]:
     """``(nu, tau)`` from the Reynolds number (``CLAUDE.md`` constraint 2).
 
@@ -282,8 +311,8 @@ def tau_for(re: float, u: float, d_cells: float) -> tuple[float, float]:
     than reported as a physics result.
 
     Raises:
-        ValueError: if ``tau`` would sit at or below 0.53 (Rung 2's floor,
-            D-016), or if ``u`` is at or above the constraint-3 ceiling.
+        ValueError: if ``tau`` would sit at or below :data:`TAU_FLOOR`, or if
+            ``u`` is at or above the constraint-3 ceiling.
     """
     if u >= 0.1:
         raise ValueError(
@@ -293,12 +322,14 @@ def tau_for(re: float, u: float, d_cells: float) -> tuple[float, float]:
         )
     nu = u * d_cells / re
     tau = 0.5 + 3.0 * nu
-    if tau <= 0.53:
-        need = re * (0.53 - 0.5) / (3.0 * u)
+    if tau <= TAU_FLOOR:
+        need = re * (TAU_FLOOR - 0.5) / (3.0 * u)
         raise ValueError(
-            f"tau = {tau:.4f} is at or below the 0.53 floor (D-016) for "
-            f"Re = {re}, U = {u}, D = {d_cells}. Use D >= {need:.0f} cells or "
-            f"raise U (subject to the 0.1 ceiling)."
+            f"tau = {tau:.4f} is at or below the {TAU_FLOOR} floor for "
+            f"Re = {re}, U = {u}, D = {d_cells}. Measured (D-029): a disc at "
+            f"tau = 0.5330 blows up by step 1500 and a square at 0.5346 by step "
+            f"3200, while 0.5378 survives 60000 steps. Use D >= {need:.0f} "
+            f"cells or raise U (subject to the 0.1 ceiling)."
         )
     return nu, tau
 

@@ -20,7 +20,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T007 | Render + live sink + cylinder benchmark | `done` | T006 | **Rung 3** |
 | T008 | Square cylinder benchmark | `done` | T007 | **Rung 4** 🟩 |
 | T009 | Physical units + PNG/SVG mask | `done` | T004, T007 | unit tests 🟩 |
-| T010 | Performance pass | `not_started` | T007 | all rungs |
+| T010 | Performance pass | `done` | T007 | all rungs 🟩 |
 | T011 | Recording sinks + CLI | `not_started` | T009 | **M4** |
 
 ---
@@ -524,7 +524,7 @@ added to `validate/cylinder.py` **off by default**, so Rung 3's published number
 
 ## T010 — Performance pass
 
-**Status:** `not_started`
+**Status:** `done` (session 10, 2026-08-13)
 
 ### Goal
 
@@ -543,13 +543,13 @@ Hit the performance budget with the cheap wins only, and prove correctness survi
 
 ### Acceptance criteria
 
-- [ ] Baseline steps/s recorded **before** any change, for 400×100, 800×200, 2000×500, and written into `DOCS/STATE1.md`.
-- [ ] Applied, each measured separately: preallocation audit (no allocation in the loop), `float32` end to end, fused collide+stream in one pass over `f`, skip `feq` on solid cells.
-- [ ] Post-change numbers meet the budget: **≥400 steps/s at 400×100, ≥120 at 800×200, ≥15 at 1M cells** (budget is ~500/~150/~20; these are the pass floors).
-- [ ] `bench.py` prints a before/after table.
-- [ ] **All four rungs re-run and still green** — with the same tolerances, not relaxed ones.
-- [ ] Restart is still bit-identical (T006's test still passes).
-- [ ] No new dependency: no Numba, no Cython, no GPU. Pure NumPy.
+- [x] Baseline steps/s recorded **before** any change, for 400×100, 800×200, 2000×500, and written into `DOCS/STATE1.md`. — `bench.py --save-baseline` run as the first action of the session, before a line of solver code changed: **739.9 / 182.6 / 17.4** steps/s, archived in `DOCS/bench_baseline.json` and in § Performance baseline.
+- [x] Applied, each measured separately: preallocation audit (no allocation in the loop), `float32` end to end, fused collide+stream in one pass over `f`, skip `feq` on solid cells. — **preallocation:** the one remaining allocation (session 6's note, `~solid[:, col]` in `inlet_velocity`) is closed by a precomputed `fluid` mask the runner owns — measured separately at **0.37 µs of 79 µs** in that function and *nothing* at step level (**D-037**); it is kept as a correctness-of-claim fix, not a speed one. **`float32`:** audited by measurement, not by reading — a `__array_ufunc__` spy records the dtype of **every** ufunc result in a real timestep; all 125 are `float32`, and the audit is proven non-vacuous by planting a `float64` and watching it fail. **Fusion:** `lbm.core.collide_stream`, 1.00× / 1.01× / **1.14×** (**D-033**). **Skip `feq` on solid:** measured at **0.19×–0.50×** — a 2–4× *loss* — and deliberately not shipped (**D-034**).
+- [x] Post-change numbers meet the budget: **≥400 steps/s at 400×100, ≥120 at 800×200, ≥15 at 1M cells** (budget is ~500/~150/~20; these are the pass floors). — **696.7 / 161.7 / 16.8** at the CPU's rated clock, all three cleared. **Stated with its condition:** re-measured later in the session with the laptop on battery at 42% (CPU 1802 MHz of 3201), the identical build reads 402.7 / **117.0** / 16.8 and the 160k case sits 2.5% under its floor. The power state moves this table further than the optimisation does; see § Performance baseline and **D-035**.
+- [x] `bench.py` prints a before/after table. — plus `--save-baseline` and `--variants`; variants are timed in alternating rounds because sequential A/B is noisier than the effect (**D-035**).
+- [x] **All four rungs re-run and still green** — with the same tolerances, not relaxed ones. — R1 L2 **0.3650%** · R2 **0.75% / 0.42% / 1.01%** · R3 **St 0.1731, Cd 1.4031 ± 0.0086** · R4 square **Cd 1.5279**, polygon **Cd 1.4276 ± 0.0226**. Every number identical to session 9; no tolerance touched.
+- [x] Restart is still bit-identical (T006's test still passes). — T006's test passes unchanged on the now-default fused path, and `tests/test_perf.py` adds two more: a fused save/resume, and a checkpoint written fused and resumed **unfused**, which must agree because the two paths are bitwise equal.
+- [x] No new dependency: no Numba, no Cython, no GPU. Pure NumPy. — § Environment is unchanged this session.
 
 ### Constraints that bite here
 
@@ -561,6 +561,36 @@ Hit the performance budget with the cheap wins only, and prove correctness survi
 
 If a win costs more than ~20 lines of clarity for under 10% speed, drop it. Phase 0's job is
 understanding, and M5 replaces this kernel anyway.
+
+**Outcome (session 10).** Delivered as specified; no criterion relaxed, no rung moved, no dependency
+added. The headline is not the speedup — it is that **the kernel already met every floor before the
+optimisation**: the baseline captured before the first edit was 739.9 / 182.6 / 17.4 steps/s against
+floors of 400 / 120 / 15. Two of the four named wins turned out to be verifications rather than
+work, and one of them is not a win at all:
+
+1. **The measurement was harder than the optimisation.** The first before/after comparison, run
+   cross-process the obvious way, reported the fusion as a **0.85× regression**. It is not: two
+   consecutive runs of the *identical* reference path differ by 12–21% on this machine, which is
+   larger than anything T010 set out to measure. `bench.py` now alternates variants round by round
+   with one `Sim` resident and keeps the best round (**D-035**). Co-residency was tried as the fix
+   and made it worse — two variants' buffers are ~500 MB at 1M cells, and a cache-locality effect
+   cannot be measured under cache pressure.
+2. **"Skip `feq` on solid cells" is a 2–4× loss** and was dropped on the measurement (**D-034**).
+   Masking with `where=fluid` costs 3.3× on a single `np.multiply`, and constraint 12 caps blockage
+   at 10%, so the work being skipped is small by construction and the loop it breaks is the cheap,
+   memory-bound part. A contract line that names a win is still subject to whether it *is* one.
+3. **The fusion had to cross `bounce_back` to remove anything** (**D-033**). D-020 puts the
+   reflection between collide and stream, so fusing only the two named steps leaves the array walked
+   for the reflection and again for the `f_bb` snapshot. Fusing all four gives 1.00× / 1.01× /
+   **1.14×** — worth keeping exactly where the budget is tightest, since the reference path measures
+   15.0 against a floor of 15.
+4. **`float32` was already end to end, and is now *measured* to be.** A `__array_ufunc__` spy
+   records the dtype of every ufunc result in a real timestep — 125 of them, all `float32` — and the
+   audit was itself audited by planting a `float64` and confirming it fails.
+
+**Q-004 is closed** in the session the prompt nominated, and not the way it was posed (**D-036**):
+the floor rises to **0.537**, not to 0.54, because Rung 3 runs at `tau = 0.5378` and a 0.54 floor
+would make the benchmark refuse the run that produced its own published numbers.
 
 ---
 

@@ -225,6 +225,111 @@ def collide(f: NDArray[np.float32], feq: NDArray[np.float32], tau: float) -> Non
     f += feq
 
 
+def collide_stream(
+    f: NDArray[np.float32],
+    feq: NDArray[np.float32],
+    tau: float,
+    buf: NDArray[np.float32],
+    *,
+    f_pre: NDArray[np.float32] | None = None,
+    solid: NDArray[np.bool_] | None = None,
+    f_bb: NDArray[np.float32] | None = None,
+) -> NDArray[np.float32]:
+    """Collide, bounce back and stream in **one pass per direction**.
+
+    ``DOCS/IDEA2.md`` § Performance budget, third cheap win: "fuse collide+stream
+    into one pass over ``f``". T010 is the task that spends constraint 6, which
+    lifted when Rung 3 went green.
+
+    The fusion crosses :func:`lbm.boundary.bounce_back`, which sits *between*
+    collide and stream in the D-020 order — that is the point. Unfused, the step
+    walks the whole ``(9, ny, nx)`` array seven times (three collide operations,
+    the masked reflection, the ``f_bb`` snapshot, the shift into ``buf``, the
+    copy back). Fused, direction ``i`` is loaded once and stays in cache for all
+    of it::
+
+        for i in 0..8:
+            s   = feq[i] + (f[i] - feq[i]) (1 - 1/tau)   # collide
+            s   = f_pre[OPP[i]]  where solid             # bounce back
+            buf[i] = shift(s, E[i])                      # stream
+
+    with ``s`` being ``f_bb[i]`` when the caller wants the pre-stream snapshot
+    :func:`lbm.probe.forces` consumes (``DOCS/STATE1.md`` **D-020**), and ``f[i]``
+    itself when it does not. ``buf`` is copied back into ``f`` at the end so that
+    ``f`` keeps its buffer identity, which T006's allocation test asserts.
+
+    **The arithmetic is unchanged, element by element and in the same order**, so
+    the result is *bitwise* equal to the unfused sequence
+    ``collide -> bounce_back -> copyto(f_bb) -> stream``. That is what keeps
+    constraint 11's bit-identical restart true across the fusion, and
+    ``tests/test_perf.py`` asserts the equality on a small grid rather than
+    trusting this paragraph.
+
+    The Guo body force (D-010) is **not** folded in: it is applied between
+    collision and bounce-back, and the only case that uses it is Rung 1, a 22x16
+    channel where speed is irrelevant. :class:`lbm.runner.Sim` keeps the unfused
+    sequence when a force is present, so Rung 1's arithmetic is untouched.
+
+    Args:
+        f: distribution, shape ``(9, ny, nx)``, ``float32``, modified in place.
+        feq: equilibrium distribution, same shape and dtype.
+        tau: BGK relaxation time, greater than 0.5 (constraint 2).
+        buf: preallocated scratch, same shape and dtype. Holds the streamed
+            state; not otherwise meaningful after the call.
+        f_pre: pre-**collision** copy of ``f`` (D-011), same shape and dtype.
+            Required when ``solid`` is given.
+        solid: solid mask, shape ``(ny, nx)``, ``bool``. ``None`` skips the
+            reflection entirely.
+        f_bb: preallocated ``(9, ny, nx)`` ``float32`` to receive the
+            **pre-stream** state (D-020). ``None`` stages in ``f`` instead, which
+            is fine for a caller that never measures forces.
+
+    Returns:
+        ``f``, collided, reflected and streamed — the same object passed in.
+
+    Raises:
+        ValueError: if ``tau <= 0.5``, or ``solid`` is given without ``f_pre``.
+    """
+    if tau <= 0.5:
+        raise ValueError(
+            f"tau must be greater than 0.5 (got {tau!r}): "
+            "collision with tau <= 0.5 gives non-positive viscosity and diverges."
+        )
+    if solid is not None and f_pre is None:
+        raise ValueError(
+            "collide_stream needs f_pre (the pre-collision copy, D-011) to "
+            "bounce back off solid: f_pre[OPP[i]] is the reflection."
+        )
+
+    one_minus_omega = np.float32(1.0 - 1.0 / tau)
+
+    for i in range(Q):
+        # Where the post-collision, post-reflection state for direction i goes.
+        # It is the pre-stream snapshot probe.forces consumes (D-020).
+        s = f[i] if f_bb is None else f_bb[i]
+
+        # collide: s = feq[i] + (f[i] - feq[i]) (1 - omega), the same three
+        # operations in the same order as `collide`, on one direction.
+        np.subtract(f[i], feq[i], out=s)
+        s *= one_minus_omega
+        s += feq[i]
+
+        # bounce back: solid cells emit what arrived at them, reversed (D-011).
+        if solid is not None:
+            np.copyto(s, f_pre[OPP[i]], where=solid)
+
+        # stream: shift along E[i] into buf, periodic on both axes.
+        ex = int(E[i, 0])
+        ey = int(E[i, 1])
+        dst = buf[i]
+        for dy, sy in _shift_blocks(ey):
+            for dx, sx in _shift_blocks(ex):
+                dst[dy, dx] = s[sy, sx]
+
+    np.copyto(f, buf)
+    return f
+
+
 def _shift_blocks(shift: int) -> list[tuple[slice, slice]]:
     """Destination/source slice pairs for a periodic shift of +-1 along one axis.
 

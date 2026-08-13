@@ -88,6 +88,35 @@ def test_the_default_case_clears_both_floors() -> None:
     assert U < 0.1
 
 
+def test_the_floor_refuses_the_tau_that_was_measured_to_produce_nan() -> None:
+    """Q-004, closed in T010.
+
+    D-029 measured a square at ``tau = 0.5346`` blowing up by step 3200 and a
+    disc at 0.5330 by step 1500, after a 26728-step run reported ``Cd = nan``.
+    The inherited floor of 0.53 admits both. This one does not.
+    """
+    from validate.cylinder import TAU_FLOOR
+
+    assert TAU_FLOOR > 0.5346
+    with pytest.raises(ValueError, match="0.537"):
+        tau_for(RE, 0.055, 21)  # tau = 0.5346, measured to blow up
+
+
+def test_the_floor_still_admits_rung_3s_own_published_case() -> None:
+    """The reason the floor is 0.537 and not Rung 4's 0.54.
+
+    Rung 3 runs at ``tau = 0.5378`` — measured stable over its full 45500 steps
+    — and a floor of 0.54 would make the benchmark refuse the run that produced
+    its own reference numbers.
+    """
+    from validate.cylinder import TAU_FLOOR
+
+    _nu, tau = tau_for(RE, U, 21)
+    assert tau == pytest.approx(0.5378, abs=1e-4)
+    assert tau > TAU_FLOOR
+    assert TAU_FLOOR < 0.54
+
+
 def test_the_acceptance_bands_are_the_contract_ones() -> None:
     """The windows come from ``DOCS/TASKS1.md`` § T007 and are not adjustable."""
     assert ST_BAND == (0.155, 0.175)

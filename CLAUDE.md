@@ -137,8 +137,10 @@ line in `DOCS/STATE1.md` § Environment.
 
 ## Current state
 
-T001 → T009 done; **M3 reached** (2026-08-12). `lbm/` has `core`, `boundary`, `geometry`, `probe`,
-`runner`, `render`, `units`; `validate/` has `poiseuille`, `cavity`, `cylinder`, `polygons`.
-Rungs R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete**. `record` and the CLI are what
-remain: T010 (performance pass) then T011 (**M4**).
+T001 → T010 done; **M3 reached** (2026-08-12). `lbm/` has `core`, `boundary`, `geometry`, `probe`,
+`runner`, `render`, `units`; `validate/` has `poiseuille`, `cavity`, `cylinder`, `polygons`;
+`bench.py` at the root prints the steps/s before/after table.
+Rungs R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete**. The performance budget is met
+(696.7 / 161.7 / 16.8 steps/s at 40k / 160k / 1M cells, floors 400 / 120 / 15). `record` and the
+CLI are what remain: T011 (**M4**), and Phase 0 ends there.
 Task order T001 → T011, see `DOCS/TASKS1.md`. Live status in `DOCS/STATE1.md`.

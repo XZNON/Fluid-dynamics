@@ -154,12 +154,33 @@ def test_a_marginal_tau_is_refused_at_setup_not_at_nan_time() -> None:
     """The failure this rung actually hit: ``tau = 0.5346`` ran 26727 steps and
     reported ``Cd = nan``. D-016's 0.53 floor lets that through; this one does
     not, and it names the ``D`` that fixes it.
+
+    Since T010 closed Q-004, ``tau = 0.5346`` is refused one level down as well
+    — :data:`validate.cylinder.TAU_FLOOR` is 0.537 — so this asserts only that
+    it is refused, not which of the two floors got there first.
     """
     assert TAU_FLOOR > 0.53
-    with pytest.raises(ValueError, match="stability floor"):
+    with pytest.raises(ValueError, match="0.5346"):
         tau_for_rung4(RE, 0.055, 21)  # tau = 0.5346, measured to blow up
     with pytest.raises(ValueError, match="constraint 3"):
         tau_for_rung4(RE, 0.12, 27)
+
+
+def test_rung_4_keeps_its_own_stricter_floor_above_rung_3s() -> None:
+    """The band between the two floors is Rung 4's alone.
+
+    A square accelerates the flow further round itself than a disc does, so it
+    has less margin: ``tau = 0.5378`` is Rung 3's own measured-stable operating
+    point and is refused here. If this ever stops raising, Rung 4 has silently
+    inherited Rung 3's tolerance.
+    """
+    from validate.cylinder import TAU_FLOOR as CYL_FLOOR
+
+    assert CYL_FLOOR < TAU_FLOOR
+    _nu, tau = tau_for(RE, 0.06, 21)  # 0.5378: fine for Rung 3
+    assert CYL_FLOOR < tau <= TAU_FLOOR
+    with pytest.raises(ValueError, match="stability floor"):
+        tau_for_rung4(RE, 0.06, 21)
 
 
 def test_the_acceptance_band_is_the_contract_one() -> None:
