@@ -1,6 +1,6 @@
 """T004 — geometry primitives and mask sanity checks.
 
-Covers the acceptance criteria of ``DOCS/TASKS1.md`` § T004 and the three rules
+Covers the acceptance criteria of ``old-Docs/TASKS1.md`` § T004 and the three rules
 of ``DOCS/IDEA2.md`` § Geometry from a mask.
 """
 

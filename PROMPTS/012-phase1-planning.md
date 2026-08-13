@@ -1,7 +1,7 @@
 # Session 12 — Phase 1 planning: design the product layer
 
 **This is not a solver task. There is no `T012`.** Phase 0 finished in session 11 and its backlog
-(`DOCS/TASKS1.md`, T001 → T011) is closed. This session **plans Phase 1** and writes the planning
+(`old-Docs/TASKS1.md`, T001 → T011) is closed. This session **plans Phase 1** and writes the planning
 documents; it should end with a plan and a task list, not with a new feature in `lbm/`.
 
 ## What this project is
@@ -17,7 +17,7 @@ enough to design the layer above it*, and `idea.md` § Roadmap is explicit that 
 non-negotiable: "you cannot design good defaults for a method you have not debugged yourself."
 
 That understanding now exists, and it is written down as **40 numbered decisions** in
-`DOCS/STATE1.md` § Decisions, most of them settled by measurement rather than argument. Phase 1's
+`old-Docs/STATE1.md` § Decisions, most of them settled by measurement rather than argument. Phase 1's
 job is to turn it into a product layer.
 
 ## Read these first, in this order
@@ -31,10 +31,10 @@ job is to turn it into a product layer.
 3. `CLAUDE.md` — the 12 hard constraints, the session protocol, the conventions, the module map.
    Note that its § Current state now says Phase 0 is complete. **Some of those constraints are
    Phase 0's and some are permanent** — deciding which is which is part of this session's work.
-4. `DOCS/STATE1.md` — **in full**, and it is long. § Snapshot (the M4 gate output), § Decisions
+4. `old-Docs/STATE1.md` — **in full**, and it is long. § Snapshot (the M4 gate output), § Decisions
    D-005 … D-040, § Performance baseline, § Environment, and the eleven session-log entries. This is
    the accumulated understanding Phase 1 is supposed to be designed *from*.
-5. `DOCS/PLAN1.md` — **as a model, not as content.** It is what a good phase plan looked like for
+5. `old-Docs/PLAN1.md` — **as a model, not as content.** It is what a good phase plan looked like for
    Phase 0: a task graph, a one-task-per-session map, milestone gates with literal gate commands,
    and a risks table with pressure valves. Phase 1's plan should have the same shape.
 6. `DOCS/IDEA2.md` § Deliberately deferred — the list of things Phase 0 said no to (MRT,
@@ -88,7 +88,7 @@ with any number you measure (**D-035**). At 1M cells `equilibrium` is **over hal
 
 **Plan Phase 1.** One session, and its deliverable is documents.
 
-There is no `/start-task` to run — that command reads a task contract out of `DOCS/TASKS1.md`, and
+There is no `/start-task` to run — that command reads a task contract out of `old-Docs/TASKS1.md`, and
 Phase 1 has no task file yet. This session *creates* it. `/create-spec` exists and is the closest
 fit if you want a spec file and a branch; use it or write the documents directly, but decide with
 the user before generating a whole plan.
@@ -98,13 +98,13 @@ the user before generating a whole plan.
 1. **A Phase 1 specification** — the analogue of `DOCS/IDEA2.md` for the product layer (suggest
    `DOCS/IDEA3.md`; confirm the name with the user). What Phase 1 *is*, in enough detail that a task
    list falls out of it, and — as important — what it deliberately is not.
-2. **A phase plan** — the analogue of `DOCS/PLAN1.md`: task graph, one task per session, milestone
-   gates **with literal gate commands**, and a risks table with pressure valves. `DOCS/PLAN1.md`
+2. **A phase plan** — the analogue of `old-Docs/PLAN1.md`: task graph, one task per session, milestone
+   gates **with literal gate commands**, and a risks table with pressure valves. `old-Docs/PLAN1.md`
    § Risks and § Milestone gates are the model; copy the shape, not the content.
-3. **A task backlog** — the analogue of `DOCS/TASKS1.md`: per task, goal, depends-on, inputs and
+3. **A task backlog** — the analogue of `old-Docs/TASKS1.md`: per task, goal, depends-on, inputs and
    outputs with types and array shapes, acceptance criteria as a checklist, the constraints that
    bite, and notes.
-4. **A decision on state-file continuity** — does Phase 1 continue `DOCS/STATE1.md` or start
+4. **A decision on state-file continuity** — does Phase 1 continue `old-Docs/STATE1.md` or start
    `DOCS/STATE2.md`? Either is defensible; the session log is append-only and must not be rewritten
    or condensed either way. Record the choice as a decision.
 5. **A decision on which of `CLAUDE.md`'s 12 constraints survive into Phase 1**, and what replaces
@@ -199,7 +199,7 @@ Quoted because they are load-bearing above the solver line, not merely historica
 The output of this session is **documents**. No new modules under `lbm/`, no new rungs, no
 refactoring of Phase 0 code because the plan suggests a nicer shape — the plan can say what to change
 and the task that does it gets its own session. If something genuinely must be fixed in Phase 0 code,
-`/new-task` it against `DOCS/TASKS1.md` rather than folding it into the plan.
+`/new-task` it against `old-Docs/TASKS1.md` rather than folding it into the plan.
 
 ## Verify, then close
 

@@ -127,7 +127,7 @@ GHIA_V: dict[int, NDArray[np.float64]] = {
 #: table**, keyed by ``(re, "u" | "v")`` and holding indices into
 #: :data:`GHIA_Y` / :data:`GHIA_X`. Excluding a reference value is a serious
 #: thing to do, so each entry needs measured evidence, recorded in
-#: ``DOCS/STATE1.md`` § Decisions, and the excluded point is still printed with
+#: ``old-Docs/STATE1.md`` § Decisions, and the excluded point is still printed with
 #: its deviation on every run — nothing is hidden, only re-labelled.
 #:
 #: ``(400, "v")`` index 5, ``x = 0.9063``, tabulated ``-0.23827``. Evidence:
@@ -173,7 +173,7 @@ DEFAULT_L: dict[int, int] = {100: 128, 400: 128, 1000: 256}
 U_LID: float = 0.09
 
 #: Which wall owns the two cells where the lid meets the side walls — Q-003,
-#: closed by measurement in ``DOCS/STATE1.md`` **D-013**. ``"wall"`` (the static
+#: closed by measurement in ``old-Docs/STATE1.md`` **D-013**. ``"wall"`` (the static
 #: no-slip walls own them) beat ``"lid"`` on worst-case deviation from Ghia
 #: across the three Reynolds numbers: 1.01% against 1.35%.
 CORNERS: str = "wall"
@@ -189,7 +189,7 @@ TAU_FLOOR: float = 0.53
 #: Convergence threshold on the **per-step** velocity change normalised by the
 #: lid velocity: ``max|u(n) - u(n-k)| / (U k)`` with ``k = CHECK_EVERY``.
 #: Dividing by ``k`` is what makes the contract's ``1e-6`` reachable in
-#: ``float32`` at all — see ``DOCS/STATE1.md`` D-012 and D-014. The raw
+#: ``float32`` at all — see ``old-Docs/STATE1.md`` D-012 and D-014. The raw
 #: interval difference is printed alongside it, unscaled, so nothing is hidden.
 RESIDUAL_TOL: float = 1e-6
 
@@ -519,7 +519,7 @@ def scored_mask(re: int, component: str) -> NDArray[np.bool_]:
 
     Everything except the entries listed in :data:`GHIA_SUSPECT`, which are
     still computed and still printed — see that constant for the evidence and
-    ``DOCS/STATE1.md`` D-015 for the decision.
+    ``old-Docs/STATE1.md`` D-015 for the decision.
     """
     keep = np.ones(GHIA_Y.size, dtype=bool)
     for k in GHIA_SUSPECT.get((re, component), ()):

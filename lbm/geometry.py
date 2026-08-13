@@ -4,7 +4,7 @@ Implements ``DOCS/IDEA2.md`` § "Geometry from a mask". The entire geometry
 interface of the solver is one boolean array, ``solid``, shape ``(ny, nx)``,
 index order ``(y, x)`` matching the trailing axes of ``f`` (``CLAUDE.md``
 constraint 4). Nothing here is hot — it runs once at setup — so functions
-return fresh arrays rather than taking preallocated outputs (``DOCS/STATE1.md``
+return fresh arrays rather than taking preallocated outputs (``old-Docs/STATE1.md``
 § Decisions, **D-006**).
 
 Coordinate convention
@@ -22,7 +22,7 @@ The three rules of ``DOCS/IDEA2.md`` § Geometry from a mask are enforced by
 2. at least 8 characteristic lengths of clear domain downstream,
 3. blockage ratio under ~10%.
 
-Prior work (``DOCS/STATE1.md`` § Decisions, **D-004**): the vertex handling and
+Prior work (``old-Docs/STATE1.md`` § Decisions, **D-004**): the vertex handling and
 the even-odd point-in-polygon test of ``Navier-Fluid-Equation/polygonsDemo.py``
 and ``panels.py`` are reimplemented here rather than imported. That directory is
 potential flow, is read-only, and never becomes a dependency of ``lbm``.
@@ -230,7 +230,7 @@ def channel_walls(ny: int, nx: int, thickness: int = 1) -> NDArray[np.bool_]:
 
         solid = channel_walls(ny, nx) | circle(ny, nx, cx, cy, r)
 
-    Wall-offset convention (``DOCS/STATE1.md`` § Decisions, **D-009**)
+    Wall-offset convention (``old-Docs/STATE1.md`` § Decisions, **D-009**)
     ------------------------------------------------------------------
     Bounce-back puts the no-slip plane **halfway between the last fluid node and
     the first solid node**, not on a node. With ``thickness = 1`` the solid rows
@@ -497,7 +497,7 @@ def check_mask(
        bounce-back and the flow passes straight through the object.
     2. **Downstream space** — with less than ``min_downstream_lengths``
        characteristic lengths of clear domain behind the object, the outlet
-       reflects into the wake. ``DOCS/PLAN1.md`` § Risks names this and blockage
+       reflects into the wake. ``old-Docs/PLAN1.md`` § Risks names this and blockage
        as the usual reason a cylinder shows no shedding at all.
     3. **Blockage** — a cross-stream extent above ``max_blockage`` of the
        domain lets the walls distort the answer.
@@ -745,7 +745,7 @@ def from_png(
         raise ImportError(
             "from_png needs Pillow. Install it into the project venv with:\n"
             "    myenv/Scripts/pip.exe install pillow\n"
-            "and add a row to DOCS/STATE1.md § Environment in the same session."
+            "and add a row to old-Docs/STATE1.md § Environment in the same session."
         ) from exc
 
     ny, nx = int(shape[0]), int(shape[1])
@@ -818,7 +818,7 @@ def from_png(
 
 
 # SVG parsing. Q-002 is answered here: no new dependency. The parser below
-# handles the subset DOCS/TASKS1.md § T009 asks for ("at least simple closed
+# handles the subset old-Docs/TASKS1.md § T009 asks for ("at least simple closed
 # paths") and refuses everything else by name, pointing at cairosvg — which is
 # what "fails obscurely" would otherwise look like.
 
@@ -839,9 +839,9 @@ def _svg_dependency_error(what: str) -> ImportError:
         f"lbm.geometry.from_svg cannot handle {what} with its built-in parser. "
         "Install a full rasteriser into the project venv:\n"
         "    myenv/Scripts/pip.exe install cairosvg\n"
-        "and add a row to DOCS/STATE1.md § Environment in the same session. "
+        "and add a row to old-Docs/STATE1.md § Environment in the same session. "
         "Alternatively export the artwork to PNG and use from_png, which is the "
-        "supported path (DOCS/TASKS1.md § T009 Notes)."
+        "supported path (old-Docs/TASKS1.md § T009 Notes)."
     )
 
 

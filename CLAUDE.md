@@ -6,9 +6,9 @@ D2Q9 lattice Boltzmann, any shape from a boolean mask, live streaming visual plu
 **Phase 0 is not the product.** It exists so we understand LBM well enough to design the layer
 above it (see root `idea.md` and `README.md` for that product). Ship Phase 0, validate it, move on.
 
-**Full Phase 0 spec is `DOCS/IDEA2.md`.** Don't re-derive decisions already made there — cite them.
-If anything here conflicts with `DOCS/IDEA2.md`, **IDEA2.md wins**; log the conflict in
-`DOCS/STATE1.md` § Decisions rather than silently picking one.
+**Full Phase 0 spec is `DOCS/IDEA2.md`; Phase 1's is `DOCS/IDEA3.md`.** Don't re-derive decisions
+already made there — cite them. If anything here conflicts with the spec of the live phase, **the
+spec wins**; log the conflict in `DOCS/STATE2.md` § Decisions rather than silently picking one.
 
 The existing `Navier-Fluid-Equation/` directory is **prior work** — potential-flow / panel-method
 scripts. It is not part of the LBM solver. Reuse its polygon-vertex code (`polygonsDemo.py`,
@@ -54,16 +54,21 @@ Load-bearing decisions, not optimizations. A design that drifts from these is wr
 
 **Follow this every session. No exceptions.**
 
-1. **At session start** — read `DOCS/STATE1.md` (all of it) and `DOCS/TASKS1.md` (the row for the
+**Phase 1 is live. The live documents are `DOCS/STATE2.md` and `DOCS/TASKS2.md`** — Phase 0's
+`old-Docs/STATE1.md` / `old-Docs/TASKS1.md` / `old-Docs/PLAN1.md` are **frozen**: read for history, never edited
+(**D-041**). Everywhere below that names a Phase 0 file, read the Phase 1 one instead.
+
+1. **At session start** — read `DOCS/STATE2.md` (all of it) and `DOCS/TASKS2.md` (the row for the
    live task) **before touching any code**. They say what task is live, what's blocked, what the
-   previous session actually left behind.
-2. **Before working a task** — run `/start-task T0XX`. It reads the task contract and the
-   `DOCS/IDEA2.md` section it cites, then restates goal + acceptance criteria for confirmation.
-3. **One task per session.** `DOCS/PLAN1.md` maps one task to one session deliberately — context
+   previous session actually left behind. `old-Docs/STATE1.md` § Decisions (D-005 … D-040) is still in
+   force and is cited by number; read the entry a task names, not the whole file.
+2. **Before working a task** — run `/start-task T1XX`. It reads the task contract and the
+   `DOCS/IDEA3.md` section it cites, then restates goal + acceptance criteria for confirmation.
+3. **One task per session.** `DOCS/PLAN2.md` maps one task to one session deliberately — context
    stays small and each session ends at a validated boundary. Work that turns up mid-stream gets
    `/new-task`, not scope creep.
 4. **At session end** — run `/checkpoint`. Never end a session without it. It updates
-   `DOCS/STATE1.md`, syncs `DOCS/TASKS1.md`, and writes the next paste-ready prompt into
+   `DOCS/STATE2.md`, syncs `DOCS/TASKS2.md`, and writes the next paste-ready prompt into
    `PROMPTS/`.
 
 ## Coding conventions
@@ -77,7 +82,7 @@ Load-bearing decisions, not optimizations. A design that drifts from these is wr
 - **No physics constant twice.** `e`, `w`, `opp`, `cs2` from `lbm/core.py` only.
 - **Physical units never reach the solver.** `lbm/units.py` converts at the boundary; everything
   inside `lbm/` is lattice units.
-- Stubs raise `NotImplementedError("see DOCS/TASKS1.md T0XX")` until their task lands.
+- Stubs raise `NotImplementedError("see DOCS/TASKS2.md T0XX")` until their task lands.
 - `pytest` for unit tests; `validate/` scripts are the integration tests and print pass/fail.
 
 ## Commands
@@ -114,12 +119,12 @@ myenv/Scripts/python.exe -m tools.issues capture --source validate -- myenv/Scri
 - `sync` is the only thing that talks to GitHub. It needs the `gh` CLI authenticated
   (`winget install --id GitHub.cli -e && gh auth login`); without it, entries stay queued.
 - Slash commands: `/file-issue <description>` to queue, `/sync-issues` to review then push.
-- **A failing rung that blocks the live task is a `DOCS/STATE1.md` § Blockers entry, not a queued
+- **A failing rung that blocks the live task is a `DOCS/STATE2.md` § Blockers entry, not a queued
   issue.** The queue is for things the work continues without.
 
 `myenv/` is the project venv (Python 3.11, numpy 2.4, matplotlib 3.11, pillow). It is gitignored.
 Adding a dependency (pygame, imageio, pytest) means `myenv/Scripts/pip.exe install <pkg>` **and** a
-line in `DOCS/STATE1.md` § Environment.
+line in `DOCS/STATE2.md` § Environment.
 
 ## Module map
 
@@ -144,5 +149,13 @@ before/after table.
 Rungs R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete**. The performance budget is met
 (696.7 / 161.7 / 16.8 steps/s at 40k / 160k / 1M cells, floors 400 / 120 / 15). `python -m
 lbm.runner` turns a PNG plus physical numbers into an MP4 in one command.
-The next session **plans the product layer** from the root `idea.md` — not another solver task. M5
-(Warp/Taichi port of the kernel, same API) is its own plan. Live status in `DOCS/STATE1.md`.
+
+**Phase 1 is live** (planned in session 12, 2026-08-13): the product layer above the solver —
+`flow/` package plus CLI, on a Warp GPU backend, ten tasks `T101` → `T110`, five new rungs
+A–E, milestones M5 → M8. Spec `DOCS/IDEA3.md` · plan `DOCS/PLAN2.md` · backlog `DOCS/TASKS2.md` ·
+**live status `DOCS/STATE2.md`**. The current task is `T101` (backend seam).
+
+**The 12 hard constraints above are Phase 0's.** Their Phase 1 fates are decided in
+`DOCS/STATE2.md` **D-046** — nine permanent, three rewritten (1, 4, 11), one retired (6), four
+added (13–16). Until T101 folds that table into this file, **D-046 is the authority** where the two
+disagree.

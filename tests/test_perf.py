@@ -1,6 +1,6 @@
 """T010's guard rails: the optimised path must be the same physics, exactly.
 
-``DOCS/TASKS1.md`` § T010 § Constraints that bite here:
+``old-Docs/TASKS1.md`` § T010 § Constraints that bite here:
 
 * **Constraint 1** — "optimisation must not quietly change the physics (e.g.
   skipping ``feq`` on solid cells must not change fluid-cell results at all:
@@ -250,7 +250,7 @@ def test_a_run_fused_and_a_run_unfused_resume_each_other(tmp_path):
 class DtypeSpy(np.ndarray):
     """An ndarray that records the dtype of every ufunc result it takes part in.
 
-    The float32 audit ``DOCS/TASKS1.md`` § T010 asks for, done by measurement
+    The float32 audit ``old-Docs/TASKS1.md`` § T010 asks for, done by measurement
     rather than by reading the source: a single ``float64`` temporary anywhere
     in the step path costs the bandwidth the dtype exists to save and, worse,
     rounds differently on a resumed run (constraint 11).

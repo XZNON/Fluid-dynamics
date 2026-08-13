@@ -4,7 +4,7 @@ The rung itself is an integration test that takes minutes and prints PASS/FAIL;
 what is worth pinning in ``pytest`` is the *setup*, because every way this rung
 goes wrong quietly is a setup error:
 
-* a domain that trips ``check_mask`` (``DOCS/PLAN1.md`` § Risks: "cylinder shows
+* a domain that trips ``check_mask`` (``old-Docs/PLAN1.md`` § Risks: "cylinder shows
   no shedding" is almost always blockage or space),
 * ``tau`` derived from anything other than ``Re`` (constraint 2),
 * and — the one that actually happened while building this — a force integral
@@ -60,7 +60,7 @@ def test_the_domain_meets_the_three_numeric_rules() -> None:
 
 
 def test_the_cylinder_is_offset_half_a_cell_from_the_centreline() -> None:
-    """The perturbation that lets shedding start (``DOCS/TASKS1.md`` § T007)."""
+    """The perturbation that lets shedding start (``old-Docs/TASKS1.md`` § T007)."""
     solid, cylinder, _cx, cy = cylinder_mask()
     ny = solid.shape[0]
     assert cy != (ny - 1) / 2.0
@@ -118,7 +118,7 @@ def test_the_floor_still_admits_rung_3s_own_published_case() -> None:
 
 
 def test_the_acceptance_bands_are_the_contract_ones() -> None:
-    """The windows come from ``DOCS/TASKS1.md`` § T007 and are not adjustable."""
+    """The windows come from ``old-Docs/TASKS1.md`` § T007 and are not adjustable."""
     assert ST_BAND == (0.155, 0.175)
     assert CD_BAND == (1.25, 1.45)
     assert ST_BAND[0] < ST_REF < ST_BAND[1]

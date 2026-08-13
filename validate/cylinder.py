@@ -19,7 +19,7 @@ What the script actually does
 
 1. Builds the mask from :mod:`lbm.geometry` primitives — a disc plus one-cell
    no-slip channel walls — and runs :func:`lbm.geometry.check_mask` **before**
-   the run. ``DOCS/PLAN1.md`` § Risks assigns "cylinder shows no shedding" to
+   the run. ``old-Docs/PLAN1.md`` § Risks assigns "cylinder shows no shedding" to
    insufficient space or excessive blockage, and this is the check that catches
    it in a second rather than in an hour.
 2. Derives ``tau`` from ``Re`` (``CLAUDE.md`` constraint 2): ``nu = U D / Re``,
@@ -51,7 +51,7 @@ Why these numbers
   ``Cd`` climbed out of the band. Sides are periodic and the fluid span is
   24 D (4.17% blockage); see :data:`WALL` and :data:`SPAN_D`.
 * The cylinder centre is offset **half a cell** from the channel centreline.
-  ``DOCS/TASKS1.md`` § T007 Notes: "a perfectly symmetric setup on a symmetric
+  ``old-Docs/TASKS1.md`` § T007 Notes: "a perfectly symmetric setup on a symmetric
   grid can stay symmetric far longer than physics would". Half a cell is the
   smallest perturbation that breaks the grid's mirror symmetry, and it is
   applied from step 0 rather than after a wasted run.
@@ -96,7 +96,7 @@ from lbm.units import LatticeUnits
 #   Cd            ~ 1.34      (Braza, Chassaing & Ha Minh, JFM 165 (1986);
 #                              Park, Kwon & Choi, KSME Int. J. 12 (1998))
 #
-# The acceptance windows are DOCS/TASKS1.md § T007, not invented here.
+# The acceptance windows are old-Docs/TASKS1.md § T007, not invented here.
 
 ST_REF: float = 0.164
 CD_REF: float = 1.34
@@ -434,7 +434,7 @@ def bench_steps_per_second(
     The two legs of the constraint-8 measurement differ **only** in the sink:
     the same config, the same mask, the same number of steps, and the same
     ``render`` call per frame. What that isolates is the cost of the window,
-    which is the number ``DOCS/TASKS1.md`` § T007 asks to stay under 10%.
+    which is the number ``old-Docs/TASKS1.md`` § T007 asks to stay under 10%.
     """
     sim = Sim(cfg.replace(check_geometry=False), solid)
     stats = run(

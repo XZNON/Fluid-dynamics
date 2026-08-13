@@ -3,7 +3,7 @@
 Covers ``lbm/record.py`` (:class:`RecordSink`, :class:`HeadlessSink`,
 :class:`TeeSink`) and the ``python -m lbm.runner`` entry point in
 ``lbm/runner.py``, one or more tests per acceptance criterion in
-``DOCS/TASKS1.md`` § T011.
+``old-Docs/TASKS1.md`` § T011.
 
 The load-bearing ones, in the order the contract lists them:
 
@@ -188,7 +188,7 @@ def test_a_gif_needs_no_ffmpeg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 def test_a_missing_ffmpeg_is_an_install_line_not_a_traceback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``DOCS/TASKS1.md`` § T011: "a clear install message, not a traceback"."""
+    """``old-Docs/TASKS1.md`` § T011: "a clear install message, not a traceback"."""
     import imageio_ffmpeg
 
     def boom() -> str:
@@ -555,7 +555,7 @@ def test_the_cli_writes_a_playable_mp4_from_a_png_in_one_command(
     """M4's gate in miniature: PNG in, physical units, MP4 out, one call.
 
     A tenth of a second of physical time rather than five, so the suite stays
-    fast; the five-second run is in ``DOCS/STATE1.md`` § Snapshot with its
+    fast; the five-second run is in ``old-Docs/STATE1.md`` § Snapshot with its
     output, which is where a milestone is claimed.
     """
     out = tmp_path / "wake.mp4"

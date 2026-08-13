@@ -34,7 +34,7 @@ boundaries. A square on a Cartesian lattice is the one shape a staircase
 represents *exactly* along its faces, but the two separation corners are still
 resolved by whichever cell centres happen to fall inside the polygon, and that
 biases ``Cd`` slightly high. The acceptance window is ±0.1 around 1.5 for
-exactly that reason (``DOCS/TASKS1.md`` § T008 Notes), and a high ``Cd`` is a
+exactly that reason (``old-Docs/TASKS1.md`` § T008 Notes), and a high ``Cd`` is a
 reason to suspect the **domain** (blockage, upstream fetch) and the **link
 list**, in that order — not a reason to reach for a better boundary condition.
 
@@ -110,10 +110,10 @@ from validate.cylinder import (
 #                  range in the literature is 1.4-1.5 — Sohankar, Norberg &
 #                  Davidson, Int. J. Numer. Meth. Fluids 26 (1998); Sharma &
 #                  Eswaran, Numer. Heat Transfer A 45 (2004))
-#   St ~ 0.145    (same sources) — printed, not asserted: DOCS/TASKS1.md § T008
+#   St ~ 0.145    (same sources) — printed, not asserted: old-Docs/TASKS1.md § T008
 #                  puts a band on Cd only.
 #
-# The acceptance window is DOCS/TASKS1.md § T008, not invented here.
+# The acceptance window is old-Docs/TASKS1.md § T008, not invented here.
 
 CD_REF: float = 1.5
 CD_BAND: tuple[float, float] = (1.4, 1.6)
@@ -263,7 +263,7 @@ class Case:
     transient_tc: float
     measure_tc: float
     #: ``None`` means "no reference value asserted" — the second case of
-    #: ``DOCS/TASKS1.md`` § T008 only has to run clean and report finite forces.
+    #: ``old-Docs/TASKS1.md`` § T008 only has to run clean and report finite forces.
     cd_band: tuple[float, float] | None
     cd_ref: float | None
     st_ref: float | None
@@ -411,7 +411,7 @@ def seed_solid_at_rest(sim: Sim) -> None:
     operations — ``w_i rho0`` is symmetric under ``opp`` and uniform, so
     reversing it and streaming it both leave it alone.
 
-    This is what makes ``DOCS/TASKS1.md`` § T008's "no fluid velocity inside the
+    This is what makes ``old-Docs/TASKS1.md`` § T008's "no fluid velocity inside the
     solid" a statement about the *solver* rather than about the initial
     condition. It changes nothing on the fluid side of the surface at
     steady state; it removes an artefact from the startup transient.
@@ -490,7 +490,7 @@ def run_case(
               f"St ~ {case.st_ref} (printed, not asserted)")
     else:
         print("  reference: none asserted — this case must run clean and report "
-              "finite Cd / Cl (DOCS/TASKS1.md § T008)")
+              "finite Cd / Cl (old-Docs/TASKS1.md § T008)")
     print(f"  grid {ny} x {nx}   D = {d_measured:.0f} cells measured "
           f"(nominal {case.d_nominal})   streamwise extent {x1 - x0 + 1} cells   "
           f"centre ({cx:.1f}, {cy:.1f})   offset {OFFSET_CELLS} cell   "

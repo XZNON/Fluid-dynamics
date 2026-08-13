@@ -5,7 +5,7 @@ measurements Rung 3 is scored on — § "Validation ladder", Rung 3: ``St ~ 0.16
 and ``Cd ~ 1.34``.
 
 **Why this module exists.** Without it, "the wake looks right" is the whole
-verification story, and ``DOCS/PLAN1.md`` § Risks names a plausible-looking
+verification story, and ``old-Docs/PLAN1.md`` § Risks names a plausible-looking
 wrong simulation as the main failure mode of the project. These four functions
 turn the picture into numbers.
 
@@ -13,7 +13,7 @@ The nine lattice constants come from :mod:`lbm.core` and are never redefined
 (``CLAUDE.md`` constraint 4). Everything here is lattice units; physical units
 are ``lbm/units.py``'s job (T009) and never reach this module.
 
-All four take optional preallocated outputs (``DOCS/STATE1.md`` D-006) — T007
+All four take optional preallocated outputs (``old-Docs/STATE1.md`` D-006) — T007
 calls :func:`vorticity` and :func:`forces` on every step.
 """
 
@@ -55,7 +55,7 @@ def vorticity(
     Central differences in the interior, one-sided (first-order) on the four
     edges. Solid cells are set to ``nan``: the velocity there is
     ``(e . f) / rho`` with a density bounce-back left behind, which is
-    meaningless (``DOCS/STATE1.md`` D-014), and ``nan`` makes a renderer skip
+    meaningless (``old-Docs/STATE1.md`` D-014), and ``nan`` makes a renderer skip
     the cell instead of painting a bright artefact on the obstacle.
 
     This is computed **here, not in** ``render.py`` (``CLAUDE.md``
@@ -135,7 +135,7 @@ class BoundaryLinks:
     """Precomputed bounce-back links between fluid cells and solid cells.
 
     Built **once** from the mask by :func:`boundary_links` and reused every step
-    (``DOCS/TASKS1.md`` § T005 Notes: "write it so the link list is precomputed
+    (``old-Docs/TASKS1.md`` § T005 Notes: "write it so the link list is precomputed
     once from the mask, not rebuilt per step"). This is correctness and clarity
     rather than an optimisation, so it does not run into ``CLAUDE.md``
     constraint 6 — collide and stream are untouched.
@@ -224,7 +224,7 @@ def forces(
     opposite direction. Getting that sign backwards is the classic way to
     produce a beautifully converged, exactly wrong ``Cd``.
 
-    Which two snapshots (``DOCS/STATE1.md`` **D-020**)
+    Which two snapshots (``old-Docs/STATE1.md`` **D-020**)
     -------------------------------------------------
     ``f_pre`` is the **pre-stream** state — after :func:`lbm.core.collide`,
     after :func:`lbm.boundary.apply_body_force`, after
@@ -253,7 +253,7 @@ def forces(
         Cl = 2 Fy / (rho0 U^2 D)
 
     ``D`` must come from :func:`lbm.geometry.bounding_box` — the cross-stream
-    extent of the object's bounding box (``DOCS/STATE1.md`` **D-019**). It is
+    extent of the object's bounding box (``old-Docs/STATE1.md`` **D-019**). It is
     the same ``D`` ``check_mask`` uses for the blockage and downstream rules;
     inventing a second definition of characteristic length is how a 10% error
     in ``Cd`` gets blamed on the solver.
@@ -356,7 +356,7 @@ def strouhal(
             not a per-step path.
         dt: lattice time between consecutive samples. If the runner records
             ``Cl`` once every ``k`` steps, ``dt = k``.
-        D: characteristic length in cells (``DOCS/STATE1.md`` D-019).
+        D: characteristic length in cells (``old-Docs/STATE1.md`` D-019).
         U: reference velocity, lattice units.
         transient: leading fraction of the series discarded, default 0.3.
 
@@ -436,13 +436,13 @@ def residual(
 
     the maximum taken over both components and all **fluid** cells.
 
-    Fluid cells only (``DOCS/STATE1.md`` **D-014**): ``rho`` on a solid cell is
+    Fluid cells only (``old-Docs/STATE1.md`` **D-014**): ``rho`` on a solid cell is
     whatever bounce-back left there, so ``u = (e . f) / rho`` on it is
     meaningless. Rung 2's residual read ``8.4e+01`` and the script "failed to
     converge" for exactly that reason before the mask was applied. Pass
     ``solid`` whenever the domain has one.
 
-    **There is a floor** (``DOCS/STATE1.md`` **D-012**). ``u`` is a
+    **There is a floor** (``old-Docs/STATE1.md`` **D-012**). ``u`` is a
     near-cancelling sum of ``f ~ 0.4`` divided by ``rho``, so in ``float32`` its
     round-off is about ``eps |f| / |u| ~ 1.2e-6``; the measured per-step floor is
     ``1.7e-6``. A per-step tolerance below that is unreachable and simply burns

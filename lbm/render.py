@@ -26,7 +26,7 @@ than letting them fold into the colour scale.
 Threading
 ---------
 
-``DOCS/STATE1.md`` **D-024**: ``run(sim, sink, drop=True)`` drains the ring
+``old-Docs/STATE1.md`` **D-024**: ``run(sim, sink, drop=True)`` drains the ring
 buffer from one consumer thread, so :meth:`LiveSink.push` runs on *that* thread
 and **no pygame call sits inside the physics loop** (constraint 8). The window
 is therefore opened lazily, on the first :meth:`LiveSink.push`, which keeps

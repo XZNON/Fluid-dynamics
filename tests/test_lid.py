@@ -206,7 +206,7 @@ def test_only_one_reference_point_is_excluded() -> None:
     """The exclusion list is one point of one profile and stays that way.
 
     If a later change needs to exclude more, that is a decision to argue in
-    ``DOCS/STATE1.md``, not a quiet edit — this test is the tripwire.
+    ``old-Docs/STATE1.md``, not a quiet edit — this test is the tripwire.
     """
     assert GHIA_SUSPECT == {(400, "v"): (5,)}
     assert GHIA_X[5] == pytest.approx(0.9063)

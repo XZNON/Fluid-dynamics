@@ -1,4 +1,4 @@
-"""Unit tests for ``lbm.core`` — T001 acceptance criteria (``DOCS/TASKS1.md``).
+"""Unit tests for ``lbm.core`` — T001 acceptance criteria (``old-Docs/TASKS1.md``).
 
 The random fields are drawn with ``rho in [0.9, 1.1]`` and ``|u| < 0.1`` because
 that is the range the D2Q9 equilibrium is valid over (``CLAUDE.md`` constraint

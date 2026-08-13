@@ -47,7 +47,7 @@ against each other: raising ``N`` raises ``tau`` (more stable) at a cost that
 grows with the area of the domain, while raising ``U`` raises ``tau`` for free
 but walks into the Mach ceiling. Session 8 spent three runs learning that ``D``
 is the only knob that buys ``tau`` without moving the peak velocity
-(``DOCS/STATE1.md`` § Session log, session 8).
+(``old-Docs/STATE1.md`` § Session log, session 8).
 
 What it refuses
 ---------------
@@ -312,7 +312,7 @@ class LatticeUnits:
         of ``cells_per_length`` / ``tau`` describes the grid — pass the target
         ``tau`` and the **resolution is derived** from
         ``N = Re (tau - 0.5) / (3 U)``, which is the "the code derives
-        resolution" half of ``DOCS/TASKS1.md`` § T009.
+        resolution" half of ``old-Docs/TASKS1.md`` § T009.
 
         There is no ``nu`` (lattice) argument and no way to set one alongside
         ``tau``: ``CLAUDE.md`` constraint 2 says viscosity is not a free

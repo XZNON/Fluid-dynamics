@@ -1,6 +1,6 @@
 """Tests for :mod:`lbm.render` — T007.
 
-The acceptance criteria of ``DOCS/TASKS1.md`` § T007 that are unit-testable:
+The acceptance criteria of ``old-Docs/TASKS1.md`` § T007 that are unit-testable:
 a diverging colormap with **fixed symmetric** limits, a mapping that is
 byte-identical across frames (the assertion form of "no flicker",
 ``CLAUDE.md`` constraint 9), one renderer feeding the sink rather than three
@@ -85,7 +85,7 @@ def test_render_returns_uint8_rgb_of_the_field_shape() -> None:
 
 
 def test_a_fixed_value_maps_to_identical_bytes_across_two_different_frames() -> None:
-    """**The no-flicker criterion** (``DOCS/TASKS1.md`` § T007, constraint 9).
+    """**The no-flicker criterion** (``old-Docs/TASKS1.md`` § T007, constraint 9).
 
     Two frames of entirely different data, the same limits: the cell holding
     the same value must come out byte-identical. This fails the moment anyone

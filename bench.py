@@ -6,7 +6,7 @@
     800x200   160k cells   ~150  steps/s   usable
     2000x500    1M cells   ~20   steps/s   record, don't watch
 
-``DOCS/TASKS1.md`` § T010's pass floors are 400 / 120 / 15 steps/s on those
+``old-Docs/TASKS1.md`` § T010's pass floors are 400 / 120 / 15 steps/s on those
 three grids, and it asks for the baseline to be captured **before** the first
 optimisation lands — hence ``--save-baseline``, which writes
 ``DOCS/bench_baseline.json``, and the default mode, which re-measures and prints
@@ -44,7 +44,7 @@ from lbm.runner import Sim, SimConfig
 #: The table names them width x height, so 400x100 is ``ny=100, nx=400``.
 GRIDS: tuple[tuple[int, int], ...] = ((100, 400), (200, 800), (500, 2000))
 
-#: ``DOCS/TASKS1.md`` § T010 pass floors, steps/s, keyed by cell count.
+#: ``old-Docs/TASKS1.md`` § T010 pass floors, steps/s, keyed by cell count.
 FLOORS: dict[int, float] = {40_000: 400.0, 160_000: 120.0, 1_000_000: 15.0}
 
 #: The budget's own expectations, for context in the printed table.
@@ -66,7 +66,7 @@ def make_sim(ny: int, nx: int, **opts: Any) -> Sim:
     the shape Rung 3 runs. ``check_geometry`` is off because this is a timing
     harness, not a physics run — the sanity checks belong to the rungs, and a
     blockage warning on every bench invocation would train us to ignore them
-    (``DOCS/STATE1.md`` D-018's reasoning, applied to the bench).
+    (``old-Docs/STATE1.md`` D-018's reasoning, applied to the bench).
 
     Extra keyword arguments are passed to :class:`lbm.runner.SimConfig` only if
     that dataclass has the field, so this file works unchanged before and after
@@ -201,7 +201,7 @@ def print_table(
     after: dict[str, Any],
     base_override: dict[int, float] | None = None,
 ) -> None:
-    """The before/after table ``DOCS/TASKS1.md`` § T010 asks for.
+    """The before/after table ``old-Docs/TASKS1.md`` § T010 asks for.
 
     ``base_override`` is the reference path measured **in this process**, which
     is the fair comparison: the archived file was measured on a different day
@@ -233,13 +233,13 @@ def print_table(
             f"{'PASS' if ok else 'FAIL'}"
         )
     print("-" * 82)
-    print(f"budget: {'PASS' if all_pass else 'FAIL'}  (floors from DOCS/TASKS1.md § T010)")
+    print(f"budget: {'PASS' if all_pass else 'FAIL'}  (floors from old-Docs/TASKS1.md § T010)")
 
 
 def print_variants() -> None:
     """Each of the four cheap wins, measured on its own.
 
-    ``DOCS/TASKS1.md`` § T010: "Applied, each measured separately". A win that
+    ``old-Docs/TASKS1.md`` § T010: "Applied, each measured separately". A win that
     does nothing can then be dropped rather than carried — § Notes says a win
     costing more than ~20 lines of clarity for under 10% speed is not a win.
     """

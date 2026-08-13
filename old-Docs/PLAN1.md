@@ -4,7 +4,7 @@ Implementation plan for `DOCS/IDEA2.md`: a validated, continuously-running D2Q9 
 simulator in pure NumPy.
 
 **Plan shape:** 11 tasks, T001 → T011. **One task per session.** Task contracts and acceptance
-criteria live in `DOCS/TASKS1.md`; live status lives in `DOCS/STATE1.md`.
+criteria live in `old-Docs/TASKS1.md`; live status lives in `old-Docs/STATE1.md`.
 
 ---
 
@@ -19,7 +19,7 @@ The plan is the validation ladder with plumbing hung off it. Three rules set the
    the right Strouhal number, because a fused kernel that's subtly wrong is very hard to unfuse.
 3. **Every session ends on a green boundary.** A session closes with either a passing rung, a
    passing unit-test set, or an explicit "this is half-done and here is what's missing" in
-   `DOCS/STATE1.md`. Never on ambiguity.
+   `old-Docs/STATE1.md`. Never on ambiguity.
 
 ## Dependency graph
 

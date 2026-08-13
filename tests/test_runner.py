@@ -1,6 +1,6 @@
 """Tests for :mod:`lbm.runner` — T006.
 
-The acceptance criteria of ``DOCS/TASKS1.md`` § T006, one test apiece:
+The acceptance criteria of ``old-Docs/TASKS1.md`` § T006, one test apiece:
 allocation-freeness, a computed ``steps_per_frame``, a ring buffer that drops
 the oldest *display* frame and never a step, an abstract ``Sink``, a checkpoint
 that holds exactly four things, and — the one that earns the session — a

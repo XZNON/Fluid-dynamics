@@ -6,7 +6,7 @@ solver that a printed ``Cd`` does not cover: that the sharp corners do not leak,
 i.e. **no fluid velocity inside the solid**.
 
 The setup failures worth pinning are the ones session 7 already paid for once —
-a domain that trips ``check_mask`` (``DOCS/PLAN1.md`` § Risks), ``tau`` derived
+a domain that trips ``check_mask`` (``old-Docs/PLAN1.md`` § Risks), ``tau`` derived
 from anything other than ``Re`` (constraint 2), and a force integral that
 includes the channel walls (``Cd = 6.65`` where the body's own is 1.57).
 """
@@ -50,7 +50,7 @@ def test_the_default_domain_passes_every_mask_check(name: str) -> None:
     """No warning, not a suppressed warning (``CLAUDE.md`` constraint 12).
 
     Sharp corners are exactly where the thickness rule matters, so this check
-    has to *pass* rather than be silenced — ``DOCS/TASKS1.md`` § T008.
+    has to *pass* rather than be silenced — ``old-Docs/TASKS1.md`` § T008.
     """
     solid, _body, _cx, _cy = body_mask(cases()[name])
     with warnings.catch_warnings(record=True) as log:
@@ -93,7 +93,7 @@ def test_the_square_is_actually_a_square() -> None:
 
 
 def test_the_second_case_is_a_convex_polygon_and_is_not_the_square() -> None:
-    """``DOCS/TASKS1.md`` § T008 asks for "an arbitrary convex polygon"."""
+    """``old-Docs/TASKS1.md`` § T008 asks for "an arbitrary convex polygon"."""
     verts = np.asarray(POLY_VERTS, dtype=np.float64)
     assert verts.shape[0] >= 5
     edges = np.roll(verts, -1, axis=0) - verts
@@ -184,13 +184,13 @@ def test_rung_4_keeps_its_own_stricter_floor_above_rung_3s() -> None:
 
 
 def test_the_acceptance_band_is_the_contract_one() -> None:
-    """``DOCS/TASKS1.md`` § T008: Cd within 1.4-1.6, ref ~1.5. Not adjustable."""
+    """``old-Docs/TASKS1.md`` § T008: Cd within 1.4-1.6, ref ~1.5. Not adjustable."""
     assert CD_BAND == (1.4, 1.6)
     assert CD_BAND[0] < CD_REF < CD_BAND[1]
 
 
 def test_only_the_square_asserts_a_reference_value() -> None:
-    """The polygon case reports; it does not judge (``DOCS/TASKS1.md`` § T008)."""
+    """The polygon case reports; it does not judge (``old-Docs/TASKS1.md`` § T008)."""
     table = cases()
     assert table["square"].cd_band == CD_BAND
     assert table["polygon"].cd_band is None

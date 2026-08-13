@@ -2,7 +2,7 @@
 
 Covers ``lbm/units.py`` (``LatticeUnits``) and the two image sources added to
 ``lbm/geometry.py`` (``from_png``, ``from_svg``), one or more tests per
-acceptance criterion in ``DOCS/TASKS1.md`` § T009.
+acceptance criterion in ``old-Docs/TASKS1.md`` § T009.
 
 The committed test image
 ------------------------

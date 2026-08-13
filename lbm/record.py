@@ -85,13 +85,13 @@ __all__ = [
 #: mistake that leaves MP4 broken and GIF working.
 IMAGEIO_HINT: str = 'myenv/Scripts/pip.exe install "imageio[ffmpeg]"'
 
-#: What a missing ffmpeg binary should say. ``DOCS/TASKS1.md`` § T011: "Missing
+#: What a missing ffmpeg binary should say. ``old-Docs/TASKS1.md`` § T011: "Missing
 #: ffmpeg produces a clear install message, not a traceback."
 FFMPEG_HINT: str = (
     "MP4 recording needs an ffmpeg binary and none was found.\n"
     "    Install one into the project venv with:\n"
     f"        {IMAGEIO_HINT}\n"
-    "    and add a row to DOCS/STATE1.md § Environment in the same session.\n"
+    "    and add a row to old-Docs/STATE1.md § Environment in the same session.\n"
     "    (A system ffmpeg on PATH works too — set IMAGEIO_FFMPEG_EXE to it.)\n"
     "    Nothing else is blocked: --out with a .gif suffix and --headless PNGs "
     "both write through Pillow and need no binary."
@@ -120,7 +120,7 @@ def _imageio() -> Any:
         raise ImportError(
             "Recording needs imageio. Install it into the project venv with:\n"
             f"    {IMAGEIO_HINT}\n"
-            "and add a row to DOCS/STATE1.md § Environment in the same session."
+            "and add a row to old-Docs/STATE1.md § Environment in the same session."
         ) from exc
     return iio
 
@@ -454,7 +454,7 @@ class HeadlessSink(Sink):
 class TeeSink(Sink):
     """Hand the **same** frame object to several sinks, in order.
 
-    What makes ``--live --record`` composable (``DOCS/TASKS1.md`` § T011). It is
+    What makes ``--live --record`` composable (``old-Docs/TASKS1.md`` § T011). It is
     not a fourth sink in the ``DOCS/IDEA2.md`` sense and not a second frame
     source: it renders nothing, copies nothing, and passes each sink the very
     same array, which is the strongest available form of "same ``render()``

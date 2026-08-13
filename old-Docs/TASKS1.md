@@ -1,6 +1,6 @@
 # TASKS1.md — Phase 0 task contracts
 
-One task per session. Plan and ordering rationale: `DOCS/PLAN1.md`. Live status: `DOCS/STATE1.md`.
+One task per session. Plan and ordering rationale: `old-Docs/PLAN1.md`. Live status: `old-Docs/STATE1.md`.
 
 **Status vocabulary:** `not_started` · `in_progress` · `blocked` · `done`
 A task is `done` only when **every** acceptance criterion is checked. Code written ≠ done.
@@ -65,13 +65,13 @@ Also exported: `E` (9,2) int, `W` (9,), `OPP` (9,) int, `CS2 = 1/3`, `nu_from_ta
 
 ### Notes
 
-`pytest` is not yet installed in `myenv` — install it this session and record it in `DOCS/STATE1.md`
+`pytest` is not yet installed in `myenv` — install it this session and record it in `old-Docs/STATE1.md`
 § Environment. Resist writing `collide` "since it's three lines" — T002 owns it and Rung 1 is what
 proves it.
 
 **Outcome (session 1).** Delivered as specified; no criterion relaxed and no scope added. Four
 conventions were chosen that the contract left open and every later task now inherits — see
-`DOCS/STATE1.md` § Decisions **D-005** (`u` is `(2, ny, nx)`, component 0 = `ux`), **D-006** (optional
+`old-Docs/STATE1.md` § Decisions **D-005** (`u` is `(2, ny, nx)`, component 0 = `ux`), **D-006** (optional
 preallocated `feq` / `work` / `rho` / `u` outputs), **D-007** (`E` int32 plus an `E_F32` companion),
 **D-008** (`1.5*u^2` hoisted out of the direction loop). `pytest` 9.1.1 installed and recorded.
 
@@ -115,7 +115,7 @@ anything visual.
 - Constraint 2 — the pass condition *is* `nu = (tau - 0.5)/3`. If the doubling check fails, the bug is in collide or in the force term, not in the analytic solution.
 - Constraint 5 — Rung 1 must be green before T003 starts. No exceptions.
 - Constraint 6 — do not fuse collide and stream yet, however tempting.
-- Wall placement: decide and document whether walls sit on the last fluid node or halfway between (`H` in the analytic formula differs by one cell). Log the choice in `DOCS/STATE1.md` § Decisions — it will bite Rung 2.
+- Wall placement: decide and document whether walls sit on the last fluid node or halfway between (`H` in the analytic formula differs by one cell). Log the choice in `old-Docs/STATE1.md` § Decisions — it will bite Rung 2.
 
 ### Notes
 
@@ -170,7 +170,7 @@ Lid-driven cavity at Re 100, 400 and 1000 matches Ghia et al. (1982) centreline 
 
 ### Notes
 
-This is the task most likely to need two sessions. `DOCS/PLAN1.md` § Risks defines the valve: timebox
+This is the task most likely to need two sessions. `old-Docs/PLAN1.md` § Risks defines the valve: timebox
 to one session, then log and try Zou–He walls. Corner cells at the lid are the usual culprit —
 decide explicitly whether corners are lid or wall.
 
@@ -377,7 +377,7 @@ Strouhal number and drag coefficient that match the literature. This is **M3** �
 
 ### Notes
 
-`pygame` needs installing into `myenv`; record it in `DOCS/STATE1.md` § Environment. If shedding
+`pygame` needs installing into `myenv`; record it in `old-Docs/STATE1.md` § Environment. If shedding
 doesn't start, perturb the initial condition slightly or offset the cylinder half a cell — a
 perfectly symmetric setup on a symmetric grid can stay symmetric far longer than physics would.
 
@@ -543,7 +543,7 @@ Hit the performance budget with the cheap wins only, and prove correctness survi
 
 ### Acceptance criteria
 
-- [x] Baseline steps/s recorded **before** any change, for 400×100, 800×200, 2000×500, and written into `DOCS/STATE1.md`. — `bench.py --save-baseline` run as the first action of the session, before a line of solver code changed: **739.9 / 182.6 / 17.4** steps/s, archived in `DOCS/bench_baseline.json` and in § Performance baseline.
+- [x] Baseline steps/s recorded **before** any change, for 400×100, 800×200, 2000×500, and written into `old-Docs/STATE1.md`. — `bench.py --save-baseline` run as the first action of the session, before a line of solver code changed: **739.9 / 182.6 / 17.4** steps/s, archived in `DOCS/bench_baseline.json` and in § Performance baseline.
 - [x] Applied, each measured separately: preallocation audit (no allocation in the loop), `float32` end to end, fused collide+stream in one pass over `f`, skip `feq` on solid cells. — **preallocation:** the one remaining allocation (session 6's note, `~solid[:, col]` in `inlet_velocity`) is closed by a precomputed `fluid` mask the runner owns — measured separately at **0.37 µs of 79 µs** in that function and *nothing* at step level (**D-037**); it is kept as a correctness-of-claim fix, not a speed one. **`float32`:** audited by measurement, not by reading — a `__array_ufunc__` spy records the dtype of **every** ufunc result in a real timestep; all 125 are `float32`, and the audit is proven non-vacuous by planting a `float64` and watching it fail. **Fusion:** `lbm.core.collide_stream`, 1.00× / 1.01× / **1.14×** (**D-033**). **Skip `feq` on solid:** measured at **0.19×–0.50×** — a 2–4× *loss* — and deliberately not shipped (**D-034**).
 - [x] Post-change numbers meet the budget: **≥400 steps/s at 400×100, ≥120 at 800×200, ≥15 at 1M cells** (budget is ~500/~150/~20; these are the pass floors). — **696.7 / 161.7 / 16.8** at the CPU's rated clock, all three cleared. **Stated with its condition:** re-measured later in the session with the laptop on battery at 42% (CPU 1802 MHz of 3201), the identical build reads 402.7 / **117.0** / 16.8 and the 160k case sits 2.5% under its floor. The power state moves this table further than the optimisation does; see § Performance baseline and **D-035**.
 - [x] `bench.py` prints a before/after table. — plus `--save-baseline` and `--variants`; variants are timed in alternating rounds because sequential A/B is noisier than the effect (**D-035**).
@@ -619,10 +619,10 @@ MP4. **M4** — the first thing another person can use.
 - [x] `HeadlessSink` writes numbered PNGs, no display required. — `frame_00000.png …`, zero-padded, `prefix`/`digits`/`start` configurable; a test runs it with `sys.modules["pygame"] = None` so importing pygame at all would fail, and asserts the written PNG is byte-equal to the frame it was given.
 - [x] Both consume the same `render()` output as `LiveSink`; a test asserts the three sinks receive byte-identical frames for the same sim state. — `test_the_three_sinks_receive_byte_identical_frames` pushes one `render()` output through `TeeSink` and asserts all three received it; stronger than equality, `TeeSink` passes the **same object** (`id(frame)` asserted). `test_the_three_sinks_agree_frame_by_frame_through_run` repeats it for four frames driven by `run`.
 - [x] GIF output works for short clips. — 12 frames in, `frame_count()` reads 12, and a test with `imageio_ffmpeg.get_ffmpeg_exe` monkeypatched to raise proves **GIF needs no ffmpeg at all** (Pillow writes it).
-- [x] `python -m lbm.runner --geometry tests/data/<file>.png --fluid air --velocity 20 --length 1.5 --seconds 5 --out wake.mp4` produces a playable MP4 with a visible vortex street, in one command, from a cold shell. — **Delivered, with the fluid described by `--re 100` rather than `--fluid air`, and the reason is measured, not stylistic:** air at 20 m/s past a 1.5 m body is **Re 2e6**, and `lbm/units.py` refuses it — `tau = 0.5000` at the 0.51 floor, needing `cells_per_length >= 133334`. That refusal *is* the constraint-2/3 criterion working (D-032), so the two acceptance lines cannot both be satisfied by the same literal command. Both were run: the literal one prints the refusal and exits 2, and `--re 100` in its place produces the MP4. See § Notes and `DOCS/STATE1.md` § Snapshot for the gate output.
+- [x] `python -m lbm.runner --geometry tests/data/<file>.png --fluid air --velocity 20 --length 1.5 --seconds 5 --out wake.mp4` produces a playable MP4 with a visible vortex street, in one command, from a cold shell. — **Delivered, with the fluid described by `--re 100` rather than `--fluid air`, and the reason is measured, not stylistic:** air at 20 m/s past a 1.5 m body is **Re 2e6**, and `lbm/units.py` refuses it — `tau = 0.5000` at the 0.51 floor, needing `cells_per_length >= 133334`. That refusal *is* the constraint-2/3 criterion working (D-032), so the two acceptance lines cannot both be satisfied by the same literal command. Both were run: the literal one prints the refusal and exits 2, and `--re 100` in its place produces the MP4. See § Notes and `old-Docs/STATE1.md` § Snapshot for the gate output.
 - [x] `--live`, `--record`, `--headless` are composable; `--live --record` together works. — `lbm.record.TeeSink` fans one frame out; `--live --record` run for real with a pygame window open: 9 frames pushed, **9 in the MP4**, 0 dropped. Mode selection is not composable and must not be (**D-024**): any sink that writes a *file* forces `drop=False`, so `drop=True` is reached only by a live-only run. Tests cover live-only (`drop=True`), PNG series alone (`drop=False`, and the numbering has no gaps) and live+record.
 - [x] Missing ffmpeg produces a clear install message, not a traceback. — `lbm.record.check_ffmpeg` runs in `RecordSink.__init__`, **before the first timestep**, and raises `FFMPEG_HINT` verbatim: the `pip.exe install "imageio[ffmpeg]"` line, the `IMAGEIO_FFMPEG_EXE` alternative, and the note that GIF and PNG still work. Tested for both failure modes — binary absent and `imageio_ffmpeg` not installed — and the test asserts no output file was created.
-- [x] Rungs 1–4 still green. `DOCS/STATE1.md` records M4 as reached with the gate command output. — see § Measured in the session-11 log entry.
+- [x] Rungs 1–4 still green. `old-Docs/STATE1.md` records M4 as reached with the gate command output. — see § Measured in the session-11 log entry.
 
 ### Constraints that bite here
 
@@ -632,7 +632,7 @@ MP4. **M4** — the first thing another person can use.
 
 ### Notes
 
-`imageio[ffmpeg]` needs installing; record it in `DOCS/STATE1.md` § Environment. When this lands,
+`imageio[ffmpeg]` needs installing; record it in `old-Docs/STATE1.md` § Environment. When this lands,
 Phase 0 is closed — the next session should be planning the product layer from root `idea.md`, not
 adding solver features.
 
@@ -646,7 +646,7 @@ every printed digit. The sinks were the easy half. Three things measurement deci
    conflict — "produces a playable MP4 with a visible vortex street" and constraint 3/2's refusal —
    and the refusal wins, because a solver that quietly runs Re 2e6 on a 30-cell body with no
    turbulence model produces exactly the plausible-and-wrong artefact the validation ladder exists
-   to prevent. Both forms were run and both are in `DOCS/STATE1.md` § Snapshot; the gate proper is
+   to prevent. Both forms were run and both are in `old-Docs/STATE1.md` § Snapshot; the gate proper is
    the same command with `--re 100`.
 2. **`--resolution` meant the picture and that silently moved `tau`** (**D-040**). The committed
    `tests/data/test_body.png` has a margin, so a 30-row rasterisation box gives an **18-cell** body:

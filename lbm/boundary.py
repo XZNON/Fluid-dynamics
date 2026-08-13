@@ -31,7 +31,7 @@ direction ``OPP[i]``. Writing it into slot ``i`` sends it straight back out
 along ``E[i]`` on the next stream.
 
 The open boundaries come **after** :func:`lbm.core.stream` and not before
-(``DOCS/STATE1.md`` D-020). ``stream`` is periodic in ``x``, so after it the
+(``old-Docs/STATE1.md`` D-020). ``stream`` is periodic in ``x``, so after it the
 inlet column holds wrap-around garbage in exactly its ``ex = +1`` populations
 and the outlet column holds it in the ``ex = -1`` ones — precisely the unknowns
 these two functions overwrite. ``f_bb`` is the extra ``(9, ny, nx)`` buffer
@@ -81,7 +81,7 @@ def bounce_back(
     during the previous stream; reversing them and letting the next stream carry
     them out is the reflection.
 
-    Wall-offset convention (``DOCS/STATE1.md`` § Decisions, **D-009**, closing
+    Wall-offset convention (``old-Docs/STATE1.md`` § Decisions, **D-009**, closing
     Q-001)
     ----------------------------------------------------------------------
     The no-slip plane sits **halfway between the last fluid node and the first
@@ -141,7 +141,7 @@ def moving_wall(
     into the fluid. That is the drag the lid exerts.
 
     Call order and the ``f_pre`` it consumes are the same as
-    :func:`bounce_back` — see the module docstring (``DOCS/STATE1.md`` D-011).
+    :func:`bounce_back` — see the module docstring (``old-Docs/STATE1.md`` D-011).
     Apply it **after** :func:`bounce_back` if the masks overlap; this function
     writes the complete reflection for its cells, so the last writer wins.
 
@@ -150,7 +150,7 @@ def moving_wall(
     ``n x n`` cells with a one-cell solid border, the fluid nodes are
     ``1 .. n - 2`` and the characteristic length is ``L = n - 2``.
 
-    Corner cells (``DOCS/STATE1.md`` § Decisions, **D-013**, closes Q-003)
+    Corner cells (``old-Docs/STATE1.md`` § Decisions, **D-013**, closes Q-003)
     ---------------------------------------------------------------------
     The two cells where the lid meets the side walls are ambiguous: they are
     solid, they touch both walls, and the diagonal population they emit
@@ -176,7 +176,7 @@ def moving_wall(
 
     This function does not decide for the caller: it applies the wall velocity
     to whatever mask it is given. The decision lives in ``validate/cavity.py``'s
-    ``CORNERS`` and in ``DOCS/STATE1.md`` D-013.
+    ``CORNERS`` and in ``old-Docs/STATE1.md`` D-013.
 
     Args:
         f: post-collision distribution, shape ``(9, ny, nx)``, ``float32``,
@@ -223,7 +223,7 @@ def inlet_profile(
         ``ux = 4 U y_ (H - y_) / H^2`` — the Poiseuille shape, **peak** ``U``
         (not mean; the mean is ``2U/3``).
 
-    The parabola uses the half-way wall convention (``DOCS/STATE1.md`` D-009):
+    The parabola uses the half-way wall convention (``old-Docs/STATE1.md`` D-009):
     with fluid rows ``y0 .. y1`` in the inlet column, the walls are the planes
     ``y0 - 0.5`` and ``y1 + 0.5``, so ``H = y1 - y0 + 1`` and
     ``y_ = y - (y0 - 0.5)``. That puts ``ux = 0`` exactly on the wall planes
@@ -245,7 +245,7 @@ def inlet_profile(
 
     Returns:
         ``u_in``, shape ``(2, ny)``, ``float32``, ``(ux, uy)``
-        (``DOCS/STATE1.md`` D-005).
+        (``old-Docs/STATE1.md`` D-005).
 
     Raises:
         ValueError: on an unknown ``profile``, or if the inlet column has no
@@ -318,7 +318,7 @@ def inlet_velocity(
     against a bad inlet.
 
     Call it **after** :func:`lbm.core.stream` (module docstring,
-    ``DOCS/STATE1.md`` D-020). At that moment the three ``ex = +1`` populations
+    ``old-Docs/STATE1.md`` D-020). At that moment the three ``ex = +1`` populations
     in the inlet column are unknown — nothing upstream streamed into them, and
     the periodic wrap has filled them with the outlet's values. Those three are
     what this overwrites. With this package's direction order
@@ -342,7 +342,7 @@ def inlet_velocity(
     Allocation (``CLAUDE.md`` § conventions): pass ``u_in``, ``work`` **and**
     ``fluid`` and the call allocates nothing. Building the profile every step
     would allocate ``O(ny)``, so the runner (T006) keeps the returned ``u_in``
-    and hands it back (``DOCS/STATE1.md`` D-006). ``fluid`` closes the same hole
+    and hands it back (``old-Docs/STATE1.md`` D-006). ``fluid`` closes the same hole
     for the row mask: without it this function evaluates ``~solid[:, col]``, an
     ``O(ny)`` boolean, on **every** step — transient, freed immediately, and
     therefore invisible to a heap-growth test, but an allocation inside the step
@@ -469,7 +469,7 @@ def outlet_zero_gradient(
     is exactly the ``lam -> inf`` limit of that expression, which is why both
     live in one function.
 
-    Which to use, measured (``DOCS/STATE1.md`` **D-021**)
+    Which to use, measured (``old-Docs/STATE1.md`` **D-021**)
     ----------------------------------------------------
     A wave leaving through a copied column reflects far more than the name
     "zero-gradient" suggests. ``tests/test_probe.py`` fires a smooth Gaussian
@@ -498,7 +498,7 @@ def outlet_zero_gradient(
     can measure which one leaves the wake cleaner.
 
     Call it **after** :func:`lbm.core.stream` and **before**
-    :func:`inlet_velocity` (module docstring, ``DOCS/STATE1.md`` D-020).
+    :func:`inlet_velocity` (module docstring, ``old-Docs/STATE1.md`` D-020).
     Streaming is periodic in ``x``, so without this the outlet column's
     ``ex = -1`` populations are whatever wrapped around from the inlet.
 
@@ -557,7 +557,7 @@ def force_velocity_shift(
     Args:
         rho: density, shape ``(ny, nx)``, ``float32``.
         u: velocity, shape ``(2, ny, nx)``, ``float32``, ``(ux, uy)``
-            (``DOCS/STATE1.md`` D-005). Modified in place.
+            (``old-Docs/STATE1.md`` D-005). Modified in place.
         g: uniform body force per unit volume, ``(gx, gy)``, lattice units.
         work: optional preallocated scratch, shape ``(>=2, ny, nx)``,
             ``float32``. Supply it to make the call allocation-free (D-006).

@@ -18,7 +18,7 @@ not wait on them.
 Wall-offset convention: half-way bounce-back, so the walls are the planes
 ``y = 0.5`` and ``y = ny - 1.5``, the channel height is ``H = ny - 2``, and the
 analytic profile is evaluated at ``y_ = y - 0.5``. See
-:func:`lbm.boundary.bounce_back` and ``DOCS/STATE1.md`` D-009.
+:func:`lbm.boundary.bounce_back` and ``old-Docs/STATE1.md`` D-009.
 """
 
 from __future__ import annotations

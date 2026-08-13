@@ -4,7 +4,7 @@ Covers ``DOCS/IDEA2.md`` § "The method" step 6 (inlet velocity, outlet
 zero-gradient) and § "What to actually draw" (vorticity), plus the three
 measurements Rung 3 is scored on: ``Cd``, ``St`` and the steady-state residual.
 
-T005 has no rung of its own — these tests *are* its gate (``DOCS/TASKS1.md``
+T005 has no rung of its own — these tests *are* its gate (``old-Docs/TASKS1.md``
 § T005). Rung 3 (``validate/cylinder.py``, T007) is what finally audits
 :func:`lbm.probe.forces` against ``Cd ~ 1.34``.
 """
@@ -285,7 +285,7 @@ def _pulse_reflection(lam: float | None, nx: int = NX_PULSE, tau: float = 0.6) -
 def test_outlet_reflects_less_than_five_percent_of_a_pressure_pulse() -> None:
     """Acceptance criterion: a pulse crossing the outlet reflects < 5%.
 
-    Met by the convective form at ``lam = cs`` (``DOCS/STATE1.md`` D-021).
+    Met by the convective form at ``lam = cs`` (``old-Docs/STATE1.md`` D-021).
     """
     ratio = _pulse_reflection(lam=CS)
 
@@ -553,7 +553,7 @@ def _channel_forces(
 ) -> tuple[float, float]:
     """Run an open channel around ``solid`` and return the late-time mean (Cd, Cl).
 
-    The full T005 timestep, in the order ``DOCS/STATE1.md`` D-011 and D-020 fix:
+    The full T005 timestep, in the order ``old-Docs/STATE1.md`` D-011 and D-020 fix:
     pre-collision copy, collide, bounce-back, **pre-stream copy**, stream,
     convective outlet, Zou–He inlet. The last ``average_over`` steps are
     averaged, because the impulsive start rings acoustically for several hundred

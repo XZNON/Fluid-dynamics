@@ -5,7 +5,7 @@ most". The simulation is a *stream*, not a batch job:
 
 * :class:`Sim` owns ``f``, ``solid``, ``step_count`` and **every** buffer the
   step needs, so :meth:`Sim.step` allocates nothing (``CLAUDE.md`` conventions,
-  ``DOCS/STATE1.md`` D-006).
+  ``old-Docs/STATE1.md`` D-006).
 * :func:`steps_per_frame` is **computed** from the target playback speed
   (constraint 7). A hardcoded 20 is exactly what this module exists to avoid.
 * :class:`RingBuffer` sits between the physics and the sink. When it fills it
@@ -23,7 +23,7 @@ are T011 (constraint 10).
 The timestep order
 ------------------
 
-``DOCS/STATE1.md`` **D-020**, also carried by ``lbm/boundary.py``'s module
+``old-Docs/STATE1.md`` **D-020**, also carried by ``lbm/boundary.py``'s module
 docstring::
 
     copyto(f_pre, f)                       # pre-collision copy, for bounce_back
@@ -111,7 +111,7 @@ class SimConfig:
     """Everything about a run except the mask and the state itself.
 
     Plain scalars only — no arrays — so it pickles cheaply and a checkpoint can
-    carry it verbatim (``DOCS/TASKS1.md`` § T006: the checkpoint is ``f``,
+    carry it verbatim (``old-Docs/TASKS1.md`` § T006: the checkpoint is ``f``,
     ``solid``, ``step_count`` and *the config*). The mask travels beside it,
     not inside it.
 
@@ -328,7 +328,7 @@ class Sink(abc.ABC):
     Only the abstract base and :class:`NullSink` exist in T006. The live pygame
     sink is T007 and the MP4/GIF sinks are T011; the ring buffer is built first,
     deliberately, because a fake slow sink proves frame-dropping far more
-    cleanly than a real window does (``DOCS/TASKS1.md`` § T006 Notes).
+    cleanly than a real window does (``old-Docs/TASKS1.md`` § T006 Notes).
     """
 
     @abc.abstractmethod
@@ -579,7 +579,7 @@ class Sim:
     def step(self) -> None:
         """One full timestep, in place, allocating nothing.
 
-        The order is ``DOCS/STATE1.md`` **D-020** — see the module docstring for
+        The order is ``old-Docs/STATE1.md`` **D-020** — see the module docstring for
         the annotated listing and ``lbm/boundary.py`` for the reasoning behind
         each position. Nothing here allocates: every array it touches was
         created in :meth:`__init__`, which is what
@@ -899,7 +899,7 @@ def run(
             through ``field``: one frame is many timesteps and the shedding
             period is only a couple of thousand steps, so frame-rate sampling
             aliases. This hook exists so that measurement does not need a
-            second copy of the loop (``DOCS/STATE1.md`` **D-025**). It must not
+            second copy of the loop (``old-Docs/STATE1.md`` **D-025**). It must not
             render or touch a sink — that is what the ring buffer is for.
 
     Returns:
@@ -997,7 +997,7 @@ def run(
 # The command line — `python -m lbm.runner`
 # ---------------------------------------------------------------------------
 #
-# T011, ``DOCS/TASKS1.md``: "one command that takes a PNG plus physical numbers
+# T011, ``old-Docs/TASKS1.md``: "one command that takes a PNG plus physical numbers
 # and produces an MP4. M4 — the first thing another person can use."
 #
 # Everything below is the *boundary* of the package in the sense of
@@ -1279,7 +1279,7 @@ def _resolve_sinks(args: Any) -> tuple[Sink, list[Sink], bool]:
     """Build the sinks the flags ask for.
 
     ``--live``, ``--record`` and ``--headless`` are composable
-    (``DOCS/TASKS1.md`` § T011), which is what :class:`lbm.record.TeeSink` is
+    (``old-Docs/TASKS1.md`` § T011), which is what :class:`lbm.record.TeeSink` is
     for. The *mode* is not composable and must not be: **D-024** allows exactly
     two, and any sink that writes a **file** picks ``drop=False`` — a video with
     a missing frame and a PNG series with a gap in the numbering are both wrong
@@ -1317,7 +1317,7 @@ def _resolve_sinks(args: Any) -> tuple[Sink, list[Sink], bool]:
 def main(argv: list[str] | None = None) -> int:
     """``python -m lbm.runner`` — picture in, physical numbers in, video out.
 
-    The whole of ``DOCS/PLAN1.md`` § Milestone gates for **M4**: "An arbitrary
+    The whole of ``old-Docs/PLAN1.md`` § Milestone gates for **M4**: "An arbitrary
     PNG becomes a mask, runs in physical units, and records an MP4 — end to end,
     one command."
 

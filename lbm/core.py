@@ -254,7 +254,7 @@ def collide_stream(
             buf[i] = shift(s, E[i])                      # stream
 
     with ``s`` being ``f_bb[i]`` when the caller wants the pre-stream snapshot
-    :func:`lbm.probe.forces` consumes (``DOCS/STATE1.md`` **D-020**), and ``f[i]``
+    :func:`lbm.probe.forces` consumes (``old-Docs/STATE1.md`` **D-020**), and ``f[i]``
     itself when it does not. ``buf`` is copied back into ``f`` at the end so that
     ``f`` keeps its buffer identity, which T006's allocation test asserts.
 
