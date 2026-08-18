@@ -15,6 +15,13 @@ most". The simulation is a *stream*, not a batch job:
   bit-identical (constraint 11), which ``tests/test_runner.py`` asserts rather
   than claims.
 
+Since T101 (``DOCS/IDEA3.md`` § What Phase 1 is, concretely) this module reaches
+**every kernel through** :attr:`Sim.backend` and imports none of them directly —
+``lbm.core`` is imported here for its constants (``Q``, ``W``) and nothing else,
+which ``tests/test_backends.py`` asserts at import level. ``config.backend``
+picks the implementation by name; ``"numpy"`` is the default and the reference
+oracle (**D-043**).
+
 Everything here is lattice units (``lbm/units.py``, T009, converts at the
 boundary). Rendering is not here: :class:`Sink` is abstract and only
 :class:`NullSink` is implemented — the live sink is T007 and the recording sinks
@@ -68,16 +75,16 @@ from typing import Any, Callable
 import numpy as np
 from numpy.typing import NDArray
 
+from lbm.backends import Backend, get_backend
 from lbm.boundary import (
     U_MAX,
     apply_body_force,
-    bounce_back,
     force_velocity_shift,
     inlet_profile,
     inlet_velocity,
     outlet_zero_gradient,
 )
-from lbm.core import Q, W, collide, collide_stream, equilibrium, macroscopic, stream
+from lbm.core import Q, W
 from lbm.geometry import bounding_box, check_mask
 from lbm.probe import BoundaryLinks, boundary_links, forces, residual, vorticity
 
@@ -157,6 +164,13 @@ class SimConfig:
             against. Ignored when a body force is present: the Guo source term
             (D-010) is applied between collision and bounce-back, and Rung 1,
             the only case that uses it, is 22x16 cells.
+        backend: which :class:`lbm.backends.Backend` runs the kernels, by
+            registry name (T101, ``DOCS/IDEA3.md`` § What Phase 1 is,
+            concretely). ``"numpy"`` is the default and the reference oracle
+            (**D-043**); ``"warp"`` arrives in T102. A name nothing answers to
+            raises :class:`ValueError` at :class:`Sim` construction, listing
+            what is available. It is a plain string so the config still pickles
+            cheaply and a checkpoint carries it verbatim (**D-050**).
     """
 
     ny: int
@@ -181,6 +195,7 @@ class SimConfig:
     checkpoint_every: int = 0
     checkpoint_path: str | None = None
     fused: bool = True
+    backend: str = "numpy"
 
     def replace(self, **changes: Any) -> "SimConfig":
         """A copy with fields overridden (``dataclasses.replace``)."""
@@ -418,8 +433,9 @@ class Sim:
                 :func:`load_checkpoint`.
 
         Raises:
-            ValueError: on ``tau <= 0.5`` (constraint 2) or a mask/state whose
-                shape disagrees with the config.
+            ValueError: on ``tau <= 0.5`` (constraint 2), a mask/state whose
+                shape disagrees with the config, or a ``config.backend`` no
+                registered backend answers to (T101).
         """
         cfg = config
         if cfg.tau <= 0.5:
@@ -433,6 +449,12 @@ class Sim:
 
         self.config = cfg
         ny, nx = cfg.ny, cfg.nx
+
+        # The seam (T101). Every kernel this class calls goes through here and
+        # nowhere else, so swapping the compute target is a config change
+        # (``DOCS/PLAN2.md`` § Risks, the pressure valve behind D-043). Resolved
+        # before anything is allocated: a bad name should cost nothing.
+        self.backend: Backend = get_backend(cfg.backend)
 
         if solid is None:
             solid = np.zeros((ny, nx), dtype=bool)
@@ -511,7 +533,12 @@ class Sim:
                 raise ValueError(
                     f"f must be {(Q, ny, nx)} to match the config (got {f.shape})."
                 )
-            np.copyto(self.f, f.astype(np.float32, copy=False))
+            # Through the seam: an adopted state is always the host layout
+            # ``(9, ny, nx)`` float32 (constraint 4 in its D-046 form), and the
+            # backend is what turns it into whatever it runs on. On NumPy this
+            # is the identity, so the bits are the checkpoint's bits and
+            # constraint 11 holds.
+            np.copyto(self.f, self.backend.from_host(f.astype(np.float32, copy=False)))
 
         # The convective outlet's previous column. At the end of every step it
         # equals f[:, :, outlet_col] exactly (nothing later writes that column),
@@ -556,7 +583,7 @@ class Sim:
             self.u[1] = self.u_in[1][:, None]
         else:
             self.u.fill(np.float32(0.0))
-        equilibrium(self.rho, self.u, self.f, self.work)
+        self.backend.equilibrium(self.rho, self.u, self.f, self.work)
         np.copyto(self.u_prev, self.u)
 
     def _warn_if_too_fast(self) -> None:
@@ -586,8 +613,14 @@ class Sim:
         ``tests/test_runner.py::test_step_allocates_nothing`` asserts with
         ``tracemalloc`` and the buffer identity of ``f``.
 
+        Every kernel is reached through :attr:`Sim.backend` and never imported
+        directly (T101): the order below is physics and is the same on every
+        backend, while the arithmetic inside each call is the backend's. On
+        ``"numpy"`` each call is a delegation to the :mod:`lbm.core` function of
+        the same name, which is why the seam cannot move a bit.
+
         Collision, the reflection, the ``f_bb`` snapshot and the shift are one
-        fused pass per direction (:func:`lbm.core.collide_stream`, T010) unless
+        fused pass per direction (``backend.collide_stream``, T010) unless
         ``config.fused`` is off or a body force is present. The fused and
         unfused paths are **bitwise** equal — ``tests/test_perf.py`` asserts it
         — so the switch cannot change a rung's answer or break constraint 11's
@@ -596,16 +629,18 @@ class Sim:
         cfg = self.config
         f = self.f
 
+        backend = self.backend
+
         np.copyto(self.f_pre, f)  # pre-collision copy, for bounce_back (D-011)
-        macroscopic(f, self.rho, self.u)
+        backend.macroscopic(f, self.rho, self.u)
 
         if self._forced:
             force_velocity_shift(self.rho, self.u, self._g, self.work)
 
-        equilibrium(self.rho, self.u, self.feq, self.work)
+        backend.equilibrium(self.rho, self.u, self.feq, self.work)
 
         if self._fused:
-            collide_stream(
+            backend.collide_stream(
                 f,
                 self.feq,
                 cfg.tau,
@@ -615,14 +650,14 @@ class Sim:
                 f_bb=self.f_bb,
             )
         else:
-            collide(f, self.feq, cfg.tau)
+            backend.collide(f, self.feq, cfg.tau)
 
             if self._forced:
                 apply_body_force(f, self.rho, self.u, cfg.tau, self._g, self.work)
 
-            bounce_back(f, self.f_pre, self.solid)
+            backend.bounce_back(f, self.f_pre, self.solid)
             np.copyto(self.f_bb, f)  # pre-stream copy, for probe.forces (D-020)
-            stream(f, self.buf)
+            backend.stream(f, self.buf)
 
         if cfg.use_outlet:
             outlet_zero_gradient(
@@ -747,7 +782,12 @@ def save_checkpoint(sim: Sim, path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     state = {
         "format": CHECKPOINT_FORMAT,
-        "f": sim.f,
+        # Written in the **host** layout, ``(9, ny, nx)`` float32, whatever the
+        # backend holds internally (constraint 4 in its D-046 form). That is
+        # what makes a checkpoint portable across backends (**D-050**); on
+        # NumPy ``to_host`` is the identity, so nothing moves and nothing
+        # rounds.
+        "f": sim.backend.to_host(sim.f),
         "solid": sim.solid,
         "step_count": sim.step_count,
         "config": sim.config,
@@ -757,7 +797,7 @@ def save_checkpoint(sim: Sim, path: str | Path) -> Path:
     return path
 
 
-def load_checkpoint(path: str | Path) -> Sim:
+def load_checkpoint(path: str | Path, backend: str | None = None) -> Sim:
     """Rebuild a :class:`Sim` from a checkpoint, ready to continue.
 
     The continuation is bit-identical to the run that was saved: ``f`` is
@@ -766,14 +806,31 @@ def load_checkpoint(path: str | Path) -> Sim:
     from ``f`` (module docstring). ``float32`` throughout and no RNG in the step
     path mean there is nothing left to diverge.
 
+    Which backend it resumes on (**D-050**)
+    ---------------------------------------
+    The checkpoint's contents are unchanged by T101 — still exactly ``f``,
+    ``solid``, ``step_count``, the config and a ``format`` integer (**D-022**).
+    The backend name rides *inside* the config, because it is configuration and
+    not state, and ``f`` is stored in the portable host layout, so a checkpoint
+    written on one backend is loadable on another. ``backend=`` overrides the
+    saved name for exactly that case; omitting it resumes where the run left
+    off. A checkpoint written before T101 has no ``backend`` field at all and
+    picks up the dataclass default, ``"numpy"``, which is the backend it ran on.
+
     Args:
         path: a file written by :func:`save_checkpoint`.
+        backend: resume on this backend instead of the saved one. ``None``
+            keeps the config's. Bit-identical continuation is a **within**-
+            backend guarantee (constraint 11 in its D-046 form); resuming on a
+            different backend is a deliberate act with a tolerance, not a
+            promise of identical bits.
 
     Returns:
         A :class:`Sim` at the saved ``step_count``.
 
     Raises:
-        ValueError: if the pickle is not a checkpoint of a known format.
+        ValueError: if the pickle is not a checkpoint of a known format, or if
+            ``backend`` names one that is not registered.
     """
     with open(Path(path), "rb") as fh:
         state = pickle.load(fh)
@@ -787,6 +844,8 @@ def load_checkpoint(path: str | Path) -> Sim:
         )
 
     cfg: SimConfig = state["config"]
+    if backend is not None:
+        cfg = cfg.replace(backend=backend)
     # The mask checks already ran when the original Sim was built; re-running
     # them on load would print or warn a second time for no new information.
     return Sim(

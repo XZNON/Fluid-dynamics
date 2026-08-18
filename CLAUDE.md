@@ -20,33 +20,64 @@ scripts. It is not part of the LBM solver. Reuse its polygon-vertex code (`polyg
 
 Load-bearing decisions, not optimizations. A design that drifts from these is wrong even if it runs.
 
-1. **D2Q9, BGK single relaxation time, bounce-back walls.** No MRT, no cumulant, no curved/
-   interpolated boundaries, no turbulence model in Phase 0. Deferred is not the same as forgotten.
+**These are the Phase 1 constraints.** D-046 decided the fate of each of Phase 0's twelve — nine kept
+verbatim, three rewritten, one retired, four added — and T101 folded that table in here, which is why
+`DOCS/STATE2.md` **D-046** is no longer the authority: this list is. D-046 remains the record of *why*
+each one reads the way it does, and the retired one is kept below, struck, rather than deleted.
+
+1. **The physics is D2Q9, BGK single relaxation time, bounce-back walls, and it does not change in
+   Phase 1.** No MRT, no cumulant, no curved/interpolated boundaries, no turbulence model. The
+   *implementation* may move to a GPU backend; the arithmetic it transcribes may not change. Deferred
+   is not the same as forgotten. *(Rewritten by D-046.)*
 2. **Viscosity is not a free parameter.** `nu = cs2 * (tau - 0.5) = (tau - 0.5) / 3`. Never expose a
    `nu` setter that doesn't go through `tau`. `tau -> 0.5` means `nu -> 0` means the sim blows up.
 3. **Lattice velocity stays under 0.1.** Compressibility error scales as Mach squared. Any config
-   path that can produce `|u| >= 0.1` must warn at setup, not at `nan` time.
-4. **State is `f` of shape `(9, ny, nx)`**, index order `(direction, y, x)`. `float32`. The nine
-   constants (`e`, `w`, `opp`, `cs2`) live in `lbm/core.py` and are imported from there — never
-   redefined locally.
-5. **The validation ladder is non-negotiable and ordered.** Rung 1 Poiseuille, Rung 2 cavity vs
-   Ghia, Rung 3 cylinder Re 100, Rung 4 square cylinder. Each rung is a script in `validate/` that
-   prints pass/fail. **A wrong sim that looks plausible is the main failure mode of this project.**
-   Do not start rung N+1 while rung N fails.
-6. **Do not optimise before Rung 3 passes.** No fused kernels, no Numba, no GPU, no clever
-   vectorisation tricks until the cylinder shows the right Strouhal number.
+   path that can produce `|u| >= 0.1` must warn at setup, not at `nan` time — and `flow/autoconfig.py`
+   enforces it for users who never see `u`.
+4. **The backend owns its state layout; `to_host` must yield `(9, ny, nx)` `float32`**, index order
+   `(direction, y, x)`. That shape is the portability contract — checkpoints and cross-backend parity
+   both go through it and nothing else. The nine constants (`e`, `w`, `opp`, `cs2`) live in
+   `lbm/core.py` and are imported from there — uploaded to a device, **never redefined**, in any
+   backend. *(Rewritten by D-046.)*
+5. **The validation ladder is non-negotiable and ordered.** Phase 0: Rung 1 Poiseuille, Rung 2 cavity
+   vs Ghia, Rung 3 cylinder Re 100, Rung 4 square cylinder — all four stay a gate for every Phase 1
+   task. Phase 1 adds Rung A parity, B auto-config, C shapes, D refusals, E the minute (**D-047**).
+   Each rung is a script in `validate/` that prints pass/fail. **A wrong sim that looks plausible is
+   the main failure mode of this project.** Do not start rung N+1 while rung N fails.
+6. ~~**Do not optimise before Rung 3 passes.**~~ **Retired** — spent in session 7 when Rung 3 went
+   green. Replaced by: **no backend optimisation before its parity rung passes.** A backend with no
+   green Rung A is a backend to make correct, not fast.
 7. **Simulation and rendering are decoupled.** One rendered frame is many timesteps.
    `steps_per_frame` is **computed** from target playback speed — never hardcoded to 20.
 8. **Never block the sim on the display.** Ring buffer between them. If it fills, drop *display*
-   frames, never simulation steps.
+   frames, never simulation steps — and any file-writing sink takes `drop=False` (**D-039**).
 9. **Draw vorticity, not speed.** Diverging colormap, symmetric **fixed** limits. Speed magnitude is
    a grey smear; per-frame autoscaled limits flicker.
-10. **One `render()`, three sinks** (live / record / headless). Do not write three renderers.
-11. **Restart must be bit-identical.** `f`, `mask`, and step count are the entire state. Pickle every
-    N steps; resume produces a bit-identical continuation, and that is a tested claim.
+10. **One `render()`, three sinks** (live / record / headless). Do not write three renderers, and
+    `flow/` colours nothing.
+11. **Restart must be bit-identical within a backend.** `f`, `mask`, and step count are the entire
+    state. Pickle every N steps; resume produces a bit-identical continuation, and that is a tested
+    claim. **Across** backends it is a printed tolerance (T103), because float ordering differs on a
+    GPU and no test should pretend otherwise. *(Rewritten by D-046.)*
 12. **Geometry is one boolean array**, `solid`, shape `(ny, nx)`. Solid at least 3 cells thick
     (detect and warn — thinner leaks through bounce-back), object ≥8 diameters from the outlet,
-    blockage ratio under ~10%.
+    blockage ratio under ~10%. Phase 1 *repairs* where it can rather than only warning (T107).
+13. **No lattice quantity in any public `flow/` signature.** No `tau`, no lattice `U`, no
+    `steps_per_frame`, no cell counts. The inputs are a picture, a fluid, a speed, a size. Everything
+    else is derived and **printed**. *(New in Phase 1.)*
+14. **Every refusal names a fix, and the fix is machine-checked.** A refusal carries `reason`,
+    `quantity`, `value`, `limit`, `suggestions`; Rung D feeds the tool's own top suggestion back
+    through the planner and runs it. A suggestion that does not fix its case is a failing test.
+    *(New in Phase 1.)*
+15. **`flow/` may import `lbm/`; `lbm/` may never import `flow/`,** and a test asserts it. That
+    one-directional import is what makes the Phase 3 XLB swap a substitution rather than a rewrite.
+    *(New in Phase 1.)*
+16. **No silent substitution.** A run that differs from what was asked says so in every artifact it
+    produces — the printed summary, the report, and the video metadata — via `substituted=True`.
+    *(New in Phase 1.)*
+
+Constraints 13–16 are enforced by tests that land with the code they govern (`flow/`, T104 onward);
+until then they are the design rule that code has to be written to satisfy, not a dead letter.
 
 ---
 
@@ -130,6 +161,7 @@ line in `DOCS/STATE2.md` § Environment.
 
 | Module | Responsibility | Lands in |
 |---|---|---|
+| `lbm/backends/` | `Backend` protocol, the registry, one module per compute target | T101, T102 |
 | `lbm/core.py` | D2Q9 constants, macroscopic, equilibrium, collide, stream | T001, T002 |
 | `lbm/boundary.py` | bounce-back, walls, body force, inlet, outlet | T002, T005 |
 | `lbm/geometry.py` | mask from primitives / PNG / SVG, sanity checks | T004, T009 |
@@ -155,7 +187,12 @@ lbm.runner` turns a PNG plus physical numbers into an MP4 in one command.
 A–E, milestones M5 → M8. Spec `DOCS/IDEA3.md` · plan `DOCS/PLAN2.md` · backlog `DOCS/TASKS2.md` ·
 **live status `DOCS/STATE2.md`**. The current task is `T101` (backend seam).
 
-**The 12 hard constraints above are Phase 0's.** Their Phase 1 fates are decided in
-`DOCS/STATE2.md` **D-046** — nine permanent, three rewritten (1, 4, 11), one retired (6), four
-added (13–16). Until T101 folds that table into this file, **D-046 is the authority** where the two
-disagree.
+**T101 is done** (session 13, 2026-08-18): `lbm/backends/` holds the `Backend` protocol, the
+registry and `numpy_backend`; `SimConfig.backend` defaults to `"numpy"`; `Sim` reaches every kernel
+through `self.backend` and `lbm/runner.py` imports no kernel directly. Nothing got faster and no
+physics moved — all four Phase 0 rungs re-print their session-11 digits. The current task is `T102`
+(Warp kernels).
+
+**The 16 hard constraints above are the Phase 1 list**, folded in from `DOCS/STATE2.md` **D-046** by
+T101 — the constraints section is now the authority, and D-046 is the record of why each one reads
+the way it does.

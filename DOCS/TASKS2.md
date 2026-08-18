@@ -14,7 +14,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 
 | ID | Title | Status | Depends on | Gate |
 |---|---|---|---|---|
-| T101 | Backend seam, NumPy behind it | `not_started` | — | Phase 0 rungs 1–4 |
+| T101 | Backend seam, NumPy behind it | `done` | — | Phase 0 rungs 1–4 |
 | T102 | Warp kernels: equilibrium, collide, stream | `not_started` | T101 | **Rung A** (kernels) |
 | T103 | Warp boundaries, checkpoint, performance | `not_started` | T102 | **Rung A** (full) → **M5** |
 | T104 | Physical quantities + fluid library | `not_started` | — | unit tests |
@@ -29,7 +29,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 
 ## T101 — Backend seam, NumPy behind it
 
-**Status:** `not_started`
+**Status:** `done` — session 13, 2026-08-18. All four Phase 0 rungs re-printed session 11's digits.
 
 ### Goal
 
@@ -60,13 +60,13 @@ The protocol covers, at minimum:
 
 ### Acceptance criteria
 
-- [ ] `Backend` is a `typing.Protocol` (or ABC) with every method above, each documented with its array shapes; `lbm/core.py`'s functions are unchanged and the NumPy backend delegates to them.
-- [ ] `SimConfig(backend="numpy")` is the default and `Sim` reaches every kernel through `self.backend`; a test asserts no module in `lbm/runner.py` imports `lbm.core`'s kernels directly any more (import-level assertion, not a comment).
-- [ ] `to_host` / `from_host` round-trip a `(9, ny, nx)` `float32` array bit-identically on the NumPy backend; asserted with `np.array_equal`.
-- [ ] An unknown backend name raises `ValueError` naming the requested backend and listing the available ones.
-- [ ] **Restart is still bit-identical** — T006's test passes unchanged, plus a new one that checkpoints and resumes through the seam.
-- [ ] `myenv/Scripts/python.exe -m pytest` green with **no existing test modified**.
-- [ ] **All four Phase 0 rungs re-run and print numbers identical to session 11 to every printed digit** — R1 L2 0.3650% · R2 0.75% / 0.42% / 1.01% · R3 St 0.1731, Cd 1.4031 · R4 square Cd 1.5279, polygon Cd 1.4276.
+- [x] `Backend` is a `typing.Protocol` (or ABC) with every method above, each documented with its array shapes; `lbm/core.py`'s functions are unchanged and the NumPy backend delegates to them.
+- [x] `SimConfig(backend="numpy")` is the default and `Sim` reaches every kernel through `self.backend`; a test asserts no module in `lbm/runner.py` imports `lbm.core`'s kernels directly any more (import-level assertion, not a comment).
+- [x] `to_host` / `from_host` round-trip a `(9, ny, nx)` `float32` array bit-identically on the NumPy backend; asserted with `np.array_equal`.
+- [x] An unknown backend name raises `ValueError` naming the requested backend and listing the available ones.
+- [x] **Restart is still bit-identical** — T006's test passes unchanged, plus a new one that checkpoints and resumes through the seam.
+- [x] `myenv/Scripts/python.exe -m pytest` green with **no existing test modified**.
+- [x] **All four Phase 0 rungs re-run and print numbers identical to session 11 to every printed digit** — R1 L2 0.3650% · R2 0.75% / 0.42% / 1.01% · R3 St 0.1731, Cd 1.4031 · R4 square Cd 1.5279, polygon Cd 1.4276.
 
 ### Constraints that bite here
 

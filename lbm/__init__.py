@@ -5,8 +5,20 @@ converted at the boundary by ``lbm.units`` (T009) and never reach the solver.
 
 See ``DOCS/IDEA2.md`` for the full Phase 0 specification and ``CLAUDE.md`` for
 the hard constraints.
+
+Phase 1 adds a **backend seam** (``DOCS/IDEA3.md`` § What Phase 1 is,
+concretely, T101) and no new physics: :class:`lbm.backends.Backend` is the set
+of kernels :class:`lbm.runner.Sim` calls, ``lbm.backends.numpy_backend`` is the
+reference implementation over the functions below, and ``SimConfig.backend``
+picks one by name.
 """
 
+from lbm.backends import (
+    Backend,
+    BackendUnavailableError,
+    available_backends,
+    get_backend,
+)
 from lbm.boundary import (
     apply_body_force,
     bounce_back,
@@ -95,6 +107,8 @@ __all__ = [
     "U_LATTICE_DEFAULT",
     "U_LATTICE_MAX",
     "W",
+    "Backend",
+    "BackendUnavailableError",
     "BoundaryLinks",
     "HeadlessSink",
     "LatticeUnits",
@@ -109,6 +123,7 @@ __all__ = [
     "Sink",
     "TeeSink",
     "apply_body_force",
+    "available_backends",
     "bounce_back",
     "boundary_links",
     "bounding_box",
@@ -125,6 +140,7 @@ __all__ = [
     "frame_count",
     "from_png",
     "from_svg",
+    "get_backend",
     "inlet_profile",
     "inlet_velocity",
     "load_checkpoint",

@@ -14,13 +14,13 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T101` — backend seam, NumPy behind it (`DOCS/TASKS2.md`) |
+| **Current task** | `T102` — Warp kernels: equilibrium, collide, stream (`DOCS/TASKS2.md`) |
 | **Task status** | `not_started` |
-| **Completed tasks** | none in Phase 1. Phase 0: T001 … T011, all done |
+| **Completed tasks** | Phase 1: **T101**. Phase 0: T001 … T011, all done |
 | **Milestone reached** | **M4** (2026-08-13, Phase 0 complete). Phase 1 targets M5 → M8 |
 | **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task |
 | **Phase 1 rung status** | A ⬜ · B ⬜ · C ⬜ · D ⬜ · E ⬜ — no script exists yet; each is built in its own task |
-| **Last updated** | 2026-08-13 — session 12 (Phase 1 planned; `IDEA3`, `PLAN2`, `TASKS2`, this file; D-041 … D-048; no code changed) |
+| **Last updated** | 2026-08-18 — session 13 (**T101 done**: `lbm/backends/` seam, NumPy behind it; all four Phase 0 rungs re-printed session 11's digits; D-050, D-051; D-046 folded into `CLAUDE.md`) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -98,6 +98,8 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-047 | 2026-08-13 | **Phase 1's validation ladder is five rungs — A parity, B auto-config, C shapes, D refusals, E the minute — ordered and non-negotiable, and they live in the existing `validate/` package** (`validate/parity.py`, `autoconfig.py`, `shapes.py`, `refusals.py`, `minute.py`), each printing PASS/FAIL. **A rung's harness is built in the task that needs it, before the code it validates.** For a usability layer, the "known answer" is a **committed verdict or an executable suggestion**: a shape's expected verdict plus measured properties (Rung C), a suggestion that must actually run (Rung D), and — for Rung E — Phase 0's own published cylinder bands reached through the product path. | `idea.md` § Risks: *"Every phase ships with a benchmark that has a known answer."* Phase 0's ladder caught three wrong-but-plausible answers (the force integral measuring the channel walls, the blockage lie from no-slip walls, the FFT locking onto the domain's acoustics) precisely because PASS meant a number inside a published band. Judgement can be held to the same standard if the claims are made falsifiable — a verdict is checkable, a suggestion is runnable — and Rung E deliberately reuses Rung 3's cylinder so a regression in *judgement* surfaces as a regression in *physics*, which is the only kind this project knows how to detect reliably. A new `validate2/` package was rejected: `python -m validate.<rung>` is already the documented command shape. |
 | D-049 | 2026-08-13 | **Phase 0's three session-management documents move to `old-Docs/`** — `STATE1.md`, `TASKS1.md`, `PLAN1.md`, by `git mv`, with an `old-Docs/README.md` pointer. **`DOCS/IDEA2.md` stays in `DOCS/`**, and so do `bench_baseline.json` (read by `bench.py`) and `ISSUES.jsonl` (read by `tools/issues.py`). Phase 0's session prompts `001` … `011` are deleted; `012` onward stay. Every reference to the three moved paths was rewritten across code, docs, `.claude/commands/` and the prompt template — **a path rewrite is not a content edit, and D-041's freeze covers content and history, not the file's location**. | The archive is worth having and the cost was measured before paying it: `DOCS/IDEA2.md` is cited by **~100 docstrings** in `lbm/`, `validate/`, `tests/` and `bench.py`, because `CLAUDE.md` § Coding conventions requires docstrings to name the spec section. Moving it would have invalidated every one of those citations for a tidier directory listing — the convention is load-bearing and the listing is not. The three session documents are cited ~90 times but **only in prose**, where a mechanical rewrite is safe and verifiable; `pytest` re-run afterwards confirms **367 passed**, unchanged. The `.claude/commands/` rewrite needed a second pass in the opposite direction: the first pass pointed `/checkpoint` and `/start-task` at `old-Docs/STATE1.md`, which would have had the next session **writing into the frozen file**. They now target `DOCS/STATE2.md` / `DOCS/TASKS2.md` / `DOCS/PLAN2.md` / `DOCS/IDEA3.md` and `T1XX`. Prompts 001–011 are all committed, so deletion is recoverable from git history — that is what made it a cheap call rather than an irreversible one. |
 | D-048 | 2026-08-13 | **Phase 1 tasks are numbered `T101` … `T110`**, and the phase's documents are `DOCS/IDEA3.md` (spec), `DOCS/PLAN2.md` (plan), `DOCS/TASKS2.md` (backlog), `DOCS/STATE2.md` (state). | `T012` would have read as a continuation of a closed backlog, and `/start-task` resolves a bare ID against a task file — two files with a `T0xx` range each is an ambiguity waiting for a tired session. The `IDEA3`/`PLAN2` mismatch is inherited (`idea2.md` was Phase 0's spec) and is kept rather than renamed, because `DOCS/IDEA2.md` is cited by name in eleven session-log entries. |
+| D-050 | 2026-08-18 | **The checkpoint's contents are unchanged by the backend seam. `f` is written through `backend.to_host`, so it is always the portable host layout `(9, ny, nx)` `float32`, and the backend *name* rides inside the pickled `SimConfig` rather than as a new top-level key — so D-022 stays literally true: `f` / `solid` / `step_count` / config plus `format: 1`.** `load_checkpoint(path, backend=...)` overrides the saved name, which is how a checkpoint written on one backend is resumed on another. A checkpoint written before T101 has no `backend` field and picks up the dataclass default, `"numpy"`, which is the backend it ran on — tested, not assumed. | `PROMPTS/013-t101-backend-seam.md` asked for this to be recorded as D-049; that number was already spent on session 12's archival decision, so it is D-050 — logged here rather than silently renumbered. D-022 asks for this decision by name and warns that adding the backend to the checkpoint has a real consequence. Putting it in the config is what makes the consequence benign: the backend is *configuration*, like `tau` or `fused`, and the config was already pickled verbatim, so nothing is added and nothing new can be misread. A top-level `backend` key would have broken D-022's four-things rule for no information gain, and pinning the file to the backend that wrote it would have made the D-043 pressure valve (demote the port, continue on NumPy) discard every checkpoint in flight. `to_host` on the write side is what makes the file portable at all — constraint 4 in its D-046 form is the only reason a Warp checkpoint will be readable by NumPy in T103. |
+| D-051 | 2026-08-18 | **The `Backend` protocol covers kernels and the two host transfers, and nothing else. Buffer allocation, the open boundaries (`inlet_velocity`, `outlet_zero_gradient`), the Guo body force and the probes stay outside it** — `Sim` still allocates its own `(9, ny, nx)` buffers with `np.empty` and still calls `lbm.boundary`'s open-boundary functions directly. **T102/T103 will therefore have to widen the seam** (allocation first), and that widening is expected work, not a defect of T101. | `DOCS/TASKS2.md` § T101 Notes: two implementations is the number that reveals the right seam; one plus a guess is not. Every method guessed at now would be shaped by NumPy alone and rewritten in T102 anyway, at the cost of a protocol nobody could read. The contract's minimum list is exactly the set `Sim.step` calls per timestep, which is the set with a measurable cost, and Rung A can already be built on `to_host`/`from_host` alone (**Q-103**). Recorded here so T102 budgets for it rather than discovering it. |
 
 ### Constraint fate table (D-046)
 
@@ -207,3 +209,116 @@ Append one entry per session. Newest at the bottom.
   physics, makes nothing faster, and its acceptance criterion is that **every Phase 0 number comes
   back identical to session 11**. It exists so that T102's Warp backend is the only new thing in the
   session that introduces Warp.
+
+### 2026-08-18 — Session 13: T101, the backend seam
+
+**Task worked:** `T101` — backend seam, NumPy behind it. **Done**, every acceptance criterion run
+rather than read.
+
+**Done**
+- Read, in the prompt's order: `CLAUDE.md`, this file in full, `DOCS/TASKS2.md` § T101 in full,
+  `DOCS/IDEA3.md` § What Phase 1 is, concretely / § The five things / § Validation ladder /
+  § Deliberately deferred, `old-Docs/STATE1.md` **D-011**, **D-020**, **D-022**, **D-033**,
+  **D-035**, and `DOCS/PLAN2.md` § Why this order / § Dependency graph / § Session map / § Risks.
+- **`lbm/backends/__init__.py`** — the `Backend` protocol (`typing.Protocol`, `@runtime_checkable`):
+  `macroscopic`, `equilibrium`, `collide`, `bounce_back`, `stream`, `collide_stream`, `to_host`,
+  `from_host`, plus a `name` attribute. Every method documents its array shapes; a test asserts the
+  docstrings actually contain them, because a seam whose shapes live in a comment is a seam nobody
+  can port to. Its module docstring states what a backend owns (kernels + layout) and what it does
+  **not** (the D-011/D-020 timestep order, which stays in `Sim.step` because the order is physics).
+- **`lbm/backends/numpy_backend.py`** — `NumpyBackend`, a pure delegation to the **unchanged**
+  `lbm.core` functions and `lbm.boundary.bounce_back`. `to_host` / `from_host` are the identity with
+  the `(9, ny, nx)` `float32` contract *checked*, so a layout mistake in a future backend fails at
+  the seam rather than three rungs later.
+- **`lbm/backends/registry.py`** — `get_backend` / `available_backends` / `known_backends` and
+  `BackendUnavailableError(ValueError)`. Two failures, two messages: an unknown name lists what
+  exists, a known-but-uninstalled one names the install line. **The `warp` row already exists** —
+  T102 does not touch this table, it only writes the module the row points at.
+- **`SimConfig.backend: str = "numpy"`**; `Sim.backend` is resolved *before* any allocation (a bad
+  name should cost nothing); `Sim.step` and `Sim._init_equilibrium` reach every kernel through it.
+  `lbm/runner.py` now imports `Q, W` from `lbm.core` and **no kernels at all** — the constants still
+  come from there, which constraint 4 requires rather than merely allows.
+- **`tests/test_backends.py`** — 22 tests, one per acceptance criterion plus the seam's own
+  invariants: protocol completeness, documented shapes, bit-for-bit delegation against `lbm.core`,
+  fused-vs-unfused bitwise equality through the seam (**D-033**), an AST scan asserting no backend
+  module redefines `E`/`W`/`OPP`/`CS2`, an AST + namespace scan asserting `lbm/runner.py` imports no
+  kernel, a counting-backend test proving `Sim` reaches all six kernels through `self.backend`, a
+  `tracemalloc` check that the indirection did not put an allocation back in the step loop, the
+  `to_host`/`from_host` round trip under `np.array_equal`, the two registry errors, and the restart
+  pair.
+- **`CLAUDE.md`: D-046's constraint table folded in**, which § Current state and session 12's log
+  both assign to this task. The list is now 16 Phase 1 constraints — 1, 4 and 11 rewritten, 6
+  **retired but struck rather than deleted**, 13–16 added with a note that their tests land with
+  `flow/`. § Current state and § Module map updated (`lbm/backends/` added). D-046 is no longer "the
+  authority"; it is now the record of *why* each constraint reads the way it does.
+
+**Measured**
+- `myenv/Scripts/python.exe -m pytest` → **`389 passed, 7 warnings in 15.40s`** — 367 before,
+  22 added, **no existing test modified** (`git status` shows `tests/test_backends.py` as the only
+  change under `tests/`).
+- **The full ladder, re-run after the change, printing session 11's digits exactly:**
+
+  | Rung | Session 11 | Session 13 |
+  |---|---|---|
+  | R1 Poiseuille | L2 **0.3650%** | L2 **0.3650%** |
+  | R2 cavity | **0.75% / 0.42% / 1.01%** | **0.75% / 0.42% / 1.01%** |
+  | R3 cylinder | St **0.1731**, Cd **1.4031 ± 0.0086** | St **0.1731**, Cd **1.4031 ± 0.0086** |
+  | R4 square | Cd **1.5279 ± 0.0271** | Cd **1.5279 ± 0.0271** |
+  | R4 polygon | Cd **1.4276 ± 0.0226** | Cd **1.4276 ± 0.0226** |
+
+  Identical, not merely inside the band — which is the criterion for a task that is supposed to
+  change nothing.
+- **Performance: no measurable cost from the indirection**, and deliberately not benchmarked.
+  Per **D-035** the numbers below are quoted with their conditions: AMD Ryzen 7 5800H,
+  `Win32_Processor.CurrentClockSpeed` **3201 MHz** of a 3201 MHz maximum, on **mains**
+  (`BatteryStatus 2`). R3 ran 45500 steps in **365.0 s (125 steps/s)** against session 7's
+  368.9 s standalone for the same rung. That is a rung wall clock, **not** an A/B benchmark — D-035
+  requires alternating rounds and one resident `Sim`, and none of that was done — so it is recorded
+  as "no slowdown large enough to show up", not as a speed claim. Six Python attribute lookups per
+  timestep against an 8–75 ms step was never going to be visible, and constraint 6's replacement
+  forbids optimising a backend before its parity rung exists.
+
+**Decisions made**
+- **D-050** — the checkpoint's contents are unchanged: `f` is written through `backend.to_host` so
+  it is always the portable `(9, ny, nx)` `float32` layout, and the backend *name* rides inside the
+  pickled `SimConfig` rather than as a new top-level key, so **D-022** stays literally true.
+  `load_checkpoint(path, backend=...)` overrides it. A pre-T101 checkpoint has no `backend` field
+  and picks up the dataclass default `"numpy"` — tested, not assumed.
+  `PROMPTS/013-t101-backend-seam.md` asked for this to be D-049; that number was spent on session
+  12's archival decision, so the conflict is logged in the D-050 row rather than silently
+  renumbered.
+- **D-051** — the protocol covers kernels and the two host transfers **and nothing else**. Buffer
+  allocation, the open boundaries, the Guo body force and the probes stay outside it; `Sim` still
+  allocates its own buffers with `np.empty`. **T102/T103 will have to widen the seam, starting with
+  allocation** — recorded so the port budgets for it rather than discovering it.
+
+**Not done / deferred**
+- **No `--backend` flag on any CLI or rung script.** `python -m lbm.runner` and `validate/*` still
+  run the default. M5's gate needs `validate.<rung> --backend warp`; that wiring belongs to T103,
+  which owns the full-ladder-on-GPU gate. Adding it now would have been a flag with one legal value.
+- **No Warp, no `warp-lang` install.** T102's, by the contract and by `DOCS/PLAN2.md` § Session map.
+- **The seam does not yet cover allocation** — see **D-051**. This is the one place a reader could
+  mistake T101 for finished-in-the-larger-sense: `Sim` still owns `(9, ny, nx)` NumPy buffers, so a
+  device backend cannot yet hold device memory. Deliberate (two implementations reveal the seam; one
+  plus a guess does not), and the first thing T102 will hit.
+- **Q-103 not closed** — it is not this task's to close. What T101 gives it is the measurable hook:
+  `to_host`/`from_host` are the only path state takes in or out, so the parity rung compares host
+  arrays and nothing else.
+- `DOCS/ISSUES.jsonl` tracking in git — still the user's call, still not acted on. Nothing was
+  queued this session; nothing failed.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four **re-run**, not inherited, and identical.
+- Phase 1: A ⬜ · B ⬜ · C ⬜ · D ⬜ · E ⬜ — Rung A is T102's first deliverable.
+
+**Next**
+- Paste `PROMPTS/014-t102-warp-kernels.md` into a fresh session. It runs `/start-task T102`.
+- T102 installs `warp-lang`, writes `lbm/backends/warp_backend.py` for `equilibrium`, `collide`,
+  `stream`, `macroscopic`, `to_host`, `from_host`, and builds `validate/parity.py --kernels` —
+  **Rung A's harness before the code it validates**. The nine constants are uploaded from
+  `lbm/core.py`, never redefined in a kernel. The first thing it will meet is **D-051**.
+- `DOCS/PLAN2.md` § Risks: if Warp will not install or run in the first half of that session, log
+  the blocker and fall through to **T104**, which is independent of the GPU work.
