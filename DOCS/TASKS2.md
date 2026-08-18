@@ -15,7 +15,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | ID | Title | Status | Depends on | Gate |
 |---|---|---|---|---|
 | T101 | Backend seam, NumPy behind it | `done` | — | Phase 0 rungs 1–4 |
-| T102 | Warp kernels: equilibrium, collide, stream | `not_started` | T101 | **Rung A** (kernels) |
+| T102 | Warp kernels: equilibrium, collide, stream | `done` | T101 | **Rung A** (kernels) |
 | T103 | Warp boundaries, checkpoint, performance | `not_started` | T102 | **Rung A** (full) → **M5** |
 | T104 | Physical quantities + fluid library | `not_started` | — | unit tests |
 | T105 | Auto-configuration | `not_started` | T104 | **Rung B** → **M6** |
@@ -84,7 +84,7 @@ path (D-033) and the protocol should not pretend otherwise.
 
 ## T102 — Warp kernels: equilibrium, collide, stream
 
-**Status:** `not_started`
+**Status:** `done` (session 14, 2026-08-18)
 
 ### Goal
 
@@ -106,13 +106,13 @@ PASS/FAIL per kernel.
 
 ### Acceptance criteria
 
-- [ ] `warp` installed into `myenv` and recorded in `DOCS/STATE2.md` § Environment with its version and the CUDA/driver version it found.
-- [ ] The nine D2Q9 constants come from `lbm/core.py` and are uploaded to the device once at backend construction — **not redefined in a Warp kernel** (constraint 4 / "no physics constant twice").
-- [ ] `validate/parity.py --kernels` compares each of `equilibrium`, `collide`, `stream`, `macroscopic` against the NumPy backend on random `rho ∈ [0.9, 1.1]`, `|u| ≤ 0.099`, at 3 grid sizes, and prints the max absolute difference per kernel.
-- [ ] **Per-kernel agreement: max absolute difference ≤ 1e-6 in `f` units** — and the script prints the number, so a later regression is visible rather than merely passing. A difference that is not explainable by float ordering fails the task; do not widen the tolerance.
-- [ ] `stream` is verified independently of parity by the Phase 0 spike test: a single-cell spike lands one cell along `E[i]`, for all 9 directions, on the GPU.
-- [ ] No allocation per call: the backend preallocates its device buffers at construction; a test runs 1000 steps' worth of kernel calls and asserts device memory is flat.
-- [ ] `myenv/Scripts/python.exe -m pytest` green; Phase 0 rungs unaffected (they still run `--backend numpy`).
+- [x] `warp` installed into `myenv` and recorded in `DOCS/STATE2.md` § Environment with its version and the CUDA/driver version it found.
+- [x] The nine D2Q9 constants come from `lbm/core.py` and are uploaded to the device once at backend construction — **not redefined in a Warp kernel** (constraint 4 / "no physics constant twice").
+- [x] `validate/parity.py --kernels` compares each of `equilibrium`, `collide`, `stream`, `macroscopic` against the NumPy backend on random `rho ∈ [0.9, 1.1]`, `|u| ≤ 0.099`, at 3 grid sizes, and prints the max absolute difference per kernel.
+- [x] **Per-kernel agreement: max absolute difference ≤ 1e-6 in `f` units** — and the script prints the number, so a later regression is visible rather than merely passing. A difference that is not explainable by float ordering fails the task; do not widen the tolerance.
+- [x] `stream` is verified independently of parity by the Phase 0 spike test: a single-cell spike lands one cell along `E[i]`, for all 9 directions, on the GPU.
+- [x] No allocation per call: the backend preallocates its device buffers at construction; a test runs 1000 steps' worth of kernel calls and asserts device memory is flat.
+- [x] `myenv/Scripts/python.exe -m pytest` green; Phase 0 rungs unaffected (they still run `--backend numpy`).
 
 ### Constraints that bite here
 
@@ -125,6 +125,14 @@ PASS/FAIL per kernel.
 Bit-identical GPU/CPU agreement is not achievable and is not the goal; **explainable** agreement is.
 Where a fused multiply-add changes the last bits, say so with the measured magnitude. The parity
 script is the deliverable that outlives this task.
+
+**Outcome (session 14).** Every criterion run. `warp-lang` **1.16.0**, CUDA Toolkit 12.9 / Driver
+13.1, `cuda:0` = RTX 3050 Laptop GPU. Measured worst-case difference **5.96e-08** in `f` units
+against the 1e-6 bar: `macroscopic` and `stream` **bitwise identical**, `collide` 1.49e-08,
+`equilibrium` 5.96e-08 — one fused multiply-add each, magnitudes recorded in **D-053**. Spike test
+9/9 on the GPU. `pytest` **408 passed, 1 skipped**. The backend takes host arrays at its boundary and
+owns preallocated device buffers per grid shape (**D-052**); moving the state onto the device, and
+therefore any speed number at all, is T103's.
 
 ---
 

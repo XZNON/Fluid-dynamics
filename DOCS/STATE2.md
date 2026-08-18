@@ -14,13 +14,13 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T102` — Warp kernels: equilibrium, collide, stream (`DOCS/TASKS2.md`) |
+| **Current task** | `T103` — Warp boundaries, checkpoint, performance (`DOCS/TASKS2.md`) |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**. Phase 0: T001 … T011, all done |
+| **Completed tasks** | Phase 1: **T101**, **T102**. Phase 0: T001 … T011, all done |
 | **Milestone reached** | **M4** (2026-08-13, Phase 0 complete). Phase 1 targets M5 → M8 |
 | **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task |
-| **Phase 1 rung status** | A ⬜ · B ⬜ · C ⬜ · D ⬜ · E ⬜ — no script exists yet; each is built in its own task |
-| **Last updated** | 2026-08-18 — session 13 (**T101 done**: `lbm/backends/` seam, NumPy behind it; all four Phase 0 rungs re-printed session 11's digits; D-050, D-051; D-046 folded into `CLAUDE.md`) |
+| **Phase 1 rung status** | **A 🟨** · B ⬜ · C ⬜ · D ⬜ · E ⬜ — Rung A's **kernel** half is green (`validate/parity.py --kernels`, worst 5.96e-08 against a 1e-6 bar); its whole-step half, the boundaries and the four Phase 0 rungs on GPU are T103's |
+| **Last updated** | 2026-08-18 — session 14 (**T102 done**: `lbm/backends/warp_backend.py`, `validate/parity.py --kernels` green, warp-lang 1.16.0 installed; D-052, D-053) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -40,6 +40,11 @@ None.
 - **Q-103** — what tolerance does cross-backend whole-step agreement actually need? T103 sets
   `max|Δu|/U < 1e-4` at 1000 steps as the contract; whether that is achievable or generous is
   unknown until the port runs. It is a pass condition to be met, not adjusted.
+  **Session 14 evidence, not an answer:** per *kernel*, one step's disagreement is at most
+  **5.96e-08** in `f` units (**D-053**) — `macroscopic` and `stream` are bitwise identical, so only
+  `equilibrium` and `collide` inject anything at all. That makes 1e-4 look generous *if* the error
+  does not compound; whether it compounds over 1000 steps is exactly what T103 measures, and the
+  question stays open until it prints the 10 / 100 / 1000-step growth.
 
 ## Environment
 
@@ -56,6 +61,7 @@ installed**.
 | imageio | 2.37.4 | T011 (session 11) |
 | imageio-ffmpeg | 0.6.0 | T011 (session 11) |
 | psutil | 7.2.2 | T011 (session 11) |
+| warp-lang | 1.16.0 | T102 (session 14) — CUDA Toolkit **12.9**, Driver **13.1**; device `cuda:0` = NVIDIA GeForce RTX 3050 Laptop GPU (4 GiB, sm_86, mempool enabled); `nvidia-smi` driver **592.82** |
 
 **Expected in Phase 1:** `warp-lang` in T102 (**D-043**). Install it in the session that first needs
 it and add a row here with the CUDA and driver versions it reports. No XLB, no Taichi, no UI
@@ -100,6 +106,8 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-048 | 2026-08-13 | **Phase 1 tasks are numbered `T101` … `T110`**, and the phase's documents are `DOCS/IDEA3.md` (spec), `DOCS/PLAN2.md` (plan), `DOCS/TASKS2.md` (backlog), `DOCS/STATE2.md` (state). | `T012` would have read as a continuation of a closed backlog, and `/start-task` resolves a bare ID against a task file — two files with a `T0xx` range each is an ambiguity waiting for a tired session. The `IDEA3`/`PLAN2` mismatch is inherited (`idea2.md` was Phase 0's spec) and is kept rather than renamed, because `DOCS/IDEA2.md` is cited by name in eleven session-log entries. |
 | D-050 | 2026-08-18 | **The checkpoint's contents are unchanged by the backend seam. `f` is written through `backend.to_host`, so it is always the portable host layout `(9, ny, nx)` `float32`, and the backend *name* rides inside the pickled `SimConfig` rather than as a new top-level key — so D-022 stays literally true: `f` / `solid` / `step_count` / config plus `format: 1`.** `load_checkpoint(path, backend=...)` overrides the saved name, which is how a checkpoint written on one backend is resumed on another. A checkpoint written before T101 has no `backend` field and picks up the dataclass default, `"numpy"`, which is the backend it ran on — tested, not assumed. | `PROMPTS/013-t101-backend-seam.md` asked for this to be recorded as D-049; that number was already spent on session 12's archival decision, so it is D-050 — logged here rather than silently renumbered. D-022 asks for this decision by name and warns that adding the backend to the checkpoint has a real consequence. Putting it in the config is what makes the consequence benign: the backend is *configuration*, like `tau` or `fused`, and the config was already pickled verbatim, so nothing is added and nothing new can be misread. A top-level `backend` key would have broken D-022's four-things rule for no information gain, and pinning the file to the backend that wrote it would have made the D-043 pressure valve (demote the port, continue on NumPy) discard every checkpoint in flight. `to_host` on the write side is what makes the file portable at all — constraint 4 in its D-046 form is the only reason a Warp checkpoint will be readable by NumPy in T103. |
 | D-051 | 2026-08-18 | **The `Backend` protocol covers kernels and the two host transfers, and nothing else. Buffer allocation, the open boundaries (`inlet_velocity`, `outlet_zero_gradient`), the Guo body force and the probes stay outside it** — `Sim` still allocates its own `(9, ny, nx)` buffers with `np.empty` and still calls `lbm.boundary`'s open-boundary functions directly. **T102/T103 will therefore have to widen the seam** (allocation first), and that widening is expected work, not a defect of T101. | `DOCS/TASKS2.md` § T101 Notes: two implementations is the number that reveals the right seam; one plus a guess is not. Every method guessed at now would be shaped by NumPy alone and rewritten in T102 anyway, at the cost of a protocol nobody could read. The contract's minimum list is exactly the set `Sim.step` calls per timestep, which is the set with a measurable cost, and Rung A can already be built on `to_host`/`from_host` alone (**Q-103**). Recorded here so T102 budgets for it rather than discovering it. |
+| D-052 | 2026-08-18 | **The Warp backend takes *host* arrays at its boundary and owns preallocated *device* buffers keyed by grid shape.** `Sim` is untouched: it still owns its `(9, ny, nx)` NumPy buffers (**D-051**), and each kernel call uploads its inputs, launches, and downloads its outputs. Device buffers are allocated once per `(ny, nx)` — at construction with `WarpBackend(shape=(ny, nx))`, otherwise on the first call for that shape — and never again. `WarpBackend(device=None)` takes `warp.get_preferred_device()`, so a machine with no CUDA runs Rung A on the CPU rather than not running it. | The `Backend` protocol has no allocation method and T102's contract is four kernels and a parity script, not a seam redesign. Every T102 acceptance criterion — per-kernel parity, the spike test, no allocation per call — is measurable through a host boundary, so widening the seam here would have been a guess made against **one** call site (the mistake **D-051** exists to avoid) *and* a change to `Sim` inside the session that introduces Warp, which `DOCS/PLAN2.md` § Why this order spends T101 to prevent. The cost is stated rather than hidden: the per-call copies make this backend **slower than NumPy** at these sizes and that is why T102 quotes **no speed number at all** (constraint 6's replacement — no backend optimisation before its parity rung passes). T103 removes them by moving the state onto the device, which is where whole-step parity forces the seam into its real shape. |
+| D-053 | 2026-08-18 | **Cross-backend kernel agreement is a measured, explained number, not a hope: worst case 5.96e-08 in `f` units against the task's 1e-6 bar, on 32×64, 200×400 and 500×1000.** Per kernel: `macroscopic` **0.000e+00** (bitwise, both `rho` and `u`), `stream` **0.000e+00** (bitwise — a permutation has no arithmetic to round), `collide` **1.49e-08**, `equilibrium` **5.96e-08**. The two non-zero ones are a **fused multiply-add**: the GPU contracts `x * a + b` into one rounding where NumPy rounds twice, which is a half-ulp at `f ~ 0.2` for `collide` and one ulp at `f ~ 0.44` for `equilibrium`. `validate/parity.py --kernels` prints all of it, including a bitwise column, so a later regression shows in the digits rather than hiding under PASS. | `DOCS/TASKS2.md` § T102: "the script prints the number, so a later regression is visible rather than merely passing", and `DOCS/PLAN2.md` § Risks: a parity failure is bisected **by kernel**, which requires the per-kernel numbers to exist before anything fails. Recording *which* kernels are bitwise matters as much as the magnitudes: it means a future disagreement in `macroscopic` or `stream` is a **bug**, not float ordering, and the tolerance argument does not apply to it. The tolerance itself was not widened and must not be — a difference above 1e-6 is not reachable by reordering `float32` arithmetic at these magnitudes. |
 
 ### Constraint fate table (D-046)
 
@@ -322,3 +330,123 @@ rather than read.
   `lbm/core.py`, never redefined in a kernel. The first thing it will meet is **D-051**.
 - `DOCS/PLAN2.md` § Risks: if Warp will not install or run in the first half of that session, log
   the blocker and fall through to **T104**, which is independent of the GPU work.
+
+### 2026-08-18 — Session 14: T102, the Warp kernels
+
+**Task worked:** `T102` — Warp kernels: equilibrium, collide, stream. **Done**, every acceptance
+criterion run rather than read.
+
+**Done**
+- Read, in the prompt's order: `CLAUDE.md`, this file in full, `DOCS/TASKS2.md` § T102 **and**
+  § T103 (so the boundary between them was known before any code), `DOCS/IDEA3.md` § Performance
+  budget / § Validation ladder (Rung A) / § Deliberately deferred, `old-Docs/STATE1.md`
+  § Performance baseline, **D-008** and **D-035**, `DOCS/PLAN2.md` § Dependency graph / § Session
+  map / § Risks, and `lbm/backends/__init__.py`.
+- **`warp-lang` 1.16.0 installed** into `myenv` and recorded in § Environment: Warp reports **CUDA
+  Toolkit 12.9, Driver 13.1**; device `cuda:0` is the **NVIDIA GeForce RTX 3050 Laptop GPU**
+  (4 GiB, sm_86, mempool enabled); `nvidia-smi` reports driver **592.82**. It installed and ran a
+  kernel inside the first twenty minutes, so `DOCS/PLAN2.md` § Risks' fall-through to T104 was never
+  reached.
+- **`lbm/backends/warp_backend.py`** — `WarpBackend` with four kernels (`_macroscopic_kernel`,
+  `_equilibrium_kernel`, `_collide_kernel`, `_stream_kernel`), the two host transfers, and
+  `bounce_back` / `collide_stream` as stubs raising
+  `NotImplementedError("see DOCS/TASKS2.md T103")`. Each kernel is a **transcription** of its
+  `lbm.core` counterpart, operation for operation and in the same order (constraint 1): `usq` is
+  still hoisted and premultiplied by 1.5 (**D-008**) even though a thread has registers; core's
+  `work` scratch has no analogue and `equilibrium` documents why it accepts and ignores it. The one
+  deliberate structural difference is `stream`, which **gathers** (`dst[y,x] = src[y-ey, x-ex]`)
+  where core **scatters**, because one thread per destination cell has no write conflict — the same
+  assignment read backwards, noted in the kernel's docstring, and checked by the spike test rather
+  than by argument.
+- **The nine constants are uploaded once at construction** from `lbm.core` — `E` (int32), `E_F32`,
+  `W`, `OPP` and `CS2` — and no lattice constant appears in a kernel. `OPP` and `CS2` are uploaded
+  though T102's kernels do not read them: T103's boundaries do, and the alternative was uploading
+  the constant set twice. The three numeric literals in `_equilibrium_kernel` (`1.5`, `3.0`, `4.5`)
+  are the ones `lbm.core.equilibrium` itself writes; rewriting them through `CS2` would change the
+  emitted arithmetic, which constraint 1 forbids.
+- **`validate/parity.py`** — **Rung A's harness, written before the code it validates.** `--kernels`
+  mode: random `rho ∈ [0.9, 1.1]`, `|u| ≤ 0.099` (sampled in a disc, so the *magnitude* obeys
+  constraint 3 rather than each component), a near-equilibrium `f`, at three grids, printing a
+  per-kernel table of max absolute difference **and a bitwise column**, the worst case per kernel,
+  and the nine-direction spike result. `--backend` selects the device under test; NumPy is always the
+  reference (**D-043**). An uninstalled backend exits **2** and prints `SKIP`, so "no GPU here" never
+  reads as a physics failure. The whole-step mode is deliberately absent and says so — T103's.
+- **`tests/test_warp_backend.py`** — 20 tests, one per acceptance criterion plus the guards: the
+  constants read back **off the device** and compared to `lbm.core`'s (an AST scan proves nothing was
+  assigned; this proves what the kernels index), device pointers stable across calls, per-kernel
+  parity at three grids reusing the rung's own `compare_kernels` (so rung and tests cannot drift),
+  `stream` bitwise-equal and `collide` bounded at one ulp, the spike test, 1000 steps' worth of
+  kernel calls with buffer pointers *and* free device memory flat, the bit-exact host round trip,
+  `to_host` on a real device array, `tau <= 0.5` refused with core's message, a non-contiguous host
+  array refused rather than silently copied, and both T103 stubs naming their task. The whole file
+  skips cleanly where `warp-lang` is absent.
+
+**Measured**
+- **Rung A (kernels): PASS.** `myenv/Scripts/python.exe -m validate.parity --kernels`, on `cuda:0`:
+
+  | kernel | quantity | 32×64 | 200×400 | 500×1000 | bitwise |
+  |---|---|---|---|---|---|
+  | macroscopic | rho | 0.000e+00 | 0.000e+00 | 0.000e+00 | yes |
+  | macroscopic | u | 0.000e+00 | 0.000e+00 | 0.000e+00 | yes |
+  | equilibrium | feq | 5.960e-08 | 5.960e-08 | 5.960e-08 | no |
+  | collide | f | 1.490e-08 | 1.490e-08 | 1.490e-08 | no |
+  | stream | f | 0.000e+00 | 0.000e+00 | 0.000e+00 | yes |
+
+  Worst case **5.96e-08** against a **1e-6** bar — 17× inside it, and the tolerance was not touched.
+  Spike test **9/9**. The two non-zero rows are fused multiply-add and nothing else (**D-053**).
+- `myenv/Scripts/python.exe -m pytest` → **`408 passed, 1 skipped, 7 warnings in 17.17s`**. 389
+  passed before; 20 added. The one skip is
+  `test_a_known_but_uninstalled_backend_names_its_install_line`, which skips **by its own design**
+  now that `warp` is installed — session 13 wrote it to do exactly that.
+- **Phase 0 rungs unaffected, checked twice.** `git status` shows **no Phase 0 file modified** — the
+  change is three new files plus the two Phase 1 documents — and the two cheap rungs were re-run
+  anyway: **R1 L2 0.3650%, peak |u| 0.07955** and **R2 Re 100 max deviation 0.75%, vortex centre
+  0.21 cells** — session 11 and 13's digits exactly. R3 and R4 were **not** re-run (~45 minutes for
+  a NumPy path nothing touched); `PROMPTS/014` explicitly does not ask for them.
+- **No speed number, deliberately** (**D-052**, constraint 6's replacement). The backend copies host
+  to device and back per kernel call, so it is currently *slower* than NumPy at these sizes;
+  measuring that would be measuring the seam, not the kernels. The performance table is T103's, and
+  **D-035** governs it.
+
+**Decisions made**
+- **D-052** — the Warp backend takes host arrays at its boundary and owns preallocated device buffers
+  keyed by grid shape; `Sim` is untouched, and the **D-051** seam widening happens in T103 where
+  whole-step parity forces its real shape. The per-call copies are why no speed number is quoted.
+- **D-053** — cross-backend kernel agreement is a measured, explained number: worst 5.96e-08,
+  `macroscopic` and `stream` **bitwise**, `collide` and `equilibrium` off by one FMA rounding. Which
+  kernels are bitwise is recorded because it means a *future* difference there is a bug, not float
+  ordering.
+
+**Not done / deferred**
+- **The boundaries are not on the GPU.** `bounce_back`, the inlet, the outlet, `moving_wall` and the
+  fused `collide_stream` all raise `NotImplementedError("see DOCS/TASKS2.md T103")`. This is the
+  contract's scope line, not an overrun: "Four kernels and a parity script is the whole job."
+- **`Sim` cannot run on the Warp backend yet**, and nothing in `lbm/runner.py` changed. A
+  `SimConfig(backend="warp")` run reaches `bounce_back` and raises. T103's first job.
+- **No `--backend` flag on the four Phase 0 rung scripts** — still T103's, as session 13 left it.
+- **No whole-step parity, no GPU checkpoint, no performance table, no `bench.py --backend warp`** —
+  all four are T103 acceptance criteria, listed there.
+- **Q-103 is not closed**, only fed: the per-kernel evidence is recorded against it in § Open
+  questions, and whether the error compounds over 1000 steps is what T103 measures.
+- `DOCS/ISSUES.jsonl` tracking in git — still the user's call, still not acted on. Nothing was queued
+  this session; nothing failed.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — R1 and R2 **re-run** and identical; R3 and R4 inherited
+  from session 13, with `git status` as the argument that nothing they exercise moved.
+- Phase 1: **A 🟨** · B ⬜ · C ⬜ · D ⬜ · E ⬜ — the kernel half of Rung A is green; the rung is not
+  fully green until T103's whole-step mode, the boundaries and the four Phase 0 rungs run on GPU.
+
+**Next**
+- Paste `PROMPTS/015-t103-warp-boundaries.md` into a fresh session. It runs `/start-task T103`.
+- T103 is **M5**: the boundaries and the fused `collide_stream` on the GPU, whole-step parity printed
+  at 10 / 100 / 1000 steps, a checkpoint written on `warp` that resumes on `numpy`, all four Phase 0
+  rungs inside their published bands with `--backend warp`, and `bench.py --backend warp` clearing
+  2000 / 250 / 150 steps/s at 40k / 1M / 2M cells.
+- **The first thing it does is widen the seam** (**D-051**, **D-052**): the state has to live on the
+  device, or the copies T102 accepted will eat the entire budget.
+- `DOCS/PLAN2.md` § Risks, the hard valve: **T102 did not overrun.** If **T103** does, the port is
+  demoted back to Phase 2 and Phase 1 continues on NumPy — T101's seam makes that a config change.
