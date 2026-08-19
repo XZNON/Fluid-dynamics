@@ -16,8 +16,8 @@ Two rules govern everything that lands here, and both have tests:
 * **Constraint 10** — ``flow/`` colours nothing. There is one ``render()`` and
   it lives in ``lbm/render.py``.
 
-What exists so far (T104): physical quantities and the fluid library. The
-chooser (``flow/autoconfig.py``, T105), the refusals (``flow/diagnose.py``,
+What exists so far: physical quantities and the fluid library (T104); the
+chooser, ``flow/autoconfig.py`` (T105). The refusals (``flow/diagnose.py``,
 T106), geometry preparation (``flow/prepare.py``, T107) and the
 ``Case``/``Result`` API (T108) land in the tasks named beside them —
 ``DOCS/TASKS2.md``.
@@ -25,6 +25,13 @@ T106), geometry preparation (``flow/prepare.py``, T107) and the
 
 from __future__ import annotations
 
+from flow.autoconfig import (
+    QUALITY_LEVELS,
+    Plan,
+    Suggestion,
+    Unrepresentable,
+    plan,
+)
 from flow.fluids import FLUIDS, Fluid, fluid, known_fluids
 from flow.quantity import (
     DENSITY,
@@ -58,4 +65,9 @@ __all__ = [
     "FLUIDS",
     "fluid",
     "known_fluids",
+    "Plan",
+    "Suggestion",
+    "Unrepresentable",
+    "plan",
+    "QUALITY_LEVELS",
 ]

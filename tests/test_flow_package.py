@@ -21,6 +21,7 @@ well as one at module level.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import inspect
 import pathlib
 import pkgutil
@@ -175,17 +176,41 @@ def _flow_modules():
     return modules
 
 
+def _is_frozen_output_record(obj: object) -> bool:
+    """A frozen dataclass is a *result*, not a command the user types (T105 Notes).
+
+    Constraint 13 bans a lattice quantity from a signature the user **fills
+    in** — what they type. ``inspect.signature`` on a class resolves to its
+    ``__init__``, which for a frozen dataclass like :class:`flow.autoconfig.Plan`
+    is not that: nothing in the product ever calls ``Plan(tau=..., ...)``
+    directly, only :func:`flow.autoconfig.plan` builds one, and its return value
+    is exactly where ``tau`` / ``dx`` / ``dt`` / ``cells_per_length`` are
+    *supposed* to live (``DOCS/IDEA3.md`` § 1: "everything else is derived and
+    printed"). Scanning the constructor here would flag the contract's own
+    acceptance criterion. A **mutable** class, or one that defines its own
+    ``__init__`` by hand, is not exempted — see
+    ``test_the_constraint_13_scan_still_catches_a_hand_written_constructor``.
+    """
+    return dataclasses.is_dataclass(obj) and dataclasses.is_dataclass and (
+        getattr(obj, "__dataclass_params__", None) is not None
+        and obj.__dataclass_params__.frozen
+    )
+
+
 @pytest.mark.parametrize("module", _flow_modules(), ids=lambda m: m.__name__)
 def test_no_public_signature_in_flow_takes_a_lattice_quantity(module):
     offenders: list[str] = []
     for name, obj in _public_functions(module):
-        try:
-            signature = inspect.signature(obj)
-        except (TypeError, ValueError):  # pragma: no cover - builtins
-            continue
-        for parameter in signature.parameters:
-            if parameter.lower() in LATTICE_NAMES:
-                offenders.append(f"{module.__name__}.{name}({parameter})")
+        if inspect.isclass(obj) and _is_frozen_output_record(obj):
+            pass  # constructor not scanned — see _is_frozen_output_record
+        else:
+            try:
+                signature = inspect.signature(obj)
+            except (TypeError, ValueError):  # pragma: no cover - builtins
+                continue
+            for parameter in signature.parameters:
+                if parameter.lower() in LATTICE_NAMES:
+                    offenders.append(f"{module.__name__}.{name}({parameter})")
         for member_name, member in vars(obj).items() if inspect.isclass(obj) else []:
             if member_name.startswith("_") or not callable(member):
                 continue
@@ -222,6 +247,38 @@ def test_the_constraint_13_scan_would_actually_catch_a_violation():
     signature = inspect.signature(plausible_but_illegal)
     caught = [p for p in signature.parameters if p.lower() in LATTICE_NAMES]
     assert caught == ["tau"]
+
+
+def test_the_frozen_dataclass_exemption_is_narrow():
+    """D-059: the exemption is for *output records*, not classes in general.
+
+    A frozen dataclass — :class:`flow.autoconfig.Plan`'s shape — is exempt,
+    because nothing calls its constructor with the user's input. A class that
+    is **not** a frozen dataclass, even one that merely carries a lattice-named
+    field, still has its hand-written ``__init__`` scanned: that is a
+    constructor someone could call directly, which is exactly what constraint
+    13 is about.
+    """
+
+    @dataclasses.dataclass(frozen=True)
+    class FrozenResult:
+        tau: float
+        dx: float
+
+    class HandWritten:
+        def __init__(self, tau: float) -> None:
+            self.tau = tau
+
+    assert _is_frozen_output_record(FrozenResult) is True
+    assert _is_frozen_output_record(HandWritten) is False
+
+    hand_written_signature = inspect.signature(HandWritten)
+    caught = [p for p in hand_written_signature.parameters if p.lower() in LATTICE_NAMES]
+    assert caught == ["tau"], (
+        "a hand-written constructor must still be caught: exempting classes in "
+        "general, not just frozen output records, would be the constraint-13 "
+        "scan losing its teeth"
+    )
 
 
 # ---------------------------------------------------------------------------

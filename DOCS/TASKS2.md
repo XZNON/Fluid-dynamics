@@ -18,7 +18,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T102 | Warp kernels: equilibrium, collide, stream | `done` | T101 | **Rung A** (kernels) |
 | T103 | Warp boundaries, checkpoint, performance | `done` | T102 | **Rung A** (full) → **M5** |
 | T104 | Physical quantities + fluid library | `done` | — | unit tests |
-| T105 | Auto-configuration | `not_started` | T104 | **Rung B** → **M6** |
+| T105 | Auto-configuration | `done` | T104 | **Rung B** → **M6** |
 | T106 | Diagnosis, refusal, nearest runnable case | `not_started` | T105 | **Rung D** |
 | T107 | Geometry preparation + shape corpus | `not_started` | — | **Rung C** → **M7** |
 | T108 | `flow.Case` / `flow.Result` API | `not_started` | T105, T106, T107 | unit tests |
@@ -254,7 +254,7 @@ not silently given the 20 °C number.
 
 ## T105 — Auto-configuration → Rung B
 
-**Status:** `not_started`
+**Status:** `done` — session 17, 2026-08-19. Rung B PASS: 24/24 cases, accuracy 4.2% error (limit 25%), worst Re error 0.0000%, worst peak |u| 0.0695. `pytest` 565 passed, 1 skipped (18 new: 15 in `tests/test_autoconfig.py`, 3 in `tests/test_flow_package.py`). All four Phase 0 rungs and Rung A re-run green with `--backend warp`, printing session 11/15's published digits. **M6.**
 
 ### Goal
 
@@ -281,13 +281,13 @@ shape, run length, frame cadence, colour limits. This is the moat. **M6.**
 
 ### Acceptance criteria
 
-- [ ] `plan(...)` returns a `Plan` whose every field has an entry in `why`, and a test asserts that (a field with no explanation is a field the user cannot check).
-- [ ] Every guardrail is enforced at plan time, each citing its decision: `u_lattice < 0.1` with the **1.8× bluff-body speed-up headroom** (D-032), `tau` above the floor appropriate to the geometry (D-029/D-032/D-036), blockage < 10% and ≥ 8 D downstream (constraint 12, D-019, D-026), min solid thickness ≥ 3 cells (D-017).
-- [ ] The three quality levels differ **only** in `cells_per_length` and run length, and `accurate` is a strict refinement of `fast` — a test asserts monotonicity of resolution and of wall-clock estimate.
-- [ ] `Plan.estimated_seconds` predicts wall clock from the measured backend rate; on the committed cylinder case the prediction is **within 25%** of the real run, and the script prints predicted vs actual.
-- [ ] **Rung B — `validate/autoconfig.py`:** a sweep of at least 24 cases (fluids × speeds × sizes × quality) where every planned case (a) satisfies every guardrail, (b) runs 5000 steps with **no `nan`** and peak `|u|` under 0.1, (c) reproduces its requested `Re` to **0.1%** through `LatticeUnits.reynolds()`. Prints PASS/FAIL and the worst case of each.
-- [ ] Cases that *cannot* be planned raise `Unrepresentable` (T106 turns it into prose) carrying structured fields — `reason`, `quantity`, `value`, `limit`, `suggestions` — rather than a formatted string.
-- [ ] `pytest tests/test_autoconfig.py` green; Phase 0 rungs still green.
+- [x] `plan(...)` returns a `Plan` whose every field has an entry in `why`, and a test asserts that (a field with no explanation is a field the user cannot check).
+- [x] Every guardrail is enforced at plan time, each citing its decision: `u_lattice < 0.1` with the **1.8× bluff-body speed-up headroom** (D-032), `tau` above the floor appropriate to the geometry (D-029/D-032/D-036), blockage < 10% and ≥ 8 D downstream (constraint 12, D-019, D-026), min solid thickness ≥ 3 cells (D-017).
+- [x] The three quality levels differ **only** in `cells_per_length` and run length, and `accurate` is a strict refinement of `fast` — a test asserts monotonicity of resolution and of wall-clock estimate.
+- [x] `Plan.estimated_seconds` predicts wall clock from the measured backend rate; on the committed cylinder case the prediction is **within 25%** of the real run, and the script prints predicted vs actual.
+- [x] **Rung B — `validate/autoconfig.py`:** a sweep of at least 24 cases (fluids × speeds × sizes × quality) where every planned case (a) satisfies every guardrail, (b) runs 5000 steps with **no `nan`** and peak `|u|` under 0.1, (c) reproduces its requested `Re` to **0.1%** through `LatticeUnits.reynolds()`. Prints PASS/FAIL and the worst case of each.
+- [x] Cases that *cannot* be planned raise `Unrepresentable` (T106 turns it into prose) carrying structured fields — `reason`, `quantity`, `value`, `limit`, `suggestions` — rather than a formatted string.
+- [x] `pytest tests/test_autoconfig.py` green; Phase 0 rungs still green.
 
 ### Constraints that bite here
 
