@@ -17,7 +17,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T101 | Backend seam, NumPy behind it | `done` | — | Phase 0 rungs 1–4 |
 | T102 | Warp kernels: equilibrium, collide, stream | `done` | T101 | **Rung A** (kernels) |
 | T103 | Warp boundaries, checkpoint, performance | `done` | T102 | **Rung A** (full) → **M5** |
-| T104 | Physical quantities + fluid library | `not_started` | — | unit tests |
+| T104 | Physical quantities + fluid library | `done` | — | unit tests |
 | T105 | Auto-configuration | `not_started` | T104 | **Rung B** → **M6** |
 | T106 | Diagnosis, refusal, nearest runnable case | `not_started` | T105 | **Rung D** |
 | T107 | Geometry preparation + shape corpus | `not_started` | — | **Rung C** → **M7** |
@@ -200,7 +200,7 @@ NumPy measured in the same alternating rounds — and 1M and 2M clear the budget
 
 ## T104 — Physical quantities + fluid library
 
-**Status:** `not_started`
+**Status:** `done` — session 16, 2026-08-19. `pytest` **547 passed, 1 skipped** (119 new); constraints 13 and 15 enforced by test; `lbm/` untouched and R1/R2 re-run green.
 
 ### Goal
 
@@ -221,13 +221,23 @@ NumPy measured in the same alternating rounds — and 1M and 2M clear the budget
 
 ### Acceptance criteria
 
-- [ ] `parse("20 m/s")`, `parse("72 km/h")`, `parse("20")` (with a declared default unit) and `parse(20.0)` all give the same SI value; a table-driven test covers m, cm, mm, in, ft, m/s, km/h, mph, knots, and both `°C`/`K` for temperature.
-- [ ] An unparseable or dimensionally wrong string raises `ValueError` naming **what was given, what dimension was expected, and one valid example**. No silent default-unit assumption when a unit is present and wrong.
-- [ ] `FLUIDS` has at least air, water, honey, olive oil, glycerine and helium, each with `nu` in m²/s at a stated temperature and a **cited source string**; a test asserts every entry has a non-empty source and a physically ordered `nu` (helium < air < water < oil < glycerine).
-- [ ] `fluid("Air")`, `fluid("air")`, `fluid(" air ")` resolve; an unknown name raises listing the known ones.
-- [ ] A custom fluid can be given directly as a viscosity (`fluid=Quantity("1.5e-5 m^2/s")`) without touching `FLUIDS`.
-- [ ] **No new dependency.** Parsing is ~150 lines, in the spirit of **D-031** (`from_svg` took no dependency for the same reason). If `pint` is adopted instead, that is a recorded decision with the reason.
-- [ ] `pytest tests/test_quantity.py tests/test_fluids.py` green; Phase 0 rungs untouched.
+- [x] `parse("20 m/s")`, `parse("72 km/h")`, `parse("20")` (with a declared default unit) and `parse(20.0)` all give the same SI value; a table-driven test covers m, cm, mm, in, ft, m/s, km/h, mph, knots, and both `°C`/`K` for temperature.
+- [x] An unparseable or dimensionally wrong string raises `ValueError` naming **what was given, what dimension was expected, and one valid example**. No silent default-unit assumption when a unit is present and wrong.
+- [x] `FLUIDS` has at least air, water, honey, olive oil, glycerine and helium, each with `nu` in m²/s at a stated temperature and a **cited source string**; a test asserts every entry has a non-empty source and a physically ordered `nu` (helium < air < water < oil < glycerine).
+- [x] `fluid("Air")`, `fluid("air")`, `fluid(" air ")` resolve; an unknown name raises listing the known ones.
+- [x] A custom fluid can be given directly as a viscosity (`fluid=Quantity("1.5e-5 m^2/s")`) without touching `FLUIDS`.
+- [x] **No new dependency.** Parsing is ~150 lines, in the spirit of **D-031** (`from_svg` took no dependency for the same reason). If `pint` is adopted instead, that is a recorded decision with the reason.
+- [x] `pytest tests/test_quantity.py tests/test_fluids.py` green; Phase 0 rungs untouched.
+
+### Deviation recorded
+
+The third criterion's parenthetical — `nu` ordered `helium < air < water < oil < glycerine` — is not
+physical and the library does not reproduce it (**D-058**). Measured ascending order at 20 °C is
+**water 1.004e-6 < air 1.516e-5 < olive oil 8.4e-5 < helium 1.178e-4 < glycerine 1.120e-3 <
+honey 7.042e-3 m²/s**. The criterion's intent is kept and strengthened: the ordering test asserts the
+measured order, every entry's `nu` is checked against its independently cited `mu` and `rho`
+(`nu = mu / rho`, to 0.2%), and a second test pins the disagreement so the data cannot be quietly
+edited to fit the sentence.
 
 ### Constraints that bite here
 

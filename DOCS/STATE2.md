@@ -14,13 +14,13 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T104` — Physical quantities + fluid library (`DOCS/TASKS2.md`) |
+| **Current task** | `T105` — Auto-configuration (`DOCS/TASKS2.md`) — **Rung B**, **M6** |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**. Phase 0: T001 … T011, all done |
+| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**. Phase 0: T001 … T011, all done |
 | **Milestone reached** | **M5** (2026-08-18, the whole timestep on the GPU, Rung A green, the budget cleared). Phase 1 targets M6 → M8 |
 | **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task |
 | **Phase 1 rung status** | **A 🟩** · B ⬜ · C ⬜ · D ⬜ · E ⬜ — Rung A is green **in full**: kernels and boundaries worst **5.96e-08** against a 1e-6 bar, whole step **9.611e-06** at 1000 steps against 1e-4, a `warp` checkpoint resumed on `numpy` at **8.196e-06**, restart bitwise within a backend, and all four Phase 0 rungs re-run with `--backend warp` inside their published bands |
-| **Last updated** | 2026-08-18 — session 15 (**T103 done, M5 reached**: the whole timestep on the GPU, Rung A green in full, 4155 / 757 / 441 steps/s at 40k / 1M / 2M; D-054 … D-057, Q-103 closed) |
+| **Last updated** | 2026-08-19 — session 16 (**T104 done**: the `flow/` package exists — `quantity.py`, `fluids.py`; constraints 13 and 15 enforced by test rather than aspiration; **D-058**, the fluid-library ordering conflict; `pytest` **547 passed, 1 skipped**) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -131,6 +131,7 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-055 | 2026-08-18 | **The pre-collision copy (D-011) is dropped on the fused path, on every backend, and the Warp fused pass streams `f_bb` straight into `f`.** `lbm.core.collide_stream` with `f_bb` supplied stages every direction there and never writes `f` until the stream lands, so `f` is still the pre-collision state when the reflection reads it: passing `f` where D-011's copy would go is **bitwise identical**. It is valid *only* because `f_bb` is supplied — with `f_bb=None` the pass stages in `f` itself and the alias would read values it had already overwritten. Asserted, not argued, by `tests/test_backends.py::test_the_fused_path_needs_no_pre_collision_copy_and_says_so_in_bits` and its Warp twin. | Bandwidth. A naive port moves about **850 MB per step at 2M cells**; `copy(f_pre, f)` is 144 MB of that and the fused path's final `copy(f, buf)` another 144 MB, and the 150 steps/s floor is not reachable while paying both. Removing them is a **removal, not an optimisation** — no arithmetic changes, which is what keeps constraint 1 and **D-033**'s bitwise fused/unfused equality true. The measured side effect on NumPy is recorded rather than hidden: the fused/unfused ratio rose from 1.00–1.14× to 1.14–1.20×, and Rung 3 on `numpy` was re-run to confirm the reference path still prints its published digits. |
 | D-056 | 2026-08-18 | **Q-103's answer: cross-backend whole-step agreement is bounded and does not compound.** Measured on Rung 3's case shape (256×64, disc D 16, Zou–He inlet, convective outlet, U 0.05), from a bit-identical start: `max|Δu|/U` = **2.459e-06 at 10 steps, 1.743e-05 at 100, 9.611e-06 at 1000**, against a contract of 1e-4 that was met without being touched. A `warp` checkpoint resumed on `numpy` and run 100 further steps agrees to **8.196e-06**. `validate/parity.py` prints the ladder and the growth factor beside each row, permanently. | **Q-103** asked whether 1e-4 was achievable or generous, and the honest answer needed the *shape* of the curve, not one number: an error that grows linearly from **D-053**'s 5.96e-08 per kernel lands near 6e-05 at 1000 steps, and one that grows geometrically lands nowhere. It does neither — it rises through the startup transient and then settles, because the case is a converging flow and BGK is dissipative. Recording the growth rate rather than only the bound is what makes a *future* regression visible: a port that starts compounding will show it in the 10/100/1000 column long before it crosses 1e-4. |
 | D-057 | 2026-08-18 | **Any scalar NumPy computes in `float64` and rounds once to `float32` is computed host-side, in NumPy's own expression order, and uploaded — never recomputed per thread in `float32`.** That covers the Ladd wall correction `6 w_i rho_w (e_i . u_wall)`, Guo's `(1 - 1/(2 tau)) w_i`, `9 (e_i.F)` and `3 (e_i.F)`, and the convective outlet's `1/(1 + lam)`. Each lands in a `(9,)` device array allocated at `WarpBackend` construction, so no boundary allocates inside the step loop. | Constraint 1 says the arithmetic the implementation transcribes may not change, and a scalar recomputed in `float32` on the device is **three extra roundings** where NumPy has one — a difference introduced for tidiness, not forced by the hardware. The measurement is the argument: with the scalars uploaded, `bounce_back`, `moving_wall`, `outlet(copy)` and `moving_wall(u=0)` are **bitwise**, and no boundary exceeds one ulp (worst 5.96e-08). This is the boundary-side counterpart of **D-053**, and it has the same payoff: knowing which comparisons are bitwise turns a future difference there into a bug rather than float ordering. |
+| D-058 | 2026-08-19 | **The fluid library carries the numbers its cited sources actually give, and the ordering test asserts the order those numbers produce — which is *not* the order `DOCS/TASKS2.md` § T104's acceptance criterion parenthesises.** The criterion asks for `helium < air < water < oil < glycerine`; the measured ascending order of kinematic viscosity at 20 °C is **water 1.004e-6 < air 1.516e-5 < olive oil 8.4e-5 < helium 1.178e-4 < glycerine 1.120e-3 < honey 7.042e-3 m²/s**. Two of the criterion's four inequalities are false. The criterion's *intent* — the table is ordered by physics, not by typing — is kept and strengthened: `tests/test_fluids.py` asserts the measured order **and** checks every entry's `nu` against its independently cited `mu` and `rho` (`nu = mu / rho`, to 0.2%), which is the check that actually catches a transcription error. A second test, `test_the_ordering_the_contract_asked_for_is_not_physical`, pins the disagreement so a future session cannot quietly edit the data to satisfy the parenthetical. | `nu = mu / rho`, and the densities span four orders of magnitude while the dynamic viscosities span six — so kinematic order is not dynamic order and neither is intuitive. Helium's `mu` (1.96e-5 Pa s) is *larger* than air's (1.825e-5) and its density is 7.2x smaller, so helium's `nu` is ~7.8x air's; water's `mu` is 55x air's but its density is 829x, so water has the **smallest** `nu` of the six. Ordering by `mu` instead would not rescue the criterion either — `helium < air` is false there too, narrowly. Editing the data to fit the sentence was rejected outright: constraint 5 names *"a wrong sim that looks plausible"* as this project's main failure mode, and a fabricated viscosity is that failure mode at its source, one layer below the solver where no rung would ever catch it. `CLAUDE.md` § Session protocol says a spec conflict is logged here rather than silently resolved; this is that log entry, and the spec's sentence is the half that yields because the sources are checkable and the sentence is not. |
 
 ### Constraint fate table (D-046)
 
@@ -712,3 +713,111 @@ device memory at 2,000,000 cells: 391 MiB in 13 Sim-owned arrays (69 MiB per (9,
 - `DOCS/PLAN2.md` § Risks, the hard valve on "the trap": **it was not needed.** T102 and T103 both
   landed on schedule and the port is done. Phase 1's remaining seven tasks are product work, and the
   next mention of a kernel should be Phase 2's XLB swap.
+
+---
+
+### Session 16 — 2026-08-19 — T104: physical quantities + fluid library
+
+**Task:** T104 — Physical quantities + fluid library. **Status: done.** Every acceptance criterion
+run, not read. `pytest` **547 passed, 1 skipped** (428 → 547; 119 new). **This was the first session
+of the phase that is not solver work**, and `lbm/` was not touched — `git status -- lbm` is empty,
+which is the honest argument that the Phase 0 rungs are unaffected, and R1/R2 were re-run anyway.
+
+**Done**
+
+- **`flow/` exists** (**D-042**), with three files:
+  - `flow/__init__.py` — the package docstring states the two rules that govern everything landing
+    here (constraint 13, constraint 10) and re-exports the T104 surface.
+  - `flow/quantity.py` — `Quantity`, `parse(spec, *, expect=None, default_unit=None)`, `to_si`,
+    six dimensions (`LENGTH`, `SPEED`, `TIME`, `VISCOSITY`, `TEMPERATURE`, `DENSITY`), ~90 unit
+    spellings in one `(dimension, factor, offset)` table. Affine conversion throughout so temperature
+    is not a special case. `Quantity` is immutable (`__slots__` + blocked `__setattr__`), carries
+    `given` verbatim for reports, and accepts `str | float | int | Quantity` so T105 needs no type
+    switch. **No dependency** — `flow/quantity.py` imports `re` and nothing else, asserted by an AST
+    scan against `sys.stdlib_module_names` (**D-031**'s precedent; `pint` was not adopted).
+  - `flow/fluids.py` — `Fluid(name, nu, rho, T, source, mu_pa_s)` and `FLUIDS` with six cited
+    entries, `fluid(name)` resolving case, padding, `_`/`-` separators and the aliases
+    glycerol/glycerin/H2O/He, `known_fluids()`.
+- **Constraint 15 is enforced rather than aspirational**, in
+  `tests/test_flow_package.py::test_no_module_under_lbm_imports_flow`: an AST scan over every file
+  under `lbm/` (module level *and* inside function bodies), plus a runtime scan that imports every
+  `lbm.*` module and asserts nothing in its namespace came from `flow/`. A companion test,
+  `test_the_constraint_15_scan_would_actually_catch_a_violation`, feeds the scanner three synthetic
+  violations and the legal direction — **a guard that never fires is not a guard.**
+- **Constraint 13 is enforced the same way**: `inspect.signature` over every public function, class
+  and public method reachable through each `flow` module's `__all__`, refusing any parameter in
+  `LATTICE_NAMES` (`tau`, `u_lattice`, `steps_per_frame`, `cells_per_length`, `nx`, `ny`, `dx`,
+  `dt`, …), plus a check that no public *name* is one. Also teeth-tested.
+- **Refusals follow D-045's shape one layer down**: every `ValueError` names **what was given**,
+  **what dimension was expected**, and **one valid example**, and `tests/test_quantity.py` asserts
+  all three parts rather than asserting that *an* exception was raised. A separate test asserts the
+  example in every refusal itself parses to the dimension it illustrates — a fix that does not work
+  is not a fix.
+- **The silent-substitution case is pinned**: `parse("20 kg/m^3", expect=SPEED, default_unit="m/s")`
+  raises. A declared default unit is for *unitless* input only and never reinterprets a wrong unit
+  (constraint 16, in miniature).
+- Error-message text is ASCII (`--`, not an em dash): a Windows console at its default codepage
+  mojibakes U+2014, and these strings are what T109's CLI prints.
+
+**Rungs re-run this session** (all on the code as shipped, not from memory)
+
+| Rung | Command | Result |
+|---|---|---|
+| A | `validate.parity --backend warp` | **PASS** — kernels/boundaries worst 5.96e-08, whole step 9.611e-06 at 1000 steps, checkpoint cross-backend 8.196e-06 |
+| R1 | `validate.poiseuille` | **PASS** — L2 0.3650%, peak `|u|` 0.07955 |
+| R2 | `validate.cavity --re 100` | **PASS** — max dev vs Ghia 0.75%, vortex 0.21 cells, peak `|u|` 0.08797 |
+| R3 | `validate.cylinder --backend warp --headless` | **PASS** — St **0.1731**, Cd **1.4031 ± 0.0086**, blockage 4.17%, peak `|u|` 0.09685 |
+| R4 | `validate.polygons --backend warp --headless` | **PASS** — square PASS; polygon Cd **1.4276**, Cl amplitude 0.3689, blockage 3.90%, 9.62 D downstream, 19 cells thick, peak `|u|` 0.08944 |
+
+Every digit matches session 11's published values, which is the expected result for a session that
+did not touch `lbm/` — the point of running them is that "expected" is not "checked". Unlike session
+15, **R4 was run rather than argued for**, so the git-status argument and the measurement now agree.
+
+**Measurements and evidence**
+
+- Ascending kinematic viscosity at 20 °C, from the cited numbers:
+  **water 1.004e-6 · air 1.516e-5 · olive oil 8.4e-5 · helium 1.178e-4 · glycerine 1.120e-3 ·
+  honey 7.042e-3 m²/s.** Every entry's `nu` agrees with its independently cited `mu / rho` to
+  better than 0.2%.
+- `flow/fluids.py`'s air (1.516e-5) and water (1.004e-6) agree with the values `lbm/units.py`
+  documents (1.5e-5, 1.0e-6) to 2% — asserted, because the two faces of the units boundary
+  disagreeing about what air is would be exactly the failure constraint 13 exists to prevent.
+
+**Not done / deferred**
+
+- **Nothing in the contract is outstanding.** All seven acceptance criteria are checked in
+  `DOCS/TASKS2.md` § T104.
+- `Fluid.temperature_note()` returns a *sentence*, not a structured refusal: the T104 Notes require
+  that a user asking for water at 80 °C is told the value is the 20 °C one, and doing more than
+  telling them is judgement, which is T106's. The structured version belongs with
+  `flow/diagnose.py`.
+- Dynamic viscosity is carried as a plain `float` in Pa s (`Fluid.mu_pa_s`) rather than as a
+  `Quantity`: Pa s is not a unit anyone describes a case in, so it stays out of the
+  `flow.quantity` vocabulary. It exists so `nu = mu / rho` is a **checkable identity** rather than a
+  retyped number.
+
+**Decisions made**
+
+- **D-058** — the fluid library carries the numbers its cited sources actually give, and the ordering
+  test asserts the order those numbers produce, which is **not** the order the T104 acceptance
+  criterion parenthesises (`helium < air < water < oil < glycerine`). Two of that sentence's four
+  inequalities are false for kinematic viscosity, and one is false for dynamic viscosity too. The
+  criterion's *intent* is kept and strengthened: measured order asserted, `nu = mu / rho` checked per
+  entry, and `test_the_ordering_the_contract_asked_for_is_not_physical` pins the disagreement so the
+  data cannot be quietly edited to fit the sentence. Logged per `CLAUDE.md` § Session protocol rather
+  than silently resolved; `DOCS/TASKS2.md` § T104 carries a "Deviation recorded" note pointing here.
+
+**Blockers:** none.
+
+**Housekeeping**
+
+- Session 15's T103 work was still uncommitted at session start (last commit `238b404`, 14 files,
+  +3387/−627). It was committed as `816db29` **before** any T104 file was created, so that
+  "nothing under `lbm/` moved" is a readable claim rather than an assertion buried in a mixed diff.
+
+**Next:** **T105 — auto-configuration**, session 17, gate **Rung B**, milestone **M6**. It is the
+module `DOCS/IDEA3.md` § 1 calls the most product-defining in the phase, and `DOCS/PLAN2.md` § Risks
+aims its "pile of tuned constants nobody can defend" row directly at it. Prompt written to
+`PROMPTS/017-t105-autoconfig.md`. The one thing that session should read before writing code is
+`validate/cylinder.py::tau_for` and `validate/polygons.py::tau_for_rung4` — hand-tuned instances of
+the function it is about to write.
