@@ -809,6 +809,19 @@ did not touch `lbm/` — the point of running them is that "expected" is not "ch
 
 **Blockers:** none.
 
+**Found while closing, not fixed here**
+
+- **`.gitignore` lines 14-15 (`*/__init__.py`, `__init__.py`) and line 17 (`tools`) drop real source
+  from the repo.** Verified with `git ls-files`: **`lbm/backends/__init__.py` has been untracked
+  since T101** — the `Backend` protocol is not in the repository, so a fresh clone cannot
+  `import lbm.backends` — and **the whole of `tools/` is untracked**, although `CLAUDE.md` documents
+  `python -m tools.issues` and calls `DOCS/ISSUES.jsonl` committed. `lbm/__init__.py` and
+  `validate/__init__.py` are tracked only because they predate the rule. `flow/__init__.py` hit the
+  same rule this session and was **force-added** (`git add -f`) so T104's deliverable is actually in
+  the repo. The rest is **queued as issue `495777c58269`**, not fixed: it touches `lbm/` and
+  repo-wide config, which `DOCS/PLAN2.md` § Risks (last row) says is a `/new-task`, never folded into
+  a product task.
+
 **Housekeeping**
 
 - Session 15's T103 work was still uncommitted at session start (last commit `238b404`, 14 files,
