@@ -420,8 +420,10 @@ def seed_solid_at_rest(sim: Sim) -> None:
         sim: the simulation to seed, modified in place.
     """
     rho0 = np.float32(sim.config.rho0)
+    seed = sim.host_f().copy()
     for i in range(Q):
-        sim.f[i][sim.solid] = W[i] * rho0
+        seed[i][sim.solid] = W[i] * rho0
+    sim.load_f(seed)
 
 
 def interior_solid(solid: NDArray[np.bool_]) -> NDArray[np.bool_]:
@@ -469,6 +471,7 @@ def run_case(
     scale: int = 1,
     vmax: float | None = None,
     verbose_mask: bool = True,
+    backend: str = "numpy",
 ) -> PolygonResult:
     """Set up, run the wake, and measure. Printing and pass/fail are :func:`report`."""
     solid, body, cx, cy = body_mask(case)
@@ -503,7 +506,7 @@ def run_case(
 
     cfg = make_config(
         ny=ny, nx=nx, tau=tau, u=u, outlet_lam=outlet_lam,
-        verbose_mask=verbose_mask, inlet_uy=KICK_FACTOR * u,
+        verbose_mask=verbose_mask, inlet_uy=KICK_FACTOR * u, backend=backend,
     )
 
     # check_mask runs inside Sim.__init__ — building the sim here is the
@@ -568,11 +571,13 @@ def run_case(
         nonlocal n, peak_u
         if n < total_steps:
             cd_series[n], cl_series[n] = forces(
-                s.f_bb, s.f, body_links, U=u, D=d_measured, rho0=s.config.rho0
+                s.host_f_bb(), s.host_f(), body_links,
+                U=u, D=d_measured, rho0=s.config.rho0,
             )
         n += 1
         if n == kick_steps:
             s.u_in[1].fill(0.0)
+            s.refresh_inlet_profile()
         if n % PEAK_EVERY == 0:
             peak_u = max(peak_u, _peak_fluid_speed(s))
 
@@ -603,7 +608,7 @@ def run_case(
     cd_series = cd_series[:ran]
     cl_series = cl_series[:ran]
     peak_u = max(peak_u, _peak_fluid_speed(sim))
-    saw_nan = not bool(np.isfinite(sim.f).all()) or not bool(
+    saw_nan = not bool(np.isfinite(sim.host_f()).all()) or not bool(
         np.isfinite(cd_series).all() and np.isfinite(cl_series).all()
     )
 
@@ -794,6 +799,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"fixed symmetric colour limit; default {VMAX_FACTOR} U / D",
     )
+    parser.add_argument(
+        "--backend",
+        default="numpy",
+        help="compute backend (T101 seam): 'numpy' (the oracle, D-043) or "
+        "'warp'. The published band is the same band either way.",
+    )
     args = parser.parse_args(argv)
 
     if args.headless:
@@ -814,6 +825,7 @@ def main(argv: list[str] | None = None) -> int:
             headless=args.headless,
             scale=args.scale,
             vmax=args.vmax,
+            backend=args.backend,
         )
         results.append((name, report(res)))
         print()

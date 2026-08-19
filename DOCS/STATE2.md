@@ -14,13 +14,13 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T103` — Warp boundaries, checkpoint, performance (`DOCS/TASKS2.md`) |
+| **Current task** | `T104` — Physical quantities + fluid library (`DOCS/TASKS2.md`) |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**, **T102**. Phase 0: T001 … T011, all done |
-| **Milestone reached** | **M4** (2026-08-13, Phase 0 complete). Phase 1 targets M5 → M8 |
+| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**. Phase 0: T001 … T011, all done |
+| **Milestone reached** | **M5** (2026-08-18, the whole timestep on the GPU, Rung A green, the budget cleared). Phase 1 targets M6 → M8 |
 | **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task |
-| **Phase 1 rung status** | **A 🟨** · B ⬜ · C ⬜ · D ⬜ · E ⬜ — Rung A's **kernel** half is green (`validate/parity.py --kernels`, worst 5.96e-08 against a 1e-6 bar); its whole-step half, the boundaries and the four Phase 0 rungs on GPU are T103's |
-| **Last updated** | 2026-08-18 — session 14 (**T102 done**: `lbm/backends/warp_backend.py`, `validate/parity.py --kernels` green, warp-lang 1.16.0 installed; D-052, D-053) |
+| **Phase 1 rung status** | **A 🟩** · B ⬜ · C ⬜ · D ⬜ · E ⬜ — Rung A is green **in full**: kernels and boundaries worst **5.96e-08** against a 1e-6 bar, whole step **9.611e-06** at 1000 steps against 1e-4, a `warp` checkpoint resumed on `numpy` at **8.196e-06**, restart bitwise within a backend, and all four Phase 0 rungs re-run with `--backend warp` inside their published bands |
+| **Last updated** | 2026-08-18 — session 15 (**T103 done, M5 reached**: the whole timestep on the GPU, Rung A green in full, 4155 / 757 / 441 steps/s at 40k / 1M / 2M; D-054 … D-057, Q-103 closed) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -37,14 +37,13 @@ None.
 - **Q-102** — is D-017's documented limit (a thin appendage **fused** to a thick body shares its
   component and is not reported) closable without false-alarming on a plain disc? T107 must measure
   this, not inherit it. If no metric clears both, the limit stays with the measurement recorded.
-- **Q-103** — what tolerance does cross-backend whole-step agreement actually need? T103 sets
-  `max|Δu|/U < 1e-4` at 1000 steps as the contract; whether that is achievable or generous is
-  unknown until the port runs. It is a pass condition to be met, not adjusted.
-  **Session 14 evidence, not an answer:** per *kernel*, one step's disagreement is at most
-  **5.96e-08** in `f` units (**D-053**) — `macroscopic` and `stream` are bitwise identical, so only
-  `equilibrium` and `collide` inject anything at all. That makes 1e-4 look generous *if* the error
-  does not compound; whether it compounds over 1000 steps is exactly what T103 measures, and the
-  question stays open until it prints the 10 / 100 / 1000-step growth.
+- ~~**Q-103** — what tolerance does cross-backend whole-step agreement actually need?~~
+  **Closed in session 15 by measurement — see D-056.** The contract's `max|Δu|/U < 1e-4` at 1000
+  steps was met without being touched, and the interesting half of the answer is that the
+  disagreement **does not compound**: 2.459e-06 at 10 steps, 1.743e-05 at 100, **9.611e-06 at
+  1000** — it rises through the startup transient and then settles an order of magnitude inside the
+  bar. Session 14's per-kernel evidence (**D-053**) was the right prior; what it could not say is
+  whether 1000 steps of a nonlinear system would amplify it, and the answer is no.
 
 ## Environment
 
@@ -76,13 +75,33 @@ Phase 0's measured table is in `old-Docs/STATE1.md` § Performance baseline and 
 400 / 120 / 15. At 1M cells `equilibrium` is **39.9 ms of a ~75 ms step** — over half — which is
 T102's first target.
 
-Phase 1's budget (`DOCS/IDEA3.md` § Performance budget), to be filled in by T103:
+Phase 1's budget (`DOCS/IDEA3.md` § Performance budget), **filled in by T103 (session 15)** —
+`myenv/Scripts/python.exe bench.py --backend warp`, alternating rounds, best round per backend, one
+`Sim` resident, 5 rounds. Conditions, per **D-035**: AMD Ryzen 7 5800H at
+`Win32_Processor.CurrentClockSpeed` **3201 MHz of 3201 MHz**, on **mains**; NVIDIA GeForce RTX 3050
+Laptop GPU, **driver 592.82**, CUDA Toolkit 12.9 / Driver 13.1, `cuda:0`.
 
-| Grid | Cells | NumPy measured | Warp floor | Warp measured |
-|---|---|---|---|---|
-| 400×100 | 40k | 696.7 | ≥2000 | — |
-| 2000×500 | 1M | 16.8 | ≥250 | — |
-| 2000×1000 | 2M | ~8 (estimated, not measured) | ≥150 | — |
+| Grid | Cells | NumPy measured | Warp floor | **Warp measured** | Speedup | Budget target |
+|---|---|---|---|---|---|---|
+| 400×100 | 40k | 775.1 | ≥2000 | **4155.0** 🟩 | 5× | ~5000 |
+| 2000×500 | 1M | 23.0 | ≥250 | **757.3** 🟩 | 33× | ~600 |
+| 2000×1000 | 2M | 8.3 | ≥150 | **441.0** 🟩 | 53× | ~400 |
+
+**Every floor is cleared, and 1M and 2M clear the budget's *targets* too.** The NumPy column is
+measured in the same alternating rounds rather than quoted from Phase 0, which is what makes the
+speedup column mean anything (**D-035**).
+
+**Device memory at 2M cells: 391 MiB in 13 `Sim`-owned arrays** (69 MiB per `(9, ny, nx)` buffer),
+independently observed as a **384 MiB** drop in free device memory — the two agree, so it is a
+measurement and not an accounting exercise. **2882 MiB of the card's 4096 MiB stay free**, and the
+display path does not compete for them: the vorticity field (8 MiB) and its RGB frame (6 MiB) both
+live on the host.
+
+Phase 0's own table also moved, and the reason is **D-055** rather than the port. Re-run this
+session, `bench.py` (no `--backend`) prints **730.8 / 179.9 / 19.6** steps/s at 40k / 160k / 1M
+against floors of 400 / 120 / 15 — all still cleared — with the fused/unfused ratio up from session
+10's **1.00 / 1.01 / 1.14×** to **1.16 / 1.20 / 1.14×**. That is exactly what dropping the
+pre-collision copy from the fused path predicts, and the change is bitwise identical by test.
 
 **D-035 still governs every number here**: alternating-round A/B, best round per variant, and no
 absolute steps/s figure without the CPU clock, the power state and now the GPU name beside it.
@@ -108,6 +127,10 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-051 | 2026-08-18 | **The `Backend` protocol covers kernels and the two host transfers, and nothing else. Buffer allocation, the open boundaries (`inlet_velocity`, `outlet_zero_gradient`), the Guo body force and the probes stay outside it** — `Sim` still allocates its own `(9, ny, nx)` buffers with `np.empty` and still calls `lbm.boundary`'s open-boundary functions directly. **T102/T103 will therefore have to widen the seam** (allocation first), and that widening is expected work, not a defect of T101. | `DOCS/TASKS2.md` § T101 Notes: two implementations is the number that reveals the right seam; one plus a guess is not. Every method guessed at now would be shaped by NumPy alone and rewritten in T102 anyway, at the cost of a protocol nobody could read. The contract's minimum list is exactly the set `Sim.step` calls per timestep, which is the set with a measurable cost, and Rung A can already be built on `to_host`/`from_host` alone (**Q-103**). Recorded here so T102 budgets for it rather than discovering it. |
 | D-052 | 2026-08-18 | **The Warp backend takes *host* arrays at its boundary and owns preallocated *device* buffers keyed by grid shape.** `Sim` is untouched: it still owns its `(9, ny, nx)` NumPy buffers (**D-051**), and each kernel call uploads its inputs, launches, and downloads its outputs. Device buffers are allocated once per `(ny, nx)` — at construction with `WarpBackend(shape=(ny, nx))`, otherwise on the first call for that shape — and never again. `WarpBackend(device=None)` takes `warp.get_preferred_device()`, so a machine with no CUDA runs Rung A on the CPU rather than not running it. | The `Backend` protocol has no allocation method and T102's contract is four kernels and a parity script, not a seam redesign. Every T102 acceptance criterion — per-kernel parity, the spike test, no allocation per call — is measurable through a host boundary, so widening the seam here would have been a guess made against **one** call site (the mistake **D-051** exists to avoid) *and* a change to `Sim` inside the session that introduces Warp, which `DOCS/PLAN2.md` § Why this order spends T101 to prevent. The cost is stated rather than hidden: the per-call copies make this backend **slower than NumPy** at these sizes and that is why T102 quotes **no speed number at all** (constraint 6's replacement — no backend optimisation before its parity rung passes). T103 removes them by moving the state onto the device, which is where whole-step parity forces the seam into its real shape. |
 | D-053 | 2026-08-18 | **Cross-backend kernel agreement is a measured, explained number, not a hope: worst case 5.96e-08 in `f` units against the task's 1e-6 bar, on 32×64, 200×400 and 500×1000.** Per kernel: `macroscopic` **0.000e+00** (bitwise, both `rho` and `u`), `stream` **0.000e+00** (bitwise — a permutation has no arithmetic to round), `collide` **1.49e-08**, `equilibrium` **5.96e-08**. The two non-zero ones are a **fused multiply-add**: the GPU contracts `x * a + b` into one rounding where NumPy rounds twice, which is a half-ulp at `f ~ 0.2` for `collide` and one ulp at `f ~ 0.44` for `equilibrium`. `validate/parity.py --kernels` prints all of it, including a bitwise column, so a later regression shows in the digits rather than hiding under PASS. | `DOCS/TASKS2.md` § T102: "the script prints the number, so a later regression is visible rather than merely passing", and `DOCS/PLAN2.md` § Risks: a parity failure is bisected **by kernel**, which requires the per-kernel numbers to exist before anything fails. Recording *which* kernels are bitwise matters as much as the magnitudes: it means a future disagreement in `macroscopic` or `stream` is a **bug**, not float ordering, and the tolerance argument does not apply to it. The tolerance itself was not widened and must not be — a difference above 1e-6 is not reachable by reordering `float32` arithmetic at these magnitudes. |
+| D-054 | 2026-08-18 | **The `Backend` protocol widens to cover the whole timestep, and the state moves onto the device. Supersedes D-052.** Added: `empty`, `zeros`, `copy`, `upload`, `download` (allocation and the two general transfers), `moving_wall`, `inlet_velocity`, `outlet_zero_gradient` (the three boundaries T101 left out), and `force_velocity_shift` / `apply_body_force` (both halves of the Guo scheme). **Backend arrays are opaque handles**: on `NumpyBackend` they *are* `numpy.ndarray` and every transfer is the identity, so the reference path is untouched; on `WarpBackend` they are device arrays and a timestep moves **no bytes across the bus**. `Sim` allocates every buffer through the backend and exposes host views through `host_f()` / `host_u()` / `host_rho()` / `host_f_bb()` — one preallocated mirror each, downloaded on **frame and probe cadence, never per step** — plus `load_f()` and `refresh_inlet_profile()` for the two places a caller writes state at setup. Boolean masks are held as `uint8` on the device and round-trip as `bool`. | **D-051** predicted this widening and **D-052** priced the alternative: T102's host boundary copied in and out per kernel call and was therefore *slower than NumPy*, which is why it quoted no speed number. Nothing in `DOCS/IDEA3.md` § Performance budget is reachable without removing those copies, and removing them means the state has to live where the kernels do — so the seam's real shape was decided by whole-step parity, exactly as **D-051** said it would be. The alternative considered and rejected was a single `backend.step()`: it would have moved the D-011/D-020 order behind the seam, duplicating the one thing `lbm/backends/__init__.py` says a backend does **not** own, and two copies of a timestep order drift. Keeping `NumpyBackend`'s handles as plain `ndarray` is what let the four Phase 0 rungs re-print session 11's digits through a rewritten `Sim`. |
+| D-055 | 2026-08-18 | **The pre-collision copy (D-011) is dropped on the fused path, on every backend, and the Warp fused pass streams `f_bb` straight into `f`.** `lbm.core.collide_stream` with `f_bb` supplied stages every direction there and never writes `f` until the stream lands, so `f` is still the pre-collision state when the reflection reads it: passing `f` where D-011's copy would go is **bitwise identical**. It is valid *only* because `f_bb` is supplied — with `f_bb=None` the pass stages in `f` itself and the alias would read values it had already overwritten. Asserted, not argued, by `tests/test_backends.py::test_the_fused_path_needs_no_pre_collision_copy_and_says_so_in_bits` and its Warp twin. | Bandwidth. A naive port moves about **850 MB per step at 2M cells**; `copy(f_pre, f)` is 144 MB of that and the fused path's final `copy(f, buf)` another 144 MB, and the 150 steps/s floor is not reachable while paying both. Removing them is a **removal, not an optimisation** — no arithmetic changes, which is what keeps constraint 1 and **D-033**'s bitwise fused/unfused equality true. The measured side effect on NumPy is recorded rather than hidden: the fused/unfused ratio rose from 1.00–1.14× to 1.14–1.20×, and Rung 3 on `numpy` was re-run to confirm the reference path still prints its published digits. |
+| D-056 | 2026-08-18 | **Q-103's answer: cross-backend whole-step agreement is bounded and does not compound.** Measured on Rung 3's case shape (256×64, disc D 16, Zou–He inlet, convective outlet, U 0.05), from a bit-identical start: `max|Δu|/U` = **2.459e-06 at 10 steps, 1.743e-05 at 100, 9.611e-06 at 1000**, against a contract of 1e-4 that was met without being touched. A `warp` checkpoint resumed on `numpy` and run 100 further steps agrees to **8.196e-06**. `validate/parity.py` prints the ladder and the growth factor beside each row, permanently. | **Q-103** asked whether 1e-4 was achievable or generous, and the honest answer needed the *shape* of the curve, not one number: an error that grows linearly from **D-053**'s 5.96e-08 per kernel lands near 6e-05 at 1000 steps, and one that grows geometrically lands nowhere. It does neither — it rises through the startup transient and then settles, because the case is a converging flow and BGK is dissipative. Recording the growth rate rather than only the bound is what makes a *future* regression visible: a port that starts compounding will show it in the 10/100/1000 column long before it crosses 1e-4. |
+| D-057 | 2026-08-18 | **Any scalar NumPy computes in `float64` and rounds once to `float32` is computed host-side, in NumPy's own expression order, and uploaded — never recomputed per thread in `float32`.** That covers the Ladd wall correction `6 w_i rho_w (e_i . u_wall)`, Guo's `(1 - 1/(2 tau)) w_i`, `9 (e_i.F)` and `3 (e_i.F)`, and the convective outlet's `1/(1 + lam)`. Each lands in a `(9,)` device array allocated at `WarpBackend` construction, so no boundary allocates inside the step loop. | Constraint 1 says the arithmetic the implementation transcribes may not change, and a scalar recomputed in `float32` on the device is **three extra roundings** where NumPy has one — a difference introduced for tidiness, not forced by the hardware. The measurement is the argument: with the scalars uploaded, `bounce_back`, `moving_wall`, `outlet(copy)` and `moving_wall(u=0)` are **bitwise**, and no boundary exceeds one ulp (worst 5.96e-08). This is the boundary-side counterpart of **D-053**, and it has the same payoff: knowing which comparisons are bitwise turns a future difference there into a bug rather than float ordering. |
 
 ### Constraint fate table (D-046)
 
@@ -450,3 +473,242 @@ criterion run rather than read.
   device, or the copies T102 accepted will eat the entire budget.
 - `DOCS/PLAN2.md` § Risks, the hard valve: **T102 did not overrun.** If **T103** does, the port is
   demoted back to Phase 2 and Phase 1 continues on NumPy — T101's seam makes that a config change.
+
+### 2026-08-18 — Session 15: T103, the Warp boundaries and the whole timestep — **M5**
+
+**Task worked:** `T103` — Warp boundaries, checkpoint, performance. **Done**, every acceptance
+criterion run rather than read.
+
+**Done**
+- Read, in the prompt's order: `CLAUDE.md`, this file in full, `DOCS/TASKS2.md` § T103 **and** § T102,
+  `DOCS/IDEA3.md` § Performance budget / § Validation ladder (Rung A), `old-Docs/STATE1.md`
+  § Performance baseline and **D-011**, **D-020**, **D-021**, **D-022**, **D-033**, **D-035**,
+  `DOCS/PLAN2.md` § Dependency graph / § Session map / § Milestone gates / § Risks, and
+  `lbm/backends/warp_backend.py` + `validate/parity.py` as session 14 left them.
+- **The seam widened first** (**D-054**), because nothing in the budget is reachable while the state
+  lives on the host. `lbm/backends/__init__.py` gains ten methods: `empty`, `zeros`, `copy`,
+  `upload`, `download`, `moving_wall`, `inlet_velocity`, `outlet_zero_gradient`,
+  `force_velocity_shift`, `apply_body_force`. `lbm/backends/numpy_backend.py` implements them as
+  allocation plus delegation to the **unchanged** `lbm.boundary` functions.
+- **`lbm/backends/warp_backend.py` rewritten device-native.** Six new kernels — `_bounce_back_kernel`,
+  `_moving_wall_kernel`, `_inlet_kernel`, `_outlet_copy_kernel`, `_outlet_convective_kernel`,
+  `_force_shift_kernel`, `_body_force_kernel` — plus `_collide_bb_kernel`, which with `_stream_kernel`
+  is the fused `collide_stream`. Each is a transcription of its `lbm.boundary` counterpart term for
+  term (constraint 1). The reflections loop the nine directions inside **one thread per cell** so the
+  mask is read once rather than nine times. `_GridBuffers` and the per-call host copies are gone;
+  `WarpBackend(shape=...)` is accepted and ignored.
+- **The scalars NumPy rounds once are computed host-side and uploaded** (**D-057**) into `(9,)`
+  device arrays allocated at construction, so no boundary allocates in the step loop.
+- **`lbm/runner.py`: `Sim` owns backend state.** Every buffer comes from `backend.empty`; `step()`
+  reaches the boundaries and both Guo halves through the seam, so the module now imports **no kernel
+  and no boundary**. Host views are `host_f()` / `host_u()` / `host_rho()` / `host_f_bb()` — one
+  preallocated mirror each, on frame and probe cadence (constraint 8) — with `load_f()` and
+  `refresh_inlet_profile()` for the two setup-time writes. `vorticity()`, `forces()`, `residual()`
+  and `mark_residual()` go through the accessors; `save_checkpoint` still goes through `to_host`
+  (**D-050**), which is the only reason a Warp checkpoint is readable on NumPy.
+- **The pre-collision copy is gone from the fused path** (**D-055**), on both backends, and the Warp
+  fused pass streams `f_bb` straight into `f` — two `(9, ny, nx)` copies per step removed, bitwise
+  identical, with the argument written as a test rather than a comment.
+- **`validate/parity.py` is now the whole of Rung A**: `--kernels` (T102's), `--boundaries`,
+  `--whole-step`, `--checkpoint`, and no flag runs all four, which is M5's gate command. The
+  whole-step mode prints the 10 / 100 / 1000 ladder **with the growth factor beside each row**.
+- **`--backend` on all four Phase 0 rung scripts.** `cylinder.py` and `polygons.py` pass it through
+  `make_config`; `poiseuille.py` and `cavity.py` — which run their own loops rather than using `Sim`
+  — now allocate and step through the backend too, with their periodic `nan` / residual checks on
+  the **check** cadence rather than the step cadence. Rung 1 is the only case that exercises the Guo
+  body force on the device and Rung 2 the only one that exercises `moving_wall`.
+- **`bench.py --backend warp`**: `machine_state()` collects the CPU clock, the power state, the GPU
+  name and the driver for **D-035**; `compare_backends()` alternates backends round by round with one
+  `Sim` resident and per-backend step counts; `measure_footprint()` reports both an accounted and an
+  observed device footprint, and runs **before** the timed rounds because Warp's memory pool makes
+  the observed figure read zero afterwards.
+- **Tests**: `tests/test_warp_backend.py` rewritten for the T103 contract (28 tests — boundaries,
+  fused-vs-unfused bitwise, the `f_pre` aliasing, device-resident state, cross-backend checkpoint,
+  bitwise restart, 1000 timesteps with pointers and free memory flat, mask round trips); eight added
+  to `tests/test_backends.py` for the widened seam on the NumPy side.
+- `CLAUDE.md` § Current state and § Module map updated.
+
+**Measured**
+- **Rung A, full — PASS.** `myenv/Scripts/python.exe -m validate.parity --backend warp`, `cuda:0`:
+
+  | section | worst | note |
+  |---|---|---|
+  | kernels | **5.960e-08** (`equilibrium`) | `macroscopic` and `stream` bitwise — session 14's digits, reproduced through a rewritten seam |
+  | boundaries | **5.960e-08** (`outlet(conv)`) | `bounce_back`, `moving_wall`, `moving_wall(u=0)`, `outlet(copy)` all **bitwise**; `inlet_velocity` 1.490e-08, `body_force` 1.490e-08, `force_shift` 7.451e-09 |
+  | whole step | **9.611e-06** at 1000 steps | 2.459e-06 at 10, 1.743e-05 at 100 — bounded, not compounding (**D-056**) |
+  | checkpoint | **8.196e-06** | `warp` → `numpy`, 100 steps on; restart within `warp` bit-identical; contents `config, f, format, solid, step_count` |
+
+  Bar is 1e-6 per kernel and boundary, 1e-4 for the whole step. Neither was touched. Spike test 9/9.
+- **All four Phase 0 rungs on the GPU, inside their published bands, printing session 11's digits:**
+
+  | Rung | session 11 / 13 (numpy) | session 15 (numpy) | session 15 (**warp**) |
+  |---|---|---|---|
+  | R1 Poiseuille | L2 0.3650% | L2 **0.3650%** | L2 **0.3649%** |
+  | R2 cavity Re 100 | 0.75%, vortex 0.21 cells | **0.75%**, **0.21** cells | **0.75%**, **0.21** cells |
+  | R3 cylinder | St 0.1731, Cd 1.4031 ± 0.0086 | St **0.1731**, Cd **1.4031 ± 0.0086** | St **0.1731**, Cd **1.4031 ± 0.0086** |
+  | R4 square | Cd 1.5279 ± 0.0271 | not re-run | Cd **1.5279 ± 0.0271** |
+  | R4 polygon | Cd 1.4276 ± 0.0226 | not re-run | Cd **1.4276 ± 0.0226** |
+
+  R3 wall clock **158.1 s (288 steps/s)** on warp against session 13's 365.0 s (125 steps/s); R4
+  square 470.6 s, polygon 229.2 s. Those rung rates are held down by the per-step force probe, which
+  downloads `f_bb` and `f` **every step** because that is what the rung measures — the kernel rate is
+  `bench.py`'s.
+- **Performance budget — PASS, every floor, with margin.** See § Performance baseline for the table
+  and its **D-035** conditions: **4155.0 / 757.3 / 441.0** steps/s at 40k / 1M / 2M against floors of
+  2000 / 250 / 150, which is **5× / 33× / 53×** NumPy measured in the same alternating rounds. 1M and
+  2M clear the budget's *targets* as well. Device footprint at 2M cells **391 MiB**, leaving 2882 MiB
+  of 4096 MiB free.
+- `myenv/Scripts/python.exe -m pytest` → **`428 passed, 1 skipped, 7 warnings`**. 408 before; the one
+  skip is `test_a_known_but_uninstalled_backend_names_its_install_line`, unchanged and by design.
+
+**M5 gate output, pasted verbatim** (`DOCS/PLAN2.md` § Milestone gates asks for three things:
+`validate.parity --backend warp` printing PASS, all four Phase 0 rungs re-run with
+`--backend warp` inside their published bands, and `bench.py --backend warp` clearing
+2000 / 250 / 150 steps/s. The rung digits are in the table above; the other two are here.)
+
+```
+$ myenv/Scripts/python.exe -m validate.parity --backend warp
+Rung A - backend parity, warp vs numpy
+  random state: rho in [0.9, 1.1], |u| <= 0.099, tau = 0.6, seed = 20260818
+  tolerance: max|numpy - warp| <= 1e-06 in f units
+  whole step: max|du| / U < 1e-04 at 1000 steps
+  device: cuda:0
+
+1. kernels
+  kernel            quantity          grid   max abs diff   bitwise
+  -----------------------------------------------------------------
+  macroscopic       rho              32x64      0.000e+00   yes  [ok]
+  macroscopic       u                32x64      0.000e+00   yes  [ok]
+  equilibrium       feq              32x64      5.960e-08   no   [ok]
+  collide           f                32x64      1.490e-08   no   [ok]
+  stream            f                32x64      0.000e+00   yes  [ok]
+  macroscopic       rho            200x400      0.000e+00   yes  [ok]
+  macroscopic       u              200x400      0.000e+00   yes  [ok]
+  equilibrium       feq            200x400      5.960e-08   no   [ok]
+  collide           f              200x400      1.490e-08   no   [ok]
+  stream            f              200x400      0.000e+00   yes  [ok]
+  macroscopic       rho           500x1000      0.000e+00   yes  [ok]
+  macroscopic       u             500x1000      0.000e+00   yes  [ok]
+  equilibrium       feq           500x1000      5.960e-08   no   [ok]
+  collide           f             500x1000      1.490e-08   no   [ok]
+  stream            f             500x1000      0.000e+00   yes  [ok]
+
+  worst per kernel:
+
+  stream spike test, all 9 directions land on cell + E[i]: 9/9
+
+2. boundaries
+  kernel            quantity          grid   max abs diff   bitwise
+  -----------------------------------------------------------------
+  bounce_back       f                32x64      0.000e+00   yes  [ok]
+  moving_wall       f                32x64      0.000e+00   yes  [ok]
+  moving_wall(u=0)  f                32x64      0.000e+00   yes  [ok]
+  inlet_velocity    f                32x64      1.490e-08   no   [ok]
+  outlet(copy)      f                32x64      0.000e+00   yes  [ok]
+  outlet(conv)      f                32x64      5.960e-08   no   [ok]
+  outlet(conv)      prev             32x64      5.960e-08   no   [ok]
+  force_shift       u                32x64      0.000e+00   yes  [ok]
+  body_force        f                32x64      0.000e+00   yes  [ok]
+  bounce_back       f              200x400      0.000e+00   yes  [ok]
+  moving_wall       f              200x400      0.000e+00   yes  [ok]
+  moving_wall(u=0)  f              200x400      0.000e+00   yes  [ok]
+  inlet_velocity    f              200x400      1.490e-08   no   [ok]
+  outlet(copy)      f              200x400      0.000e+00   yes  [ok]
+  outlet(conv)      f              200x400      5.960e-08   no   [ok]
+  outlet(conv)      prev           200x400      5.960e-08   no   [ok]
+  force_shift       u              200x400      3.725e-09   no   [ok]
+  body_force        f              200x400      7.451e-09   no   [ok]
+  bounce_back       f             500x1000      0.000e+00   yes  [ok]
+  moving_wall       f             500x1000      0.000e+00   yes  [ok]
+  moving_wall(u=0)  f             500x1000      0.000e+00   yes  [ok]
+  inlet_velocity    f             500x1000      1.490e-08   no   [ok]
+  outlet(copy)      f             500x1000      0.000e+00   yes  [ok]
+  outlet(conv)      f             500x1000      5.960e-08   no   [ok]
+  outlet(conv)      prev          500x1000      5.960e-08   no   [ok]
+  force_shift       u             500x1000      7.451e-09   no   [ok]
+  body_force        f             500x1000      1.490e-08   no   [ok]
+
+  worst per kernel:
+
+3. whole step - 256x64, disc D = 16, Zou-He inlet, convective outlet, U = 0.05
+  ----------------------------------------------
+  the disagreement is bounded, not compounding: a growth factor well under the
+  step-count factor beside it means the error is not accumulating (Q-103).
+
+4. checkpoint
+  contents: config, f, format, solid, step_count
+  f written in the host layout (9, ny, nx) float32 (constraint 4): yes
+  written on warp, resumed on numpy, 100 steps on:   max|du| / U = 8.196e-06  [ok]
+  restart within warp is bit-identical (constraint 11): yes
+
+PASS
+```
+
+```
+$ myenv/Scripts/python.exe bench.py --backend warp
+backend warp   numpy 2.4.6   python 3.11.15
+  cpu:   AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD
+  clock: 3201 MHz of 3201 MHz   power: mains   (D-035)
+  gpu:   NVIDIA GeForce RTX 3050 Laptop GPU   driver 592.82
+measuring Sim.step (inlet + convective outlet + immersed disc)
+  alternating rounds, best round per backend, one Sim resident (D-035); 5 rounds
+
+       grid      cells      numpy       warp   speedup   floor   target  result
+------------------------------------------------------------------------------------
+400x100       40,000      775.1     4155.0        5x    2000     5000  PASS
+2000x500    1,000,000       23.0      757.3       33x     250      600  PASS
+2000x1000   2,000,000        8.3      441.0       53x     150      400  PASS
+------------------------------------------------------------------------------------
+budget: PASS  (floors from DOCS/IDEA3.md S Performance budget)
+
+device memory at 2,000,000 cells: 391 MiB in 13 Sim-owned arrays (69 MiB per (9, ny, nx) buffer), 384 MiB observed as a drop in free memory
+  2882 MiB still free of 4096 MiB - room for the display path (one (ny, nx) vorticity field and its RGB frame are 8 + 6 MiB, and both live on the host)
+  the observed drop reads 0 once Warp's memory pool has retained an earlier
+  allocation of the same size; the accounted figure is the one to trust.
+```
+
+
+**Decisions made**
+- **D-054** — the seam widens to the whole timestep and the state moves onto the device; supersedes
+  **D-052**. **D-055** — the pre-collision copy is dropped on the fused path, bitwise identically.
+  **D-056** — Q-103's answer: bounded, not compounding. **D-057** — scalars NumPy rounds once are
+  computed host-side and uploaded, never recomputed per thread.
+
+**Not done / deferred**
+- **No `--backend` on `python -m lbm.runner`.** T103's outputs name the four rung scripts, `bench.py`
+  and `validate/parity.py`; the CLI is T109's, and **Q-101** is still open about what that CLI
+  becomes. `python -m lbm.runner` is unchanged and still runs on `numpy`.
+- **R4 on `numpy` was not re-run** (~40 minutes for a path whose only change is **D-055**). R3 on
+  `numpy` **was**, precisely because D-055 touches the fused path on the *reference* backend too, and
+  it printed **St 0.1731, Cd 1.4031 ± 0.0086 in 397.4 s (115 steps/s)** — session 11 and 13's digits
+  exactly. The evidence standing in for R4 is specific rather than hand-waving: the D-055 removal is
+  asserted **bitwise** by
+  `tests/test_backends.py::test_the_fused_path_needs_no_pre_collision_copy_and_says_so_in_bits` and
+  its Warp twin, `tests/test_perf.py`'s fused-vs-unfused equality still passes, R3 on `numpy` is
+  unchanged to four decimals, and R4 on `warp` printed session 11's `numpy` digits to four decimals
+  as well.
+- **T102's non-contiguous-host-array guard is gone.** It existed to stop a silent host copy on the
+  hot path; since the step loop never touches a host array it protects nothing, and `upload` now
+  makes its input contiguous, symmetrically with `NumpyBackend.upload`. The shape and dtype guards on
+  `to_host` / `from_host` — the ones constraint 4 needs — are unchanged and still tested.
+- **No `flow/` package.** T104 onward, and `lbm/` may never import it (**D-042**, constraint 15).
+- `DOCS/ISSUES.jsonl` tracking in git — still the user's call, still not acted on. Nothing was queued
+  this session; nothing failed.
+
+**Blockers**
+- None.
+
+**Rung status after this session**
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — R1, R2 and R3 re-run on **both** backends and identical;
+  R4 re-run on `warp` only (see § Not done for why, and for what stands in its place).
+- Phase 1: **A 🟩** · B ⬜ · C ⬜ · D ⬜ · E ⬜ — Rung A green in full.
+
+**Next**
+- Paste `PROMPTS/016-t104-quantities-fluids.md` into a fresh session. It runs `/start-task T104`.
+- T104 is the first `flow/` task and the first that is **not** solver work: `flow/quantity.py` and
+  `flow/fluids.py`, physical units parsed and a fluid library, with constraint 13 (no lattice
+  quantity in any public `flow/` signature) and constraint 15 (`flow/` may import `lbm/`, never the
+  reverse) live from the first file.
+- `DOCS/PLAN2.md` § Risks, the hard valve on "the trap": **it was not needed.** T102 and T103 both
+  landed on schedule and the port is done. Phase 1's remaining seven tasks are product work, and the
+  next mention of a kernel should be Phase 2's XLB swap.

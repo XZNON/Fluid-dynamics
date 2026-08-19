@@ -343,8 +343,14 @@ def make_config(
     outlet_lam: float | None,
     verbose_mask: bool,
     inlet_uy: float = 0.0,
+    backend: str = "numpy",
 ) -> SimConfig:
-    """The :class:`lbm.runner.SimConfig` for an open-channel cylinder run."""
+    """The :class:`lbm.runner.SimConfig` for an open-channel cylinder run.
+
+    ``backend`` is the T101 seam's registry name (T103 added the flag): the rung
+    is the same physics on either backend and its published band is the same
+    band, which is exactly what Rung A claims and this rung checks.
+    """
     return SimConfig(
         ny=ny,
         nx=nx,
@@ -359,6 +365,7 @@ def make_config(
         inlet_axis="x",
         check_geometry=True,
         verbose_mask=verbose_mask,
+        backend=backend,
     )
 
 
@@ -373,8 +380,9 @@ def _peak_fluid_speed(sim: Sim) -> float:
     ``8.4e+01``.
     """
     fluid = ~sim.solid
-    ux = sim.u[0][fluid]
-    uy = sim.u[1][fluid]
+    u = sim.host_u()
+    ux = u[0][fluid]
+    uy = u[1][fluid]
     return float(np.sqrt(ux * ux + uy * uy).max())
 
 
@@ -462,6 +470,7 @@ def run_cylinder(
     bench_steps: int = 4000,
     verbose_mask: bool = True,
     physical: bool = False,
+    backend: str = "numpy",
 ) -> CylinderResult:
     """Set up, benchmark the window, run the wake, and measure.
 
@@ -519,7 +528,7 @@ def run_cylinder(
 
     cfg = make_config(
         ny=ny, nx=nx, tau=tau, u=u, outlet_lam=outlet_lam,
-        verbose_mask=verbose_mask, inlet_uy=KICK_FACTOR * u,
+        verbose_mask=verbose_mask, inlet_uy=KICK_FACTOR * u, backend=backend,
     )
 
     # check_mask runs inside Sim.__init__; building the sim here is what
@@ -605,11 +614,13 @@ def run_cylinder(
         nonlocal n, peak_u
         if n < total_steps:
             cd_series[n], cl_series[n] = forces(
-                s.f_bb, s.f, body_links, U=u, D=d_measured, rho0=s.config.rho0
+                s.host_f_bb(), s.host_f(), body_links,
+                U=u, D=d_measured, rho0=s.config.rho0,
             )
         n += 1
         if n == kick_steps:
             s.u_in[1].fill(0.0)
+            s.refresh_inlet_profile()
         if n % PEAK_EVERY == 0:
             peak_u = max(peak_u, _peak_fluid_speed(s))
 
@@ -640,7 +651,7 @@ def run_cylinder(
     cd_series = cd_series[:ran]
     cl_series = cl_series[:ran]
     peak_u = max(peak_u, _peak_fluid_speed(sim))
-    saw_nan = not bool(np.isfinite(sim.f).all()) or not bool(
+    saw_nan = not bool(np.isfinite(sim.host_f()).all()) or not bool(
         np.isfinite(cd_series).all() and np.isfinite(cl_series).all()
     )
 
@@ -831,6 +842,13 @@ def main(argv: list[str] | None = None) -> int:
         default=4000,
         help="steps per leg of the window-cost measurement; 0 skips it",
     )
+    parser.add_argument(
+        "--backend",
+        default="numpy",
+        help="compute backend (T101 seam): 'numpy' (the oracle, D-043) or "
+        "'warp'. The published band is the same band either way — that is what "
+        "Rung A claims and what running this rung on the GPU checks.",
+    )
     args = parser.parse_args(argv)
 
     if args.headless:
@@ -850,6 +868,7 @@ def main(argv: list[str] | None = None) -> int:
         vmax=args.vmax,
         bench_steps=args.bench_steps,
         physical=args.physical,
+        backend=args.backend,
     )
     return 0 if report(res) else 1
 

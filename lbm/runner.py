@@ -48,6 +48,23 @@ docstring::
 ``f_pre`` (pre-collision) and ``f_bb`` (pre-stream) are two buffers with two
 meanings and are deliberately not merged.
 
+**Every line above is reached through** :attr:`Sim.backend` **and never imported
+here** (T101 for the kernels, T103 for the boundaries and the body force): the
+*order* is physics and is the same on every backend, while the arithmetic inside
+each call is the backend's. :mod:`lbm.runner` imports no kernel and no boundary,
+and ``tests/test_backends.py`` asserts it.
+
+On the fused path (**D-033**) the first line is **absent**, and that is a
+removal rather than a shortcut: :func:`lbm.core.collide_stream` stages every
+direction in ``f_bb`` and does not write ``f`` until the stream lands, so ``f``
+is still the pre-collision state when the reflection reads it. Passing ``f``
+where D-011's copy would go is bitwise identical — asserted, not argued, in
+``tests/test_backends.py`` and ``tests/test_warp_backend.py`` — and it removes a
+whole ``(9, ny, nx)`` copy per step, which at 2M cells is 144 MB of bandwidth the
+GPU budget cannot spare. It is only valid **because** ``f_bb`` is supplied: with
+``f_bb=None`` the pass stages in ``f`` itself and the alias would read values it
+had already overwritten.
+
 Why the checkpoint is still only three things
 ---------------------------------------------
 
@@ -76,14 +93,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from lbm.backends import Backend, get_backend
-from lbm.boundary import (
-    U_MAX,
-    apply_body_force,
-    force_velocity_shift,
-    inlet_profile,
-    inlet_velocity,
-    outlet_zero_gradient,
-)
+from lbm.boundary import U_MAX, inlet_profile
 from lbm.core import Q, W
 from lbm.geometry import bounding_box, check_mask
 from lbm.probe import BoundaryLinks, boundary_links, forces, residual, vorticity
@@ -400,14 +410,33 @@ class Sim:
     :meth:`step` allocation-free (``CLAUDE.md`` conventions; D-006 gave every
     hot function an optional preallocated output for exactly this caller).
 
+    Where the state lives (T103)
+    ----------------------------
+    Every state and scratch array below is allocated **by the backend**, so on
+    ``"numpy"`` it is an :class:`numpy.ndarray` exactly as in Phase 0 and on
+    ``"warp"`` it is a device array and a timestep moves nothing across the bus.
+    Code outside this class that wants to *read* the state calls
+    :meth:`host_f`, :meth:`host_u`, :meth:`host_rho` or :meth:`host_f_bb`, which
+    are free on a host backend and a synchronising download on a device one —
+    and are therefore called on the frame or probe cadence, never per step
+    (constraint 8). :meth:`load_f` is the write half.
+
     Attributes:
         config: the :class:`SimConfig` this was built from.
-        f: distribution function, shape ``(9, ny, nx)``, ``float32``.
-        solid: solid mask, shape ``(ny, nx)``, ``bool``.
+        f: distribution function, ``(9, ny, nx)`` ``float32``, backend array.
+        solid: solid mask, shape ``(ny, nx)``, ``bool`` — always on the host,
+            because the geometry checks and the force integral read it.
         step_count: timesteps executed since the run began.
-        rho: density, shape ``(ny, nx)``, ``float32``, refreshed each step.
-        u: velocity, shape ``(2, ny, nx)``, ``float32``, refreshed each step.
-            With a body force this is the Guo-corrected velocity (D-010).
+        rho: density, ``(ny, nx)`` ``float32`` backend array, refreshed each
+            step.
+        u: velocity, ``(2, ny, nx)`` ``float32`` backend array, refreshed each
+            step. With a body force this is the Guo-corrected velocity (D-010).
+        f_pre: pre-**collision** copy (D-011), ``(9, ny, nx)``. Written only on
+            the unfused path; the fused pass needs no copy — see :meth:`step`.
+        f_bb: pre-**stream** snapshot (D-020), ``(9, ny, nx)``, what
+            :func:`lbm.probe.forces` consumes.
+        u_in: the inlet profile, ``(2, ny)`` ``float32``, on the **host**. Edit
+            it in place and call :meth:`refresh_inlet_profile`.
         links: bounce-back links, built once from the mask (D-020).
         D: characteristic length in cells (D-019).
     """
@@ -471,26 +500,47 @@ class Sim:
             check_mask(solid, cfg.inlet_axis, verbose=cfg.verbose_mask)
 
         # --- state -------------------------------------------------------
+        # Allocated **by the backend** (T103): on ``"numpy"`` these are plain
+        # ``np.empty`` arrays and nothing about Phase 0 changes, while on a
+        # device backend they are device arrays and a timestep moves no bytes
+        # across the bus. See :mod:`lbm.backends`, "What T103 added".
+        be = self.backend
         self.step_count: int = int(step_count)
-        self.f: NDArray[np.float32] = np.empty((Q, ny, nx), dtype=np.float32)
+        self.f: Any = be.empty((Q, ny, nx))
 
         # --- buffers, allocated once (D-006, D-020) ----------------------
-        self.f_pre: NDArray[np.float32] = np.empty_like(self.f)  # pre-collision
-        self.f_bb: NDArray[np.float32] = np.empty_like(self.f)  # pre-stream
-        self.buf: NDArray[np.float32] = np.empty_like(self.f)  # stream scratch
-        self.rho: NDArray[np.float32] = np.empty((ny, nx), dtype=np.float32)
-        self.u: NDArray[np.float32] = np.empty((2, ny, nx), dtype=np.float32)
+        self.f_pre: Any = be.empty((Q, ny, nx))  # pre-collision (D-011)
+        self.f_bb: Any = be.empty((Q, ny, nx))  # pre-stream (D-020)
+        self.buf: Any = be.empty((Q, ny, nx))  # stream scratch
+        self.rho: Any = be.empty((ny, nx))
+        self.u: Any = be.empty((2, ny, nx))
+        self.feq: Any = be.empty((Q, ny, nx))
+        self.work: Any = be.empty((3, ny, nx))
+        self.out_prev: Any = be.empty((Q, ny))
+        self.inlet_work: Any = be.empty((5, ny))
+
+        # Probe buffers stay on the **host**: vorticity, the force integral and
+        # the residual all read host arrays at frame or probe cadence and never
+        # at step cadence (constraint 8 — never block the sim on the display).
         self.u_prev: NDArray[np.float32] = np.zeros((2, ny, nx), dtype=np.float32)
-        self.feq: NDArray[np.float32] = np.empty_like(self.f)
-        self.work: NDArray[np.float32] = np.empty((3, ny, nx), dtype=np.float32)
         self.omega: NDArray[np.float32] = np.empty((ny, nx), dtype=np.float32)
         self.vort_work: NDArray[np.float32] = np.empty((ny, nx), dtype=np.float32)
         self.res_work: NDArray[np.float32] = np.empty((2, ny, nx), dtype=np.float32)
-        self.out_prev: NDArray[np.float32] = np.empty((Q, ny), dtype=np.float32)
-        self.inlet_work: NDArray[np.float32] = np.empty((5, ny), dtype=np.float32)
+
+        # True when the backend's arrays *are* host arrays, in which case every
+        # host accessor below is free. Asked of the allocation rather than of
+        # the backend's name, so a future host backend inherits it.
+        self._host_state: bool = isinstance(self.f, np.ndarray)
+        self._mirrors: dict[str, NDArray[np.float32]] = {}
 
         # Built once from the mask, reused every step (D-020, T005 contract).
+        # Host: the force integral is a probe, not a kernel.
         self.links: BoundaryLinks = boundary_links(solid)
+
+        # The mask the kernels index, on the backend's side of the seam. On
+        # ``"numpy"`` this is a copy of ``self.solid`` and costs ``ny * nx``
+        # bytes; on a device it is the ``uint8`` mask the reflection reads.
+        self._solid_dev: Any = be.upload(self.solid)
 
         # The inlet profile is built once and handed back every step; building
         # it per step would allocate O(ny) inside the loop.
@@ -502,6 +552,7 @@ class Sim:
             col=cfg.inlet_col,
             uy=cfg.inlet_uy,
         )
+        self._u_in_dev: Any = be.upload(self.u_in)
 
         self.D: float = float(cfg.D) if cfg.D is not None else self._derive_D()
 
@@ -515,6 +566,7 @@ class Sim:
         self._inlet_fluid: NDArray[np.bool_] = np.ascontiguousarray(
             ~self.solid[:, cfg.inlet_col]
         )
+        self._inlet_fluid_dev: Any = be.upload(self._inlet_fluid)
 
         # Fusion is a speed switch, never a physics one (T010). It is skipped
         # when a body force is present: Guo's source term goes between collision
@@ -535,16 +587,19 @@ class Sim:
                 )
             # Through the seam: an adopted state is always the host layout
             # ``(9, ny, nx)`` float32 (constraint 4 in its D-046 form), and the
-            # backend is what turns it into whatever it runs on. On NumPy this
-            # is the identity, so the bits are the checkpoint's bits and
+            # backend is what turns it into whatever it runs on. No arithmetic
+            # happens on either side, so the bits are the checkpoint's bits and
             # constraint 11 holds.
-            np.copyto(self.f, self.backend.from_host(f.astype(np.float32, copy=False)))
+            be.upload(np.ascontiguousarray(f, dtype=np.float32), dst=self.f)
 
         # The convective outlet's previous column. At the end of every step it
         # equals f[:, :, outlet_col] exactly (nothing later writes that column),
         # so seeding it from f here makes a fresh run and a resumed run agree
         # bit-for-bit — see the module docstring.
-        np.copyto(self.out_prev, self.f[:, :, cfg.outlet_col])
+        be.upload(
+            np.ascontiguousarray(be.download(self.f)[:, :, cfg.outlet_col]),
+            dst=self.out_prev,
+        )
 
         self._warn_if_too_fast()
 
@@ -574,17 +629,24 @@ class Sim:
 
         A uniform-density field at the inlet velocity everywhere: the cheapest
         start that does not put a pressure shock in the domain on step 1.
+
+        Built on the **host** and uploaded once, because a device backend has no
+        ``fill`` and this runs at setup rather than in the step loop.
         """
         cfg = self.config
-        self.rho.fill(np.float32(cfg.rho0))
+        ny, nx = cfg.ny, cfg.nx
+
+        rho = np.full((ny, nx), np.float32(cfg.rho0), dtype=np.float32)
+        u = np.zeros((2, ny, nx), dtype=np.float32)
         if cfg.use_inlet:
             # Broadcast the inlet column's profile across every column.
-            self.u[0] = self.u_in[0][:, None]
-            self.u[1] = self.u_in[1][:, None]
-        else:
-            self.u.fill(np.float32(0.0))
+            u[0] = self.u_in[0][:, None]
+            u[1] = self.u_in[1][:, None]
+
+        self.backend.upload(rho, dst=self.rho)
+        self.backend.upload(u, dst=self.u)
         self.backend.equilibrium(self.rho, self.u, self.f, self.work)
-        np.copyto(self.u_prev, self.u)
+        np.copyto(self.u_prev, u)
 
     def _warn_if_too_fast(self) -> None:
         """Warn at setup, not at ``nan`` time (``CLAUDE.md`` constraint 3).
@@ -631,36 +693,47 @@ class Sim:
 
         backend = self.backend
 
-        np.copyto(self.f_pre, f)  # pre-collision copy, for bounce_back (D-011)
-        backend.macroscopic(f, self.rho, self.u)
-
-        if self._forced:
-            force_velocity_shift(self.rho, self.u, self._g, self.work)
-
-        backend.equilibrium(self.rho, self.u, self.feq, self.work)
-
         if self._fused:
+            # No pre-collision copy on this path, and that is not a shortcut.
+            # The fused pass stages every direction in ``f_bb`` (D-020) and does
+            # not write ``f`` until the stream lands, so ``f`` *is* still the
+            # pre-collision state when the reflection reads it — passing ``f``
+            # where D-011's copy would go is bitwise identical and removes a
+            # whole ``(9, ny, nx)`` copy per step. It is only valid because
+            # ``f_bb`` is supplied: with ``f_bb=None`` the pass stages in ``f``
+            # itself and the alias would read values it had already overwritten.
+            backend.macroscopic(f, self.rho, self.u)
+            backend.equilibrium(self.rho, self.u, self.feq, self.work)
             backend.collide_stream(
                 f,
                 self.feq,
                 cfg.tau,
                 self.buf,
-                f_pre=self.f_pre if self._has_solid else None,
-                solid=self.solid if self._has_solid else None,
+                f_pre=f if self._has_solid else None,
+                solid=self._solid_dev if self._has_solid else None,
                 f_bb=self.f_bb,
             )
         else:
+            backend.copy(self.f_pre, f)  # pre-collision copy (D-011)
+            backend.macroscopic(f, self.rho, self.u)
+
+            if self._forced:
+                backend.force_velocity_shift(self.rho, self.u, self._g, self.work)
+
+            backend.equilibrium(self.rho, self.u, self.feq, self.work)
             backend.collide(f, self.feq, cfg.tau)
 
             if self._forced:
-                apply_body_force(f, self.rho, self.u, cfg.tau, self._g, self.work)
+                backend.apply_body_force(
+                    f, self.rho, self.u, cfg.tau, self._g, self.work
+                )
 
-            backend.bounce_back(f, self.f_pre, self.solid)
-            np.copyto(self.f_bb, f)  # pre-stream copy, for probe.forces (D-020)
+            backend.bounce_back(f, self.f_pre, self._solid_dev)
+            backend.copy(self.f_bb, f)  # pre-stream copy, probe.forces (D-020)
             backend.stream(f, self.buf)
 
         if cfg.use_outlet:
-            outlet_zero_gradient(
+            backend.outlet_zero_gradient(
                 f,
                 col=cfg.outlet_col,
                 src=cfg.outlet_src,
@@ -668,13 +741,12 @@ class Sim:
                 lam=cfg.outlet_lam,
             )
         if cfg.use_inlet:
-            inlet_velocity(
+            backend.inlet_velocity(
                 f,
-                solid=self.solid,
                 col=cfg.inlet_col,
-                u_in=self.u_in,
+                u_in=self._u_in_dev,
                 work=self.inlet_work,
-                fluid=self._inlet_fluid,
+                fluid=self._inlet_fluid_dev,
             )
 
         self.step_count += 1
@@ -683,6 +755,89 @@ class Sim:
         """Advance ``n`` timesteps."""
         for _ in range(n):
             self.step()
+
+    # -- host views of backend state (T103) -------------------------------
+
+    def _host(self, key: str, dev: Any, shape: tuple[int, ...]) -> NDArray[np.float32]:
+        """A host copy of one backend array, into a mirror allocated once.
+
+        On a host backend this is the array itself and costs nothing. On a device
+        backend it is a synchronising download into a preallocated mirror, so a
+        caller that reads the state every frame allocates nothing per frame
+        (``CLAUDE.md`` § conventions) and the transfer happens on the **frame**
+        cadence rather than the step cadence (constraint 8).
+
+        Args:
+            key: mirror name, unique per array.
+            dev: the backend array to read.
+            shape: its shape, for the mirror's first allocation.
+
+        Returns:
+            Host ``float32`` of ``shape``. Treat it as read-only: on a host
+            backend it *is* the simulation's buffer.
+        """
+        if self._host_state:
+            return dev
+        mirror = self._mirrors.get(key)
+        if mirror is None:
+            mirror = np.empty(shape, dtype=np.float32)
+            self._mirrors[key] = mirror
+        self.backend.download(dev, mirror)
+        return mirror
+
+    def host_f(self) -> NDArray[np.float32]:
+        """The distribution on the host, ``(9, ny, nx)`` ``float32``."""
+        return self._host("f", self.f, (Q, self.config.ny, self.config.nx))
+
+    def host_f_bb(self) -> NDArray[np.float32]:
+        """The pre-stream snapshot on the host, ``(9, ny, nx)`` (**D-020**)."""
+        return self._host("f_bb", self.f_bb, (Q, self.config.ny, self.config.nx))
+
+    def host_rho(self) -> NDArray[np.float32]:
+        """Density on the host, ``(ny, nx)`` ``float32``."""
+        return self._host("rho", self.rho, (self.config.ny, self.config.nx))
+
+    def host_u(self) -> NDArray[np.float32]:
+        """Velocity on the host, ``(2, ny, nx)`` ``float32``, ``(ux, uy)``."""
+        return self._host("u", self.u, (2, self.config.ny, self.config.nx))
+
+    def load_f(self, f: NDArray[np.float32]) -> None:
+        """Overwrite the distribution from a host ``(9, ny, nx)`` ``float32``.
+
+        The write half of :meth:`host_f`, for a caller that has to seed or repair
+        the state at setup — ``validate/polygons.py`` fills the solid interior
+        with ``w_i rho0`` so the first bounce-back has something sane to reflect.
+        The convective outlet's previous column is reseeded from the new ``f``,
+        exactly as :func:`load_checkpoint` does, so the run stays consistent.
+
+        Args:
+            f: ``(9, ny, nx)`` ``float32`` in host memory.
+
+        Raises:
+            ValueError: if the shape does not match the config.
+        """
+        cfg = self.config
+        arr = np.ascontiguousarray(f, dtype=np.float32)
+        if arr.shape != (Q, cfg.ny, cfg.nx):
+            raise ValueError(
+                f"f must be {(Q, cfg.ny, cfg.nx)} to match the config "
+                f"(got {arr.shape})."
+            )
+        self.backend.upload(arr, dst=self.f)
+        self.backend.upload(
+            np.ascontiguousarray(arr[:, :, cfg.outlet_col]), dst=self.out_prev
+        )
+
+    def refresh_inlet_profile(self) -> None:
+        """Re-upload :attr:`u_in` after a caller has edited it in place.
+
+        :attr:`u_in` ``(2, ny)`` ``float32`` is the host copy; the inlet kernel
+        reads the backend's. On ``"numpy"`` they are the same bytes and this is a
+        no-op in effect, but a device backend needs telling — which is why the
+        demo's startup kick (``DEMO_KICK_FACTOR``) calls it when it zeroes the
+        cross-stream component.
+        """
+        self.backend.upload(self.u_in, dst=self._u_in_dev)
 
     # -- diagnostics (buffer owners, not new physics) ---------------------
 
@@ -698,7 +853,7 @@ class Sim:
             keeps the frame must copy it.
         """
         return vorticity(
-            self.u, solid=self.solid, out=self.omega, work=self.vort_work
+            self.host_u(), solid=self.solid, out=self.omega, work=self.vort_work
         )
 
     def forces(self) -> tuple[float, float]:
@@ -708,8 +863,8 @@ class Sim:
         (post-stream), both from the most recent :meth:`step`.
         """
         return forces(
-            self.f_bb,
-            self.f,
+            self.host_f_bb(),
+            self.host_f(),
             self.links,
             U=self.config.inlet_U,
             D=self.D,
@@ -730,12 +885,12 @@ class Sim:
                 "config has no inlet velocity (a body-force channel has none)."
             )
         return residual(
-            self.u, self.u_prev, ref, solid=self.solid, work=self.res_work
+            self.host_u(), self.u_prev, ref, solid=self.solid, work=self.res_work
         )
 
     def mark_residual(self) -> None:
         """Snapshot the current velocity as the residual's reference."""
-        np.copyto(self.u_prev, self.u)
+        np.copyto(self.u_prev, self.host_u())
 
     # -- checkpointing ----------------------------------------------------
 
@@ -1509,8 +1664,10 @@ def main(argv: list[str] | None = None) -> int:
     # body and bounce-back reverses it every step rather than clearing it. The
     # rest state is a fixed point of both bounce-back and streaming.
     rest = np.float32(cfg.rho0) * W.astype(np.float32)
+    seed = sim.host_f().copy()
     for i in range(Q):
-        sim.f[i][sim.solid] = rest[i]
+        seed[i][sim.solid] = rest[i]
+    sim.load_f(seed)
 
     try:
         sink, members, drop = _resolve_sinks(args)
@@ -1527,6 +1684,7 @@ def main(argv: list[str] | None = None) -> int:
         """Switch the startup kick off in place (see DEMO_KICK_FACTOR)."""
         if s.step_count == kick_steps:
             s.u_in[1].fill(0.0)
+            s.refresh_inlet_profile()
 
     live = next((s for s in members if isinstance(s, LiveSink)), None)
 
@@ -1548,10 +1706,10 @@ def main(argv: list[str] | None = None) -> int:
         f"({stats.steps_per_second:.1f} steps/s), {stats.frames} frames, "
         f"{stats.delivered} delivered, {stats.dropped} dropped")
 
-    peak = float(np.abs(sim.u[:, ~sim.solid]).max())
+    peak = float(np.abs(sim.host_u()[:, ~sim.solid]).max())
     say(f"  peak |u| {peak:.5f} (limit 0.1, constraint 3)"
         f"{'  ** OVER THE LIMIT **' if peak >= 0.1 else ''}")
-    if not np.isfinite(sim.f).all():
+    if not np.isfinite(sim.host_f()).all():
         print("  the simulation produced nan — the case was unstable.",
               file=sys.stderr)
         return 1

@@ -16,7 +16,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 |---|---|---|---|---|
 | T101 | Backend seam, NumPy behind it | `done` | — | Phase 0 rungs 1–4 |
 | T102 | Warp kernels: equilibrium, collide, stream | `done` | T101 | **Rung A** (kernels) |
-| T103 | Warp boundaries, checkpoint, performance | `not_started` | T102 | **Rung A** (full) → **M5** |
+| T103 | Warp boundaries, checkpoint, performance | `done` | T102 | **Rung A** (full) → **M5** |
 | T104 | Physical quantities + fluid library | `not_started` | — | unit tests |
 | T105 | Auto-configuration | `not_started` | T104 | **Rung B** → **M6** |
 | T106 | Diagnosis, refusal, nearest runnable case | `not_started` | T105 | **Rung D** |
@@ -138,7 +138,7 @@ therefore any speed number at all, is T103's.
 
 ## T103 — Warp boundaries, checkpoint, performance → M5
 
-**Status:** `not_started`
+**Status:** `done` (session 15, 2026-08-18)
 
 ### Goal
 
@@ -160,13 +160,13 @@ met. **M5.**
 
 ### Acceptance criteria
 
-- [ ] Every boundary condition Phase 0 ships runs on the GPU, and `validate/parity.py` compares each separately against NumPy at ≤ 1e-6 in `f` units.
-- [ ] **Whole-step parity:** starting from identical state, 1000 steps on each backend agree to `max|Δu| / U < 1e-4`, printed. The number is expected to grow with step count — the script prints it at 10 / 100 / 1000 steps so the growth rate is visible and not merely bounded.
-- [ ] `save_checkpoint` on the GPU backend writes the same four things plus `format` (**D-022**), via `to_host`; a checkpoint written on `warp` **resumes on `numpy`** and continues within the whole-step parity tolerance. Within a backend, restart stays **bit-identical**.
-- [ ] **All four Phase 0 rungs pass with `--backend warp`, inside their published bands** — R1 L2 < 1%, R2 max deviation < 5%, R3 St 0.155–0.175 and Cd 1.25–1.45, R4 Cd 1.4–1.6. Bands are not widened; the printed numbers are recorded beside session 11's.
-- [ ] **`bench.py --backend warp` clears ≥2000 / ≥250 / ≥150 steps/s at 40k / 1M / 2M cells**, measured by alternating rounds (**D-035**), with GPU name, driver, CPU clock and power state quoted.
-- [ ] The GPU memory footprint at 2M cells is printed and fits the 4 GB card with room for the display path.
-- [ ] `myenv/Scripts/python.exe -m pytest` green; **M5 recorded in `DOCS/STATE2.md` with the gate output pasted in.**
+- [x] Every boundary condition Phase 0 ships runs on the GPU, and `validate/parity.py` compares each separately against NumPy at ≤ 1e-6 in `f` units.
+- [x] **Whole-step parity:** starting from identical state, 1000 steps on each backend agree to `max|Δu| / U < 1e-4`, printed. The number is expected to grow with step count — the script prints it at 10 / 100 / 1000 steps so the growth rate is visible and not merely bounded.
+- [x] `save_checkpoint` on the GPU backend writes the same four things plus `format` (**D-022**), via `to_host`; a checkpoint written on `warp` **resumes on `numpy`** and continues within the whole-step parity tolerance. Within a backend, restart stays **bit-identical**.
+- [x] **All four Phase 0 rungs pass with `--backend warp`, inside their published bands** — R1 L2 < 1%, R2 max deviation < 5%, R3 St 0.155–0.175 and Cd 1.25–1.45, R4 Cd 1.4–1.6. Bands are not widened; the printed numbers are recorded beside session 11's.
+- [x] **`bench.py --backend warp` clears ≥2000 / ≥250 / ≥150 steps/s at 40k / 1M / 2M cells**, measured by alternating rounds (**D-035**), with GPU name, driver, CPU clock and power state quoted.
+- [x] The GPU memory footprint at 2M cells is printed and fits the 4 GB card with room for the display path.
+- [x] `myenv/Scripts/python.exe -m pytest` green; **M5 recorded in `DOCS/STATE2.md` with the gate output pasted in.**
 
 ### Constraints that bite here
 
@@ -178,6 +178,23 @@ met. **M5.**
 
 R4 alone is ~40 minutes on NumPy; on GPU it should be minutes, which makes the full ladder cheap for
 the first time. Do not use that to justify running it less carefully.
+
+**Outcome (session 15).** Every criterion run. The seam had to widen first (**D-054**, superseding
+**D-052**): allocation, the three remaining boundaries and both halves of the Guo body force joined
+the `Backend` protocol, backend arrays became opaque handles, and `Sim` now owns **device** state
+with host reads through `host_f` / `host_u` / `host_rho` / `host_f_bb` on frame and probe cadence.
+**Rung A is green in full** — every kernel *and every boundary* within **5.96e-08** of NumPy against
+the 1e-6 bar, with `bounce_back`, `moving_wall`, `outlet(copy)`, `macroscopic` and `stream` all
+**bitwise**; whole-step **9.611e-06** at 1000 steps against 1e-4, and *not compounding* (2.459e-06 at
+10, 1.743e-05 at 100), which closes **Q-103** as **D-056**. A checkpoint written on `warp` resumes on
+`numpy` and continues at **8.196e-06**; restart within `warp` is bit-identical. All four Phase 0
+rungs pass with `--backend warp` printing session 11's digits — R1 L2 **0.3649%**, R2 **0.75%** /
+**0.21** cells, R3 St **0.1731** Cd **1.4031 ± 0.0086**, R4 square Cd **1.5279 ± 0.0271** and polygon
+Cd **1.4276 ± 0.0226**. `bench.py --backend warp` clears every floor with margin —
+**4155 / 757 / 441 steps/s** at 40k / 1M / 2M against 2000 / 250 / 150, which is **5x / 33x / 53x**
+NumPy measured in the same alternating rounds — and 1M and 2M clear the budget's *targets* too. The
+2M footprint is **391 MiB in 13 Sim-owned arrays**, leaving 2882 MiB of the card's 4096 MiB free.
+`pytest` **428 passed, 1 skipped**. **M5.**
 
 ---
 

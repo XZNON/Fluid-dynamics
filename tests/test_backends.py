@@ -51,6 +51,22 @@ PROTOCOL_METHODS = (
     "from_host",
 )
 
+#: What T103 added when whole-step parity forced the seam wider (**D-051**,
+#: **D-052** superseded): allocation, the general transfers, the remaining
+#: boundaries and both halves of the Guo body force.
+T103_METHODS = (
+    "empty",
+    "zeros",
+    "copy",
+    "upload",
+    "download",
+    "moving_wall",
+    "inlet_velocity",
+    "outlet_zero_gradient",
+    "force_velocity_shift",
+    "apply_body_force",
+)
+
 #: The kernels :mod:`lbm.runner` used to import directly and must not any more.
 KERNEL_NAMES = frozenset(
     {"collide", "collide_stream", "equilibrium", "macroscopic", "stream", "bounce_back"}
@@ -446,3 +462,220 @@ def test_a_checkpoint_written_before_t101_still_loads(tmp_path):
     resumed = load_checkpoint(path)
     assert resumed.backend.name == "numpy"
     assert np.array_equal(resumed.f, sim.f)
+
+
+# ---------------------------------------------------------------------------
+# T103 — the widened seam: allocation, transfer, and the rest of the boundaries
+# ---------------------------------------------------------------------------
+
+
+def test_the_protocol_declares_everything_t103_added():
+    """``DOCS/TASKS2.md`` § T103: the whole timestep goes through the seam."""
+    members = set(typing.get_type_hints(Backend).keys()) | {
+        name for name in vars(Backend) if not name.startswith("_")
+    }
+    missing = [m for m in T103_METHODS if m not in members]
+    assert not missing, f"Backend is missing {missing}"
+
+
+def test_every_t103_method_has_a_docstring_naming_its_shapes():
+    """Same rule as T101's: a seam whose shapes live in a comment is unportable."""
+    for name in T103_METHODS:
+        doc = inspect.getdoc(getattr(Backend, name)) or ""
+        assert doc, f"Backend.{name} has no docstring"
+        assert "(9, ny, nx)" in doc or "(ny, nx)" in doc, (
+            f"Backend.{name} does not document its shapes"
+        )
+
+
+def test_the_numpy_backend_delegates_the_boundaries_bit_for_bit():
+    """Delegation, not translation — the same rule T101 set for the kernels.
+
+    Every Phase 0 rung printing its session-11 digits depends on the arithmetic
+    being the same operations in the same order, so the seam is compared against
+    :mod:`lbm.boundary` directly rather than trusted.
+    """
+    be = NumpyBackend()
+    rng = np.random.default_rng(7)
+    f = rng.uniform(0.0, 0.2, size=(Q, NY, NX)).astype(np.float32)
+    f_pre = rng.uniform(0.0, 0.2, size=(Q, NY, NX)).astype(np.float32)
+    rho = rng.uniform(0.9, 1.1, size=(NY, NX)).astype(np.float32)
+    u = rng.uniform(-0.05, 0.05, size=(2, NY, NX)).astype(np.float32)
+    wall = np.zeros((NY, NX), dtype=bool)
+    wall[-1, :] = True
+    u_in = boundary.inlet_profile(NY, 0.05, "uniform")
+    fluid = np.ones(NY, dtype=bool)
+
+    a, b = f.copy(), f.copy()
+    be.moving_wall(a, f_pre, wall, (0.05, 0.0))
+    boundary.moving_wall(b, f_pre, wall, (0.05, 0.0))
+    assert np.array_equal(a, b)
+
+    a, b = f.copy(), f.copy()
+    be.inlet_velocity(a, col=0, u_in=u_in, fluid=fluid)
+    boundary.inlet_velocity(b, col=0, u_in=u_in, fluid=fluid)
+    assert np.array_equal(a, b)
+
+    a, b = f.copy(), f.copy()
+    pa = np.ascontiguousarray(f[:, :, -1])
+    pb = pa.copy()
+    be.outlet_zero_gradient(a, prev=pa)
+    boundary.outlet_zero_gradient(b, prev=pb)
+    assert np.array_equal(a, b) and np.array_equal(pa, pb)
+
+    a, b = u.copy(), u.copy()
+    be.force_velocity_shift(rho, a, (1e-5, 0.0))
+    boundary.force_velocity_shift(rho, b, (1e-5, 0.0))
+    assert np.array_equal(a, b)
+
+    a, b = f.copy(), f.copy()
+    be.apply_body_force(a, rho, u, 0.6, (1e-5, 0.0))
+    boundary.apply_body_force(b, rho, u, 0.6, (1e-5, 0.0))
+    assert np.array_equal(a, b)
+
+
+def test_numpy_allocation_and_transfer_are_the_identity_they_claim_to_be():
+    """The NumPy backend's "device" is the host, so nothing may move or convert."""
+    be = NumpyBackend()
+
+    a = be.empty((Q, NY, NX))
+    assert isinstance(a, np.ndarray) and a.shape == (Q, NY, NX)
+    assert a.dtype == np.float32
+    assert not be.zeros((3, 4)).any()
+
+    host = random_state()
+    dev = be.upload(host)
+    assert dev is not host  # a backend array is always distinct from the caller's
+    assert np.array_equal(dev, host)
+    assert be.download(dev) is dev  # ... but reading it back moves no bits
+
+    out = np.empty_like(host)
+    assert be.download(dev, out) is out
+    assert np.array_equal(out, host)
+
+    mask = np.zeros((NY, NX), dtype=bool)
+    mask[2, 3] = True
+    assert be.download(be.upload(mask)).dtype == np.bool_
+    assert np.array_equal(be.download(be.upload(mask)), mask)
+
+
+def test_the_fused_path_needs_no_pre_collision_copy_and_says_so_in_bits():
+    """The removal :meth:`lbm.runner.Sim.step` makes, checked rather than argued.
+
+    With ``f_bb`` supplied, :func:`lbm.core.collide_stream` stages every
+    direction there and never writes ``f`` until the stream lands — so ``f`` is
+    still the pre-collision state when the reflection reads it, and passing it
+    where **D-011**'s copy would go is bitwise identical. That is what lets the
+    timestep skip a whole ``(9, ny, nx)`` copy per step on **both** backends.
+    """
+    be = NumpyBackend()
+    rng = np.random.default_rng(11)
+    f = rng.uniform(0.0, 0.2, size=(Q, NY, NX)).astype(np.float32)
+    feq = rng.uniform(0.0, 0.2, size=(Q, NY, NX)).astype(np.float32)
+    solid = channel_with_cylinder()
+
+    with_copy = f.copy()
+    bb_a = np.empty_like(f)
+    be.collide_stream(
+        with_copy, feq, 0.6, np.empty_like(f),
+        f_pre=f.copy(), solid=solid, f_bb=bb_a,
+    )
+
+    aliased = f.copy()
+    bb_b = np.empty_like(f)
+    be.collide_stream(
+        aliased, feq, 0.6, np.empty_like(f),
+        f_pre=aliased, solid=solid, f_bb=bb_b,
+    )
+
+    assert np.array_equal(with_copy, aliased)
+    assert np.array_equal(bb_a, bb_b)
+
+
+def test_sim_reaches_the_boundaries_through_the_backend_too():
+    """T101 proved it for the six kernels; T103 extends it to the boundaries.
+
+    A counting backend that wraps the real one records what ``Sim.step`` asks
+    for. The open boundaries used to be called as free functions in
+    :mod:`lbm.runner`; if they ever are again, this stops counting them.
+    """
+
+    class Counting:
+        name = "counting"
+
+        def __init__(self):
+            self.inner = NumpyBackend()
+            self.calls: dict[str, int] = {}
+
+        def __getattr__(self, item):
+            attr = getattr(self.inner, item)
+            if not callable(attr):
+                return attr
+
+            def wrapped(*a, **k):
+                self.calls[item] = self.calls.get(item, 0) + 1
+                return attr(*a, **k)
+
+            return wrapped
+
+    counting = Counting()
+    sim = Sim(flow_config(), channel_with_cylinder())
+    sim.backend = counting
+    sim.run_steps(3)
+
+    for name in ("macroscopic", "equilibrium", "collide_stream",
+                 "outlet_zero_gradient", "inlet_velocity"):
+        assert counting.calls.get(name, 0) == 3, (name, counting.calls)
+
+
+def test_a_forced_sim_reaches_both_halves_of_the_guo_scheme_through_the_backend():
+    """**D-010**: the two halves go together or not at all, and both are kernels."""
+
+    class Counting:
+        name = "counting"
+
+        def __init__(self):
+            self.inner = NumpyBackend()
+            self.calls: dict[str, int] = {}
+
+        def __getattr__(self, item):
+            attr = getattr(self.inner, item)
+            if not callable(attr):
+                return attr
+
+            def wrapped(*a, **k):
+                self.calls[item] = self.calls.get(item, 0) + 1
+                return attr(*a, **k)
+
+            return wrapped
+
+    counting = Counting()
+    cfg = SimConfig(ny=NY, nx=NX, tau=0.6, g=(1e-5, 0.0), check_geometry=False)
+    sim = Sim(cfg, channel_walls(NY, NX))
+    sim.backend = counting
+    sim.run_steps(3)
+
+    assert counting.calls.get("force_velocity_shift", 0) == 3
+    assert counting.calls.get("apply_body_force", 0) == 3
+    assert counting.calls.get("bounce_back", 0) == 3
+    # A body force takes the unfused path (D-033), so the fusion is never used.
+    assert "collide_stream" not in counting.calls
+
+
+def test_load_f_writes_through_the_seam_and_reseeds_the_outlet_column():
+    """The write half of the host accessors, used by ``validate/polygons.py``."""
+    cfg = flow_config()
+    sim = Sim(cfg, channel_with_cylinder())
+    sim.run_steps(2)
+
+    seed = sim.host_f().copy()
+    seed[:] = 0.25
+    sim.load_f(seed)
+
+    assert np.array_equal(sim.host_f(), seed)
+    assert np.array_equal(
+        sim.backend.download(sim.out_prev), seed[:, :, cfg.outlet_col]
+    )
+
+    with pytest.raises(ValueError, match="to match the config"):
+        sim.load_f(np.zeros((Q, 3, 3), dtype=np.float32))

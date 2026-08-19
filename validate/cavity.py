@@ -38,8 +38,8 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from lbm.boundary import bounce_back, moving_wall
-from lbm.core import Q, W, collide, equilibrium, macroscopic, nu_from_tau, stream
+from lbm.backends import get_backend
+from lbm.core import Q, W, nu_from_tau
 
 # --- Ghia reference data ------------------------------------------------------
 #
@@ -367,6 +367,7 @@ def run_cavity(
     corners: str = CORNERS,
     max_steps: int = MAX_STEPS,
     residual_tol: float = RESIDUAL_TOL,
+    backend: str = "numpy",
 ) -> CavityResult:
     """Run one cavity to steady state.
 
@@ -388,6 +389,11 @@ def run_cavity(
         corners: ``"lid"`` or ``"wall"`` — see :func:`cavity_masks` (Q-003).
         max_steps: hard cap.
         residual_tol: per-step convergence threshold, normalised by ``u_lid``.
+        backend: which :class:`lbm.backends.Backend` runs the kernels (T101's
+            seam, T103's flag). ``"numpy"`` is the oracle (**D-043**). This is
+            the only rung that exercises :meth:`lbm.backends.Backend.moving_wall`
+            — the Ladd momentum correction — so it is where a wrong lid on a
+            device would show.
 
     Returns:
         A :class:`CavityResult`.
@@ -399,19 +405,27 @@ def run_cavity(
 
     static, lid = cavity_masks(n, corners)
     fluid = slice(1, n - 1)
+    be = get_backend(backend)
 
     # --- preallocation; nothing below the loop header allocates ---
-    f = np.empty((Q, n, n), dtype=np.float32)
-    f_pre = np.empty_like(f)
-    feq = np.empty_like(f)
-    buf = np.empty_like(f)
-    rho = np.empty((n, n), dtype=np.float32)
-    u = np.empty((2, n, n), dtype=np.float32)
-    work = np.empty((3, n, n), dtype=np.float32)
+    # Through the backend since T103, so the state lives wherever the kernels
+    # do. On ``"numpy"`` these are the same ``np.empty`` arrays as in Phase 0.
+    f = be.empty((Q, n, n))
+    f_pre = be.empty((Q, n, n))
+    feq = be.empty((Q, n, n))
+    buf = be.empty((Q, n, n))
+    rho = be.empty((n, n))
+    u = be.empty((2, n, n))
+    work = be.empty((3, n, n))
+    static_dev = be.upload(static)
+    lid_dev = be.upload(lid)
     u_prev = np.zeros((2, n, n), dtype=np.float32)
+    du = np.empty((2, n, n), dtype=np.float32)
 
     # Rest state: f = w_i * rho with rho = 1, u = 0.
-    f[:] = W[:, None, None]
+    rest = np.empty((Q, n, n), dtype=np.float32)
+    rest[:] = W[:, None, None]
+    be.upload(rest, dst=f)
 
     saw_nan = False
     residual = np.inf
@@ -420,38 +434,43 @@ def run_cavity(
     t0 = time.perf_counter()
 
     for step in range(1, max_steps + 1):
-        np.copyto(f_pre, f)
+        be.copy(f_pre, f)
 
-        macroscopic(f, rho, u)
-        equilibrium(rho, u, feq, work)
-        collide(f, feq, tau)
-        bounce_back(f, f_pre, static)
-        moving_wall(f, f_pre, lid, (u_lid, 0.0))
-        stream(f, buf)
+        be.macroscopic(f, rho, u)
+        be.equilibrium(rho, u, feq, work)
+        be.collide(f, feq, tau)
+        be.bounce_back(f, f_pre, static_dev)
+        be.moving_wall(f, f_pre, lid_dev, (u_lid, 0.0))
+        be.stream(f, buf)
 
         steps = step
 
         if step % CHECK_EVERY == 0:
-            if not np.isfinite(f).all():
+            # The only host transfer in the loop, on the *check* cadence rather
+            # than the step cadence (constraint 8).
+            f_host = be.download(f)
+            u_host = be.download(u)
+            if not np.isfinite(f_host).all():
                 saw_nan = True
                 break
             # Fluid interior only: `rho` on solid cells is whatever bounce-back
             # left there and `u = (e.f)/rho` on them is meaningless — including
             # them would make the residual noise, not convergence.
-            np.subtract(u, u_prev, out=work[:2])
-            residual_raw = float(np.max(np.abs(work[:2, fluid, fluid]))) / u_lid
+            np.subtract(u_host, u_prev, out=du)
+            residual_raw = float(np.max(np.abs(du[:, fluid, fluid]))) / u_lid
             residual = residual_raw / CHECK_EVERY
-            np.copyto(u_prev, u)
+            np.copyto(u_prev, u_host)
             if residual < residual_tol:
                 break
 
     seconds = time.perf_counter() - t0
 
-    macroscopic(f, rho, u)
-    peak_u = float(np.max(np.abs(u[:, fluid, fluid])))
+    be.macroscopic(f, rho, u)
+    u_host = be.download(u)
+    peak_u = float(np.max(np.abs(u_host[:, fluid, fluid])))
 
-    ux = np.asarray(u[0, fluid, fluid], dtype=np.float64)
-    uy = np.asarray(u[1, fluid, fluid], dtype=np.float64)
+    ux = np.asarray(u_host[0, fluid, fluid], dtype=np.float64)
+    uy = np.asarray(u_host[1, fluid, fluid], dtype=np.float64)
 
     # x = 0.5 and y = 0.5 fall exactly between two nodes when L is even, so the
     # centreline is the mean of the two adjacent lines rather than a node.
@@ -655,6 +674,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--verbose", action="store_true", help="print the 17-point tables"
     )
+    parser.add_argument(
+        "--backend",
+        default="numpy",
+        help="compute backend (T101 seam): 'numpy' (the oracle, D-043) or "
+        "'warp'. The published band is the same band either way.",
+    )
     args = parser.parse_args(argv)
 
     res_list = args.re or [100, 400, 1000]
@@ -663,6 +688,7 @@ def main(argv: list[str] | None = None) -> int:
     print("  reference: Ghia, Ghia & Shin, J. Comput. Phys. 48, 387-411 (1982)")
     print("  walls: half-way bounce-back (D-009); lid: momentum-corrected")
     print("         bounce-back (Ladd), lbm.boundary.moving_wall")
+    print(f"  backend: {args.backend}")
     print()
 
     if args.corners == "both":
@@ -681,6 +707,7 @@ def main(argv: list[str] | None = None) -> int:
                 u_lid=args.u,
                 corners=corners,
                 max_steps=args.max_steps,
+                backend=args.backend,
             )
             ok = report(res, verbose=args.verbose)
             du, dv = deviations(res)

@@ -19,10 +19,17 @@ that this is true.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from numpy.typing import NDArray
 
+from lbm.boundary import apply_body_force as _apply_body_force
 from lbm.boundary import bounce_back as _bounce_back
+from lbm.boundary import force_velocity_shift as _force_velocity_shift
+from lbm.boundary import inlet_velocity as _inlet_velocity
+from lbm.boundary import moving_wall as _moving_wall
+from lbm.boundary import outlet_zero_gradient as _outlet_zero_gradient
 from lbm.core import Q
 from lbm.core import collide as _collide
 from lbm.core import collide_stream as _collide_stream
@@ -156,6 +163,188 @@ class NumpyBackend:
         return _collide_stream(
             f, feq, tau, buf, f_pre=f_pre, solid=solid, f_bb=f_bb
         )
+
+    # -- allocation and transfer (T103) -----------------------------------
+    #
+    # The NumPy backend's "device" is the host, so every method below is either
+    # an allocation or the identity. That is the property that keeps the
+    # reference path bit-for-bit unchanged by the seam widening (**D-043**):
+    # nothing is copied that Phase 0 did not copy, and nothing is converted.
+
+    def empty(self, shape: tuple[int, ...], dtype: Any = np.float32) -> NDArray[Any]:
+        """See :meth:`lbm.backends.Backend.empty`.
+
+        Args:
+            shape: e.g. ``(9, ny, nx)``.
+            dtype: NumPy dtype.
+
+        Returns:
+            ``np.empty(shape, dtype)`` — the same call :class:`lbm.runner.Sim`
+            made directly before T103.
+        """
+        return np.empty(shape, dtype=dtype)
+
+    def zeros(self, shape: tuple[int, ...], dtype: Any = np.float32) -> NDArray[Any]:
+        """See :meth:`lbm.backends.Backend.zeros`.
+
+        Args:
+            shape: e.g. ``(2, ny, nx)``.
+            dtype: NumPy dtype.
+
+        Returns:
+            ``np.zeros(shape, dtype)``.
+        """
+        return np.zeros(shape, dtype=dtype)
+
+    def copy(self, dst: NDArray[Any], src: NDArray[Any]) -> None:
+        """See :meth:`lbm.backends.Backend.copy` — :func:`numpy.copyto`.
+
+        Args:
+            dst: destination array.
+            src: source array of the same shape and dtype.
+        """
+        np.copyto(dst, src)
+
+    def upload(self, host: NDArray[Any], dst: Any = None) -> NDArray[Any]:
+        """See :meth:`lbm.backends.Backend.upload`.
+
+        Args:
+            host: a NumPy array.
+            dst: an existing array to write into, or ``None`` for a new one.
+
+        Returns:
+            ``dst`` when given, otherwise a fresh copy of ``host``. A copy and
+            not the array itself, so that a backend array is always distinct
+            from the caller's — the property a device backend has for free and
+            the one Rung A's harness relies on when it hands the same host input
+            to both backends.
+        """
+        if dst is None:
+            return np.array(host, copy=True)
+        np.copyto(dst, host)
+        return dst
+
+    def download(self, src: NDArray[Any], out: NDArray[Any] | None = None) -> NDArray[Any]:
+        """See :meth:`lbm.backends.Backend.download` — the identity here.
+
+        Args:
+            src: a host array.
+            out: an existing host array to read into, or ``None``.
+
+        Returns:
+            ``src`` itself when ``out`` is ``None`` — no bits move, which is
+            what makes :meth:`lbm.runner.Sim.host_u` free on this backend.
+            Treat it as read-only.
+        """
+        if out is None:
+            return src
+        np.copyto(out, src)
+        return out
+
+    # -- boundaries (T103) -------------------------------------------------
+
+    def moving_wall(
+        self,
+        f: NDArray[np.float32],
+        f_pre: NDArray[np.float32],
+        wall: NDArray[np.bool_],
+        u_wall: tuple[float, float],
+        rho_w: float = 1.0,
+    ) -> None:
+        """See :meth:`lbm.backends.Backend.moving_wall`.
+
+        Args:
+            f: ``(9, ny, nx)`` ``float32``, modified in place on ``wall``.
+            f_pre: pre-collision copy, ``(9, ny, nx)`` ``float32``.
+            wall: ``(ny, nx)`` ``bool``.
+            u_wall: ``(ux, uy)`` lattice velocity of the wall.
+            rho_w: wall density in the correction term.
+        """
+        _moving_wall(f, f_pre, wall, u_wall, rho_w)
+
+    def inlet_velocity(
+        self,
+        f: NDArray[np.float32],
+        *,
+        col: int = 0,
+        u_in: NDArray[np.float32],
+        work: NDArray[np.float32] | None = None,
+        fluid: NDArray[np.bool_] | None = None,
+    ) -> None:
+        """See :meth:`lbm.backends.Backend.inlet_velocity`.
+
+        Args:
+            f: ``(9, ny, nx)`` ``float32``, modified in column ``col``.
+            col: inlet column.
+            u_in: ``(2, ny)`` ``float32`` prescribed profile.
+            work: ``(>=5, ny)`` ``float32`` scratch.
+            fluid: ``(ny,)`` ``bool`` row mask.
+        """
+        _inlet_velocity(f, col=col, u_in=u_in, work=work, fluid=fluid)
+
+    def outlet_zero_gradient(
+        self,
+        f: NDArray[np.float32],
+        *,
+        col: int = -1,
+        src: int = -2,
+        prev: NDArray[np.float32] | None = None,
+        lam: float | None = None,
+    ) -> None:
+        """See :meth:`lbm.backends.Backend.outlet_zero_gradient` (**D-021**).
+
+        Args:
+            f: ``(9, ny, nx)`` ``float32``, modified in column ``col``.
+            col: outlet column.
+            src: column read from.
+            prev: ``(9, ny)`` ``float32`` previous outlet column, updated in
+                place. ``None`` selects the plain copy.
+            lam: advection speed; ``None`` means ``sqrt(CS2)``.
+        """
+        _outlet_zero_gradient(f, col=col, src=src, prev=prev, lam=lam)
+
+    # -- the Guo body force, both halves (T103) ----------------------------
+
+    def force_velocity_shift(
+        self,
+        rho: NDArray[np.float32],
+        u: NDArray[np.float32],
+        g: tuple[float, float],
+        work: NDArray[np.float32] | None = None,
+    ) -> NDArray[np.float32]:
+        """See :meth:`lbm.backends.Backend.force_velocity_shift`.
+
+        Args:
+            rho: ``(ny, nx)`` ``float32``.
+            u: ``(2, ny, nx)`` ``float32``, modified in place.
+            g: ``(gx, gy)`` lattice body force.
+            work: ``(>=2, ny, nx)`` ``float32`` scratch.
+
+        Returns:
+            ``u`` — the same object passed in.
+        """
+        return _force_velocity_shift(rho, u, g, work)
+
+    def apply_body_force(
+        self,
+        f: NDArray[np.float32],
+        rho: NDArray[np.float32],
+        u: NDArray[np.float32],
+        tau: float,
+        g: tuple[float, float],
+        work: NDArray[np.float32] | None = None,
+    ) -> None:
+        """See :meth:`lbm.backends.Backend.apply_body_force`.
+
+        Args:
+            f: ``(9, ny, nx)`` ``float32``, modified in place.
+            rho: ``(ny, nx)`` ``float32``, unused by the formula.
+            u: ``(2, ny, nx)`` ``float32`` force-corrected velocity.
+            tau: relaxation time.
+            g: ``(gx, gy)`` lattice body force.
+            work: ``(3, ny, nx)`` ``float32`` scratch.
+        """
+        _apply_body_force(f, rho, u, tau, g, work)
 
     # -- the portability contract -----------------------------------------
 

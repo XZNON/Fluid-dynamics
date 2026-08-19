@@ -161,7 +161,7 @@ line in `DOCS/STATE2.md` § Environment.
 
 | Module | Responsibility | Lands in |
 |---|---|---|
-| `lbm/backends/` | `Backend` protocol, the registry, one module per compute target | T101, T102 |
+| `lbm/backends/` | `Backend` protocol (kernels, boundaries, allocation, transfers), the registry, one module per compute target | T101, T102, T103 |
 | `lbm/core.py` | D2Q9 constants, macroscopic, equilibrium, collide, stream | T001, T002 |
 | `lbm/boundary.py` | bounce-back, walls, body force, inlet, outlet | T002, T005 |
 | `lbm/geometry.py` | mask from primitives / PNG / SVG, sanity checks | T004, T009 |
@@ -170,7 +170,7 @@ line in `DOCS/STATE2.md` § Environment.
 | `lbm/render.py` | field -> RGB, diverging colormap, fixed limits | T007 |
 | `lbm/record.py` | MP4 / GIF writer, headless sink, tee | T011 |
 | `lbm/units.py` | physical <-> lattice conversion | T009 |
-| `validate/*.py` | the four rungs, each printing pass/fail | T002, T003, T007, T008 |
+| `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 
 ## Current state
 
@@ -185,13 +185,24 @@ lbm.runner` turns a PNG plus physical numbers into an MP4 in one command.
 **Phase 1 is live** (planned in session 12, 2026-08-13): the product layer above the solver —
 `flow/` package plus CLI, on a Warp GPU backend, ten tasks `T101` → `T110`, five new rungs
 A–E, milestones M5 → M8. Spec `DOCS/IDEA3.md` · plan `DOCS/PLAN2.md` · backlog `DOCS/TASKS2.md` ·
-**live status `DOCS/STATE2.md`**. The current task is `T101` (backend seam).
+**live status `DOCS/STATE2.md`**. Rungs **A 🟩** · B ⬜ · C ⬜ · D ⬜ · E ⬜; **M5 reached**
+(2026-08-18).
 
-**T101 is done** (session 13, 2026-08-18): `lbm/backends/` holds the `Backend` protocol, the
-registry and `numpy_backend`; `SimConfig.backend` defaults to `"numpy"`; `Sim` reaches every kernel
-through `self.backend` and `lbm/runner.py` imports no kernel directly. Nothing got faster and no
-physics moved — all four Phase 0 rungs re-print their session-11 digits. The current task is `T102`
-(Warp kernels).
+**T101 → T103 are done; M5 is reached** (session 15, 2026-08-18). `lbm/backends/` holds the
+`Backend` protocol, the registry, `numpy_backend` and `warp_backend`; `SimConfig.backend` selects
+between them and `lbm/runner.py` imports no kernel and no boundary. **The whole timestep runs on the
+GPU**: the protocol now covers allocation and the two general transfers as well as the kernels, the
+four boundaries and both halves of the Guo body force, backend arrays are opaque handles, and `Sim`
+owns device state — host reads go through `host_f()` / `host_u()` / `host_rho()` / `host_f_bb()` on
+frame and probe cadence, never per step.
+
+**Rung A is green in full**: every kernel and every boundary within **5.96e-08** of NumPy against a
+1e-6 bar, whole-step **9.6e-06** at 1000 steps against 1e-4 and *not compounding*, a checkpoint
+written on `warp` resuming on `numpy`, and restart bit-identical within a backend. All four Phase 0
+rungs pass with `--backend warp` printing session 11's digits. `bench.py --backend warp` clears
+**4155 / 757 / 441 steps/s** at 40k / 1M / 2M against floors of 2000 / 250 / 150 — 5x / 33x / 53x
+NumPy — using 391 MiB of the 4 GB card at 2M cells. The current task is `T104` (physical quantities
+and the fluid library), the first of the `flow/` package.
 
 **The 16 hard constraints above are the Phase 1 list**, folded in from `DOCS/STATE2.md` **D-046** by
 T101 — the constraints section is now the authority, and D-046 is the record of why each one reads

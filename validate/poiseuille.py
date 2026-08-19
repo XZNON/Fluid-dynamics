@@ -30,8 +30,8 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from lbm.boundary import apply_body_force, bounce_back, force_velocity_shift
-from lbm.core import Q, W, collide, equilibrium, macroscopic, nu_from_tau, stream
+from lbm.backends import get_backend
+from lbm.core import Q, W, nu_from_tau
 
 # --- case definition ---------------------------------------------------------
 
@@ -116,6 +116,7 @@ def run_channel(
     max_steps: int = MAX_STEPS,
     residual_tol: float = RESIDUAL_TOL,
     mass_drift_steps: int = 5000,
+    backend: str = "numpy",
 ) -> Result:
     """Drive an empty channel with a constant body force to steady state.
 
@@ -135,6 +136,11 @@ def run_channel(
             over ``CHECK_EVERY`` steps.
         mass_drift_steps: total mass is sampled at step 0 and at this step, and
             the relative difference is reported.
+        backend: which :class:`lbm.backends.Backend` runs the kernels (T101's
+            seam, T103's flag). ``"numpy"`` is the oracle (**D-043**). This is
+            the only rung that exercises **both halves of the Guo body force**,
+            because it is the only case that switches the scheme on at all
+            (**D-010**, **D-033**).
 
     Returns:
         A :class:`Result` with the measured profile, errors and diagnostics.
@@ -143,21 +149,27 @@ def run_channel(
     solid = channel_mask(ny, nx)
     fluid_rows = slice(1, ny - 1)
     g = (gx, 0.0)
+    be = get_backend(backend)
 
     # --- preallocation; nothing below the loop header allocates ---
-    f = np.empty((Q, ny, nx), dtype=np.float32)
-    f_pre = np.empty_like(f)
-    feq = np.empty_like(f)
-    buf = np.empty_like(f)
-    rho = np.empty((ny, nx), dtype=np.float32)
-    u = np.empty((2, ny, nx), dtype=np.float32)
-    work = np.empty((3, ny, nx), dtype=np.float32)
+    # Through the backend since T103, so the state lives wherever the kernels
+    # do. On ``"numpy"`` these are the same ``np.empty`` arrays as in Phase 0.
+    f = be.empty((Q, ny, nx))
+    f_pre = be.empty((Q, ny, nx))
+    feq = be.empty((Q, ny, nx))
+    buf = be.empty((Q, ny, nx))
+    rho = be.empty((ny, nx))
+    u = be.empty((2, ny, nx))
+    work = be.empty((3, ny, nx))
+    solid_dev = be.upload(solid)
     ux_prev = np.zeros((ny, nx), dtype=np.float32)
 
     # Rest state: f = w_i * rho with rho = 1, u = 0.
-    f[:] = W[:, None, None]
+    rest = np.empty((Q, ny, nx), dtype=np.float32)
+    rest[:] = W[:, None, None]
+    be.upload(rest, dst=f)
 
-    mass0 = float(np.sum(f, dtype=np.float64))
+    mass0 = float(np.sum(rest, dtype=np.float64))
     mass_at_drift_step = mass0
     peak_u = 0.0
     saw_nan = False
@@ -165,27 +177,32 @@ def run_channel(
     steps = 0
 
     for step in range(1, max_steps + 1):
-        np.copyto(f_pre, f)
+        be.copy(f_pre, f)
 
-        macroscopic(f, rho, u)
-        force_velocity_shift(rho, u, g, work)
-        equilibrium(rho, u, feq, work)
-        collide(f, feq, tau)
-        apply_body_force(f, rho, u, tau, g, work)
-        bounce_back(f, f_pre, solid)
-        stream(f, buf)
+        be.macroscopic(f, rho, u)
+        be.force_velocity_shift(rho, u, g, work)
+        be.equilibrium(rho, u, feq, work)
+        be.collide(f, feq, tau)
+        be.apply_body_force(f, rho, u, tau, g, work)
+        be.bounce_back(f, f_pre, solid_dev)
+        be.stream(f, buf)
 
         steps = step
 
         if step == mass_drift_steps:
-            mass_at_drift_step = float(np.sum(f, dtype=np.float64))
+            mass_at_drift_step = float(np.sum(be.download(f), dtype=np.float64))
 
         if step % CHECK_EVERY == 0:
-            if not np.isfinite(f).all():
+            # The only host transfer in the loop, and it is on the *check*
+            # cadence rather than the step cadence (constraint 8): 22x16 cells,
+            # once every 100 steps.
+            f_host = be.download(f)
+            u_host = be.download(u)
+            if not np.isfinite(f_host).all():
                 saw_nan = True
                 break
-            ux = u[0]
-            peak = float(np.max(np.abs(u[:, fluid_rows, :])))
+            ux = u_host[0]
+            peak = float(np.max(np.abs(u_host[:, fluid_rows, :])))
             peak_u = max(peak_u, peak)
             if peak > 0.0:
                 residual = float(np.max(np.abs(ux - ux_prev))) / peak
@@ -194,18 +211,21 @@ def run_channel(
                 break
 
     # Final macroscopic state, force-corrected the same way the loop does it.
-    macroscopic(f, rho, u)
-    force_velocity_shift(rho, u, g, work)
-    peak_u = max(peak_u, float(np.max(np.abs(u[:, fluid_rows, :]))))
+    be.macroscopic(f, rho, u)
+    be.force_velocity_shift(rho, u, g, work)
+    u_host = be.download(u)
+    peak_u = max(peak_u, float(np.max(np.abs(u_host[:, fluid_rows, :]))))
 
-    ux_profile = np.asarray(u[0, fluid_rows, :].mean(axis=1), dtype=np.float64)
+    ux_profile = np.asarray(
+        u_host[0, fluid_rows, :].mean(axis=1), dtype=np.float64
+    )
     ux_analytic = analytic_profile(ny, gx, nu)
     l2 = float(
         np.linalg.norm(ux_profile - ux_analytic) / np.linalg.norm(ux_analytic)
     )
 
     mass_now = mass_at_drift_step if steps >= mass_drift_steps else float(
-        np.sum(f, dtype=np.float64)
+        np.sum(be.download(f), dtype=np.float64)
     )
     mass_drift = abs(mass_now - mass0) / abs(mass0)
 
@@ -224,13 +244,17 @@ def run_channel(
     )
 
 
-def nan_check(steps: int = 20_000, tau: float = 0.6) -> bool:
+def nan_check(
+    steps: int = 20_000, tau: float = 0.6, backend: str = "numpy"
+) -> bool:
     """True if ``f`` is still finite after ``steps`` steps at ``tau``.
 
     A separate short run rather than a flag on the main one, because the main
     run stops at convergence and would otherwise never reach 20000 steps.
     """
-    res = run_channel(tau=tau, max_steps=steps, residual_tol=0.0)
+    res = run_channel(
+        tau=tau, max_steps=steps, residual_tol=0.0, backend=backend
+    )
     return not res.saw_nan and np.isfinite(res.ux_profile).all()
 
 
@@ -241,18 +265,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--nx", type=int, default=NX)
     parser.add_argument("--tau", type=float, default=TAU)
     parser.add_argument("--gx", type=float, default=GX)
+    parser.add_argument(
+        "--backend",
+        default="numpy",
+        help="compute backend (T101 seam): 'numpy' (the oracle, D-043) or "
+        "'warp'. The published band is the same band either way.",
+    )
     args = parser.parse_args(argv)
 
     tau = args.tau
     tau_half = 0.5 + (tau - 0.5) / 2.0  # halves (tau - 0.5), hence halves nu
 
     print("Rung 1 — Poiseuille flow (DOCS/IDEA2.md § Validation ladder)")
-    print(f"  grid {args.ny} x {args.nx}   H = {args.ny - 2}   gx = {args.gx:.4e}")
+    print(f"  grid {args.ny} x {args.nx}   H = {args.ny - 2}   "
+          f"gx = {args.gx:.4e}   backend = {args.backend}")
     print("  walls: half-way bounce-back, planes at y = 0.5 and y = ny - 1.5")
     print()
 
-    base = run_channel(ny=args.ny, nx=args.nx, tau=tau, gx=args.gx)
-    half = run_channel(ny=args.ny, nx=args.nx, tau=tau_half, gx=args.gx)
+    base = run_channel(
+        ny=args.ny, nx=args.nx, tau=tau, gx=args.gx, backend=args.backend
+    )
+    half = run_channel(
+        ny=args.ny, nx=args.nx, tau=tau_half, gx=args.gx, backend=args.backend
+    )
 
     print(
         f"  base   tau = {base.tau:.4f}  nu = {base.nu:.6f}  "
@@ -292,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
 
-    no_nan = nan_check(steps=20_000, tau=0.6)
+    no_nan = nan_check(steps=20_000, tau=0.6, backend=args.backend)
     checks.append(("no nan after 20000 steps at tau = 0.6", no_nan, "finite"))
 
     peak = max(base.peak_u, half.peak_u)
