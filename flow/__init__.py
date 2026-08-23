@@ -17,10 +17,10 @@ Two rules govern everything that lands here, and both have tests:
   it lives in ``lbm/render.py``.
 
 What exists so far: physical quantities and the fluid library (T104); the
-chooser, ``flow/autoconfig.py`` (T105). The refusals (``flow/diagnose.py``,
-T106), geometry preparation (``flow/prepare.py``, T107) and the
-``Case``/``Result`` API (T108) land in the tasks named beside them —
-``DOCS/TASKS2.md``.
+chooser, ``flow/autoconfig.py`` (T105); the refusals and the live divergence
+probe, ``flow/diagnose.py`` (T106). Geometry preparation
+(``flow/prepare.py``, T107) and the ``Case``/``Result`` API (T108) land in the
+tasks named beside them — ``DOCS/TASKS2.md``.
 """
 
 from __future__ import annotations
@@ -31,6 +31,17 @@ from flow.autoconfig import (
     Suggestion,
     Unrepresentable,
     plan,
+)
+from flow.diagnose import (
+    EXAMPLE_MASK,
+    REFUSAL_CLASSES,
+    SUGGESTION_ORDER,
+    Diverging,
+    Monitor,
+    apply_suggestion,
+    classify,
+    explain,
+    suggest,
 )
 from flow.fluids import FLUIDS, Fluid, fluid, known_fluids
 from flow.quantity import (
@@ -70,4 +81,13 @@ __all__ = [
     "Unrepresentable",
     "plan",
     "QUALITY_LEVELS",
+    "Diverging",
+    "Monitor",
+    "REFUSAL_CLASSES",
+    "SUGGESTION_ORDER",
+    "EXAMPLE_MASK",
+    "apply_suggestion",
+    "classify",
+    "explain",
+    "suggest",
 ]

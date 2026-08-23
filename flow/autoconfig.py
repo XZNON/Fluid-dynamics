@@ -212,11 +212,18 @@ class Suggestion:
     failing test there (**D-045**), not here.
 
     Attributes:
-        change: which of ``plan``'s inputs to change — ``"speed"``, ``"size"``
-            or ``"quality"``.
-        value: the replacement, a :class:`~flow.quantity.Quantity` for
-            ``"speed"``/``"size"``, or one of :data:`QUALITY_LEVELS` for
-            ``"quality"``.
+        change: which of ``plan``'s inputs to change — ``"speed"``, ``"size"``,
+            ``"quality"`` or ``"mask"``. ``flow/diagnose.py`` adds ``"fluid"``
+            and applies all five through
+            :func:`flow.diagnose.apply_suggestion`; the whole vocabulary, in
+            the order suggestions are offered, is
+            :data:`flow.diagnose.SUGGESTION_ORDER`.
+        value: the replacement — a :class:`~flow.quantity.Quantity` for
+            ``"speed"``/``"size"``, one of :data:`QUALITY_LEVELS` for
+            ``"quality"``, a fluid name for ``"fluid"``, and a description of
+            the picture that is needed for ``"mask"`` (the tool cannot invent
+            the user's geometry, so Rung D substitutes
+            :data:`flow.diagnose.EXAMPLE_MASK` to run the claim).
         note: one sentence on what this changes physically.
     """
 
@@ -342,9 +349,13 @@ def _measure_object(mask: NDArray[np.bool_]) -> tuple[float, float, float]:
             limit=1.0,
             suggestions=[
                 Suggestion(
-                    change="size",
-                    value=Quantity(1.0, default_unit="m"),
-                    note="give a mask that contains a body, not an empty or all-border array",
+                    change="mask",
+                    value="a picture with a solid shape in it, at least 3 cells thick",
+                    note=(
+                        "Give a picture that contains a body -- this one is "
+                        "empty, or solid edge to edge, so there is nothing for "
+                        "the fluid to flow around"
+                    ),
                 )
             ],
         )
@@ -480,22 +491,39 @@ def plan(
             if QUALITY_CELLS[level] >= needed_cells_per_length:
                 best_level = level
                 break
-        suggestions = [
-            Suggestion(
-                change="quality",
-                value=best_level or "accurate",
-                note=(
-                    f'a higher quality level thickens the thinnest feature '
-                    f"proportionally; {needed_cells_per_length} cells across "
-                    "the body would clear the 3-cell minimum"
-                    if best_level
-                    else "even the highest quality level is not enough -- the "
-                    "mask's thinnest feature is disproportionately thin "
-                    "relative to the body and needs redrawing, not more "
-                    "resolution"
-                ),
-            )
-        ]
+        # A suggestion is a testable claim (**D-045**), so which suggestion is
+        # offered depends on whether resolution can actually fix it. When no
+        # quality level is enough, offering the highest one anyway would hand
+        # back a "fix" that re-raises this very refusal -- a failing test in
+        # Rung D rather than a wording preference (T106).
+        if best_level:
+            suggestions = [
+                Suggestion(
+                    change="quality",
+                    value=best_level,
+                    note=(
+                        "A higher quality level thickens the thinnest feature "
+                        f"proportionally; {needed_cells_per_length} cells "
+                        "across the body would clear the 3-cell minimum"
+                    ),
+                )
+            ]
+        else:
+            suggestions = [
+                Suggestion(
+                    change="mask",
+                    value=(
+                        "the same shape with its thinnest feature drawn "
+                        "thicker relative to the body"
+                    ),
+                    note=(
+                        "Redraw the shape with its thinnest feature thicker: "
+                        "even the highest quality level is not enough, because "
+                        "that feature is disproportionately thin relative to "
+                        "the body, and more detail scales both together"
+                    ),
+                )
+            ]
         raise Unrepresentable(
             reason=(
                 "thinnest solid feature would be under the 3-cell minimum "

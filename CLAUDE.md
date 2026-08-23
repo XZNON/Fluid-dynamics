@@ -124,6 +124,9 @@ myenv/Scripts/python.exe -m validate.poiseuille           # Rung 1
 myenv/Scripts/python.exe -m validate.cavity --re 100      # Rung 2
 myenv/Scripts/python.exe -m validate.cylinder             # Rung 3
 myenv/Scripts/python.exe -m validate.polygons             # Rung 4
+myenv/Scripts/python.exe -m validate.parity --backend warp  # Rung A
+myenv/Scripts/python.exe -m validate.autoconfig           # Rung B (~23 min)
+myenv/Scripts/python.exe -m validate.refusals             # Rung D
 myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
 ```
 
@@ -170,6 +173,10 @@ line in `DOCS/STATE2.md` § Environment.
 | `lbm/render.py` | field -> RGB, diverging colormap, fixed limits | T007 |
 | `lbm/record.py` | MP4 / GIF writer, headless sink, tee | T011 |
 | `lbm/units.py` | physical <-> lattice conversion | T009 |
+| `flow/quantity.py` | units the user types -> SI, one dimension table | T104 |
+| `flow/fluids.py` | the cited fluid library | T104 |
+| `flow/autoconfig.py` | physics in, every solver parameter out; the guardrails | T105 |
+| `flow/diagnose.py` | refusals in prose, suggestions that run, live divergence probe | T106 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 
 ## Current state

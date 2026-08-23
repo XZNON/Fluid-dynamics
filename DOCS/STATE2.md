@@ -14,13 +14,13 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T106` — Diagnosis, refusal, nearest runnable case (`DOCS/TASKS2.md`) — **Rung D** |
+| **Current task** | `T107` — Geometry preparation + shape corpus (`DOCS/TASKS2.md`) — **Rung C** → **M7** |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**. Phase 0: T001 … T011, all done |
-| **Milestone reached** | **M6** (2026-08-19, `flow/autoconfig.py`, Rung B green, 24/24 sweep cases pass). Phase 1 targets M7 → M8 |
-| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task |
-| **Phase 1 rung status** | **A 🟩** · **B 🟩** · C ⬜ · D ⬜ · E ⬜ — Rung A green in full (unchanged this session); Rung B green in full: accuracy prediction 4.2% error against a 25% bar, 24/24 sweep cases pass every guardrail, run 5000 clean steps, and reproduce `Re` to 0.0000% |
-| **Last updated** | 2026-08-19 — session 17 (**T105 done**: `flow/autoconfig.py` — `Plan`, `plan()`, `Unrepresentable`; Rung B green; **D-059** the module's cited constants, **D-060** the constraint-13 scan's frozen-dataclass fix; `pytest` **565 passed, 1 skipped**) |
+| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**. Phase 0: T001 … T011, all done |
+| **Milestone reached** | **M6** (2026-08-19, `flow/autoconfig.py`, Rung B green, 24/24 sweep cases pass). Phase 1 targets M7 → M8. **T106 has no milestone of its own** — Rung D is a gate inside it and is re-run by M8 (`DOCS/PLAN2.md` § Milestone gates) |
+| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run this session on `--backend warp` (R1/R2 on numpy) printing session 11/15's digits |
+| **Phase 1 rung status** | **A 🟩** · **B 🟩** · C ⬜ · **D 🟩** · E ⬜ — Rung D green in full: every refusal class's own top suggestion plans and runs 2000 steps clean, `Monitor` catches all three `DOCS/IDEA2.md` § Stability failure modes before `nan` with the cause named, and costs under 2% (under the machine's own noise floor) |
+| **Last updated** | 2026-08-23 — session 18 (**T106 done**: `flow/diagnose.py` — `explain`, `suggest`, `apply_suggestion`, `Monitor`, `Diverging`; `validate/refusals.py` = **Rung D green**; **D-061** the measured divergence-detection numbers, **D-062** the `substituted` criterion carried to T108, **D-063** two T105 suggestions repaired; `pytest` **610 passed, 1 skipped**) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -134,6 +134,9 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-058 | 2026-08-19 | **The fluid library carries the numbers its cited sources actually give, and the ordering test asserts the order those numbers produce — which is *not* the order `DOCS/TASKS2.md` § T104's acceptance criterion parenthesises.** The criterion asks for `helium < air < water < oil < glycerine`; the measured ascending order of kinematic viscosity at 20 °C is **water 1.004e-6 < air 1.516e-5 < olive oil 8.4e-5 < helium 1.178e-4 < glycerine 1.120e-3 < honey 7.042e-3 m²/s**. Two of the criterion's four inequalities are false. The criterion's *intent* — the table is ordered by physics, not by typing — is kept and strengthened: `tests/test_fluids.py` asserts the measured order **and** checks every entry's `nu` against its independently cited `mu` and `rho` (`nu = mu / rho`, to 0.2%), which is the check that actually catches a transcription error. A second test, `test_the_ordering_the_contract_asked_for_is_not_physical`, pins the disagreement so a future session cannot quietly edit the data to satisfy the parenthetical. | `nu = mu / rho`, and the densities span four orders of magnitude while the dynamic viscosities span six — so kinematic order is not dynamic order and neither is intuitive. Helium's `mu` (1.96e-5 Pa s) is *larger* than air's (1.825e-5) and its density is 7.2x smaller, so helium's `nu` is ~7.8x air's; water's `mu` is 55x air's but its density is 829x, so water has the **smallest** `nu` of the six. Ordering by `mu` instead would not rescue the criterion either — `helium < air` is false there too, narrowly. Editing the data to fit the sentence was rejected outright: constraint 5 names *"a wrong sim that looks plausible"* as this project's main failure mode, and a fabricated viscosity is that failure mode at its source, one layer below the solver where no rung would ever catch it. `CLAUDE.md` § Session protocol says a spec conflict is logged here rather than silently resolved; this is that log entry, and the spec's sentence is the half that yields because the sources are checkable and the sentence is not. |
 | D-059 | 2026-08-19 | **`flow/autoconfig.py`'s generic constants, each cited or measured.** `TAU_FLOOR = 0.54` is applied to **every** case regardless of shape — the strictest of the project's three floors (D-029 bluff body / D-032 generic 0.51 / D-036 Rung 3's 0.537) — because an arbitrary immersed mask cannot be classified disc-vs-square at plan time and the guardrail should be pessimistic. `QUALITY_CELLS = {fast: 30, balanced: 40, accurate: 50}` is the smallest round numbers such that even `"fast"` clears `TAU_FLOOR` for Rung 3's own Re 100 benchmark (`N >= Re (TAU_FLOOR-0.5)/(3U)` ~ 26.7 at the fixed `U_LATTICE_DEFAULT = 0.05`). Domain margins are deliberately **smaller** than Rung 3's tuned values, because Rung B needs guardrails satisfied and 5000 clean steps, not a published force coefficient: `SPAN_D = 12` (8.33% blockage, under the 10% ceiling with a 1.67-point margin, vs Rung 3's 24 D / 4.17%), `UPSTREAM_D = 3`, `DOWNSTREAM_D = 9` (constraint 12's floor is 8, so this keeps a 1 D margin). `RUN_CONVECTIVE_TIMES = 20` (vs Rung 3's 70+60=130, which is sized to *publish* a coefficient) is enough to clear the startup transient; Rung B's own 5000-step-per-case criterion is independent of it. Measured cost, `myenv/Scripts/python.exe -m validate.autoconfig`: the accuracy check (quality="fast", water, Re 100) predicted 61.05 s against an actual 63.75 s (4.2% error, well inside the 25% bar); the whole rung — the accuracy check plus the 24-case sweep (2 fluids x 2 speeds x 2 sizes x 3 quality, 5000 steps each) — ran in **~23 minutes** wall clock on the numpy backend, minutes rather than hours as `PROMPTS/017` asked. | `DOCS/PLAN2.md` § Risks names "auto-config becomes a pile of tuned constants nobody can defend" at this task by name; every number above traces to a Phase 0 decision or is measured in this row rather than picked. The floor choice is the one genuine judgement call the task's Notes flagged (`tau_for`/`tau_for_rung4` disagree with each other by geometry) — resolved by always taking the stricter of the two rather than building a shape classifier neither hand-tuned function needed. |
 | D-060 | 2026-08-19 | **`tests/test_flow_package.py`'s constraint-13 scan is precise about input vs. output: a frozen dataclass's auto-generated `__init__` is not scanned.** `inspect.signature(SomeClass)` resolves to `__init__`, and for a frozen dataclass returned as a *result* (`flow.autoconfig.Plan`, and retroactively `flow.fluids.Fluid`) nothing in the product ever calls that constructor with the user's input — only the function that builds one (`plan()`, `fluid()`) does, and its return value is exactly where `DOCS/IDEA3.md` § 1 says `tau` / `dx` / `dt` / `cells_per_length` belong: "derived and printed." A class that is **not** a frozen dataclass, or one with a hand-written `__init__`, is still scanned — `test_the_frozen_dataclass_exemption_is_narrow` proves the exemption is that specific, not "skip classes." | `DOCS/TASKS2.md` § T105 Notes predicted this exact collision: `Plan` is the first object whose fields are legitimately lattice-named, and the Notes said fix the scan's precision rather than weaken the assertion. Confirmed by running it: before this fix, `test_no_public_signature_in_flow_takes_a_lattice_quantity[flow.autoconfig]` failed on `Plan.__init__`'s `tau`/`u_lattice`/`dx`/`dt`/`steps_per_frame`/`cells_per_length` parameters. |
+| D-061 | 2026-08-23 | **`Monitor`'s three tripwires, and the measured gap between catching a run and losing it.** Tripwires: peak `|u|` at or above the constraint-3 ceiling on **3 consecutive samples** (sustained, not instantaneous), total fluid mass more than **1%** away from its starting value, and a last-resort "already not finite". Cause is attributed *separately* from symptom: a case at or below **D-029**'s 0.54 floor is blamed on the relaxation time whatever tripwire fired, because `DOCS/IDEA2.md` § Stability row 1 says everything else is downstream of it. **Measured, `numpy`, `SAMPLE_EVERY = 25`:** `tau` 0.533 disc — caught **1525**, `nan` **1650** (7.6% of the run's life earlier); inlet `U` 0.25 at `tau` 0.6 — caught **75**, `nan` **325** (76.9%); inlet-fed, sealed downstream — caught **50**, `nan` **59275** (99.9%). The T106 criterion's *"within 10% of the steps the run would have taken to produce `nan`"* is therefore met by the mode that develops mid-run and beaten by the two whose defect is present from step one. | Two measurements forced each half. **(a) Sustained, not instantaneous**: the D-029 case crosses 0.1 briefly around step **155** and recovers, then dies at 1650 — sampling every 5 steps sees the transient, every 25 does not. A tripwire that fires on it is a false-alarm generator, and a probe users learn to ignore is worse than no probe, so the crossing must persist. **(b) The 10% band cannot be met by all three without making the probe worse.** An over-driven inlet is over the ceiling at step 1 and a sealed outlet leaks mass from the first sample; the only way to delay those to 90% of the run's life is to raise the thresholds past the physics that defines them (constraint 3's 0.1, and incompressibility). Separately measured and worth recording: **peak `|u|` over 0.1 usually does not produce `nan` at all** — a body-force channel ran 30000 steps at peak **7.75** without one, and inlet `U` 0.15 and 0.20 both survived 30000 steps. It produces a *plausible, invalid* answer instead, which is constraint 5's named failure mode, so `Monitor` trips on it regardless of whether a `nan` would ever arrive. Cost, alternating rounds, best round per variant (**D-035**), AMD Ryzen 7 5800H at 3201 of 3201 MHz on mains: **+1.10% / +0.98% / -1.09% / -2.10%** across four measurements — every one inside the 2% limit and inside the machine's own run-to-run spread, so the honest reading is "below the noise floor", not "free". |
+| D-062 | 2026-08-23 | **T106's `substituted=True` acceptance criterion is carried to T108 rather than satisfied against a stub.** The criterion names `Result`, the printed summary and the recorded video's metadata; `flow/case.py`, `flow/report.py` and the CLI are T108/T109 and none exist. It is now an explicit acceptance criterion in `DOCS/TASKS2.md` § T108, citing this entry. **The half that could exist shipped in T106**: every suggestion that changes the flow carries *"This is a different flow from the one you asked for -- not your case."* **on the `Suggestion` object**, not in one rendering of it, asserted by `tests/test_diagnose.py::test_a_suggestion_that_changes_the_flow_says_so`. | User's call when the three options were put side by side (defer whole / partial now / build a `Result` stub). `PROMPTS/018` predicted this exact gap and said to raise it at confirmation time rather than reinterpret the criterion or build a stub T108 would then have to reconcile. Constraint 16 is about *every artifact* saying so, which is precisely why the label belongs on the object rather than on the pretty-printer: a note only `explain()` knows about is a note the report and the video metadata will not carry. The dependency order in `DOCS/PLAN2.md` is not wrong — T108 depends on T106 — but one T106 criterion reaches forward past that edge, and this is the record of it. |
+| D-063 | 2026-08-23 | **Two of `flow/autoconfig.py`'s suggestions did not fix their own case, and were repaired in T106.** The empty-mask refusal offered `change="size"` with a 1.0 m length — a physics knob for a problem no physics knob touches — and a mask whose thinnest feature no resolution can save offered `quality="accurate"`, which re-raises the identical refusal. Both are now `change="mask"`. The `Suggestion` vocabulary therefore grows from `{speed, size, quality}` to `{quality, mask, fluid, speed, size}` = `flow.diagnose.SUGGESTION_ORDER`, applied by `flow.diagnose.apply_suggestion`; `"fluid"` is created only by `flow/diagnose.py` and only after the library entry's cited `nu` is checked to actually clear the floor. Since the tool cannot invent the user's geometry, a `"mask"` suggestion's `value` is a *description* and Rung D substitutes `flow.diagnose.EXAMPLE_MASK` (the same disc `validate/autoconfig.py` holds fixed) to execute the claim. | T106's own acceptance criterion is *"a suggestion that does not fix its case is a failing test"*, so finding two was the rung working, and leaving them would have meant a Rung D that passes by not looking. `Suggestion.value` stays a `str`/`Quantity` rather than gaining an `ndarray` variant: `Suggestion` is a frozen dataclass, and an array field breaks its generated `__eq__` and `__hash__` for no gain. **Ranking** is by `SUGGESTION_ORDER` and is not cosmetic: `tau = 0.5 + 3 U N / Re` means resolution is the *only* knob that raises `tau` without changing the Reynolds number, so `quality` is the one fix that answers the user's own question and every other fix answers a different one — which is what D-045's *"clearly labelled as not your case"* is about. |
 
 ### Constraint fate table (D-046)
 
@@ -943,3 +946,123 @@ Rung A were all re-run anyway, on `--backend warp`.
 `flow.autoconfig.Unrepresentable` into plain-language explanation plus a suggestion that is *proven*
 to work (feed the tool's own top suggestion back through `plan()` and run it), and adds `Monitor` for
 live divergence detection. Prompt written to `PROMPTS/018-t106-diagnose.md`.
+
+### 2026-08-23 — Session 18: T106, diagnosis and refusal — **Rung D**
+
+**Task:** T106 — Diagnosis, refusal, nearest runnable case. **Status: done**, with **one criterion
+deliberately carried to T108** (**D-062**, the user's call) and **one deviation recorded**
+(**D-061**). Every other criterion was run, not read. `pytest` **610 passed, 1 skipped** (565 → 610;
+45 new, all in `tests/test_diagnose.py`). `lbm/` untouched — `git status -- lbm` is empty — and all
+four Phase 0 rungs plus A and B were re-run anyway.
+
+**Done**
+
+- **`flow/diagnose.py`** — the other half of **D-045**:
+  - `explain(exc, *, request=None) -> str`. Three sections: one paragraph a non-specialist can act
+    on, `What would work`, and `Details`. The first paragraph carries **no lattice quantity** and no
+    `Reynolds`, `Mach`, `grid` or `constraint` either — `tests/test_diagnose.py` greps a superset of
+    the criterion's list, which is how the word `grid` was caught and reworded.
+  - `suggest(*, fluid, speed, size, mask, quality) -> list[Suggestion]`, ranked by
+    `SUGGESTION_ORDER = (quality, mask, fluid, speed, size)`, each note rewritten into plain language
+    and each case-changing one labelled *"not your case"* **on the object** (**D-062**). A case that
+    plans returns `[]` — an empty list, never an invented alternative.
+  - `apply_suggestion(suggestion, **request) -> dict` — the modified request, ready for `plan()`.
+    This is what turns a suggestion into an executable claim; Rung D is
+    `plan(**apply_suggestion(...))` followed by 2000 steps.
+  - `classify(exc)` over `REFUSAL_CLASSES`, raising loudly on an unregistered refusal — an
+    unexplained refusal is the dead end D-045 exists to remove.
+  - `Monitor` (a `per_step` probe, **D-025**) and `Diverging`. Sampled every 25 steps, three
+    whole-array reductions into buffers allocated once, cause attributed separately from symptom
+    (**D-061**).
+- **`validate/refusals.py`** — **Rung D**, `python -m validate.refusals [--backend] [--steps]`, four
+  sections: the refusal classes, the D-038 case printed in full, `Monitor` against the three
+  `DOCS/IDEA2.md` § Stability failure modes, and `Monitor`'s cost by alternating rounds (**D-035**).
+- **`flow/autoconfig.py`** — two suggestions repaired because they did not fix their own case
+  (**D-063**), and `Suggestion`'s docstring now names the whole five-value vocabulary.
+- **`tests/test_diagnose.py`** — 43 tests, including the **D-038 golden string** pinned in full, a
+  teeth-test that an unregistered refusal class is loud, and `_FakeSim`, which drives `Monitor` by
+  hand because a real sim cannot be asked to cross the ceiling for exactly one sample.
+- **`CLAUDE.md`** § Commands gained the three Phase 1 rung commands and § Module map gained the four
+  `flow/` rows; `.claude/commands/validate.md` gained the Rung A–E table, which it had been missing
+  since session 13.
+
+**Measured**
+
+- **Rung D — PASS**, `myenv/Scripts/python.exe -m validate.refusals`, ~9 minutes on `numpy`:
+
+  | Refusal class | top suggestion | replanned | 2000 steps |
+  |---|---|---|---|
+  | relaxation (D-038: air, 20 m/s, 1.5 m) | speed → 0.0012128 m/s | 480x520 | clean, peak 0.0727 |
+  | thickness, 3-cell plate | quality → balanced | 480x483 | clean, peak 0.0669 |
+  | thickness, 1-cell plate | mask → redraw thicker | 360x390 | clean, peak 0.0670 |
+  | empty_mask | mask → a picture with a body | 360x390 | clean, peak 0.0714 |
+  | speed_ceiling | speed → halved | *unreachable through `plan()`* | clean on the base case |
+  | blockage | quality → fast | *unreachable through `plan()`* | clean on the base case |
+
+  `speed_ceiling` and `blockage` are **unreachable by construction** — `flow/autoconfig.py` fixes the
+  lattice velocity and the domain span (**D-059**) — so the rung explains them from a synthetic
+  refusal built with the same fields and *prints that it is doing so*, rather than silently covering
+  five classes and calling it six.
+- **`Monitor`, caught vs `nan`** (see **D-061** for the full reasoning): `tau` below the floor
+  **1525 / 1650**; past the 0.1 ceiling **75 / 325**; mass drift **50 / 59275**. No false alarm — a
+  healthy case ran 2000 steps untouched at peak 0.0714, drift 5.66e-05.
+- **`Monitor`'s cost: +1.10% / +0.98% / -1.09% / -2.10%** across four alternating-round
+  measurements, all inside the 2% limit and inside the machine's run-to-run spread. AMD Ryzen 7
+  5800H at 3201 MHz of 3201 MHz, on mains.
+- **Rungs re-run this session, every one green:**
+
+  | Rung | Command | Result |
+  |---|---|---|
+  | A | `validate.parity --backend warp` | **PASS** — worst 5.96e-08, whole step 9.611e-06, checkpoint 8.196e-06 |
+  | B | `validate.autoconfig` | **PASS** — predicted 61.05s vs actual **53.11s**, error **15.0%** (limit 25%); 24/24; worst peak 0.0695; worst `Re` error 0.0000% |
+  | D | `validate.refusals` | **PASS** — the table above |
+  | R1 | `validate.poiseuille` | **PASS** — L2 0.3650% |
+  | R2 | `validate.cavity --re 100` | **PASS** — 0.75%, vortex 0.21 cells |
+  | R3 | `validate.cylinder --backend warp --headless` | **PASS** — St **0.1731**, Cd **1.4031 ± 0.0086**, peak 0.09685 |
+  | R4 | `validate.polygons --backend warp --headless` | **PASS** — square Cd **1.5279 ± 0.0271**, polygon Cd **1.4276 ± 0.0226**, Cl amplitude 0.3689, peak 0.08944 |
+
+  Rung B's *accuracy* number moved from session 17's 4.2% to **15.0%** and the prediction did not:
+  `Plan.estimated_seconds` said **61.05 s** both times, and the timed run came in at **53.11 s**
+  rather than 63.75 s. That is the machine, not the model — **D-035**'s whole point — and 15.0% is
+  well inside the 25% bar. Recorded rather than smoothed over.
+
+**Decisions made**
+
+- **D-061** — `Monitor`'s tripwires and the measured catch-vs-`nan` gap per failure mode, including
+  the two measurements that forced the design: the sustained-crossing rule (the D-029 case crosses
+  0.1 at step 155 and recovers) and the finding that **peak lattice velocity over 0.1 usually does
+  not produce `nan` at all** — 30000 steps at peak 7.75 without one. It produces a plausible,
+  invalid answer, which is why the probe trips on it anyway.
+- **D-062** — the `substituted=True` criterion is carried to T108, which now has it as an explicit
+  acceptance criterion. The half that could exist shipped here.
+- **D-063** — two T105 suggestions did not fix their own case and were repaired; the `Suggestion`
+  vocabulary grew to five values with `flow.diagnose.SUGGESTION_ORDER` as its authority.
+
+**Not done / deferred**
+
+- **The `substituted=True` criterion** — see **D-062**. This is the one T106 criterion left
+  unchecked in `DOCS/TASKS2.md`, deliberately and with a named owner, not forgotten.
+- **`Monitor` was measured on `numpy` only.** The probe reads through `host_u()` / `host_rho()`,
+  which are a device download on `warp`, so its cost there is a *different* number and is not
+  claimed. `validate/refusals.py` already takes `--backend warp`; the measurement belongs to whoever
+  first runs a real product case on the GPU (T110's Rung E is the natural place).
+- **Rasterising the user's own mask** is Rung C's (T107). Rung D runs the canonical disc at the
+  planned resolution and says so in its module docstring — the suggestion changed the *parameters*,
+  and those are what the 2000 steps exercise.
+
+**Blockers:** none.
+
+**Housekeeping**
+
+- `DOCS/ISSUES.jsonl` — nothing new queued this session. The `.gitignore` entry from session 16
+  (`495777c58269`) is still open and still not this task's to fix.
+
+**Rung status after this session**
+
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run, session 11/15's digits.
+- Phase 1: **A 🟩** · **B 🟩** · C ⬜ · **D 🟩** · E ⬜.
+
+**Next:** **T107 — geometry preparation + shape corpus**, session 19, gate **Rung C**, milestone
+**M7**. It is the last dependency T108 is waiting on, and it owns **Q-102** (D-017's documented
+limit: a thin appendage fused to a thick body shares its component and is not reported). Prompt
+written to `PROMPTS/019-t107-prepare.md`.

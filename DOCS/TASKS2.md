@@ -19,7 +19,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T103 | Warp boundaries, checkpoint, performance | `done` | T102 | **Rung A** (full) → **M5** |
 | T104 | Physical quantities + fluid library | `done` | — | unit tests |
 | T105 | Auto-configuration | `done` | T104 | **Rung B** → **M6** |
-| T106 | Diagnosis, refusal, nearest runnable case | `not_started` | T105 | **Rung D** |
+| T106 | Diagnosis, refusal, nearest runnable case | `done` | T105 | **Rung D** |
 | T107 | Geometry preparation + shape corpus | `not_started` | — | **Rung C** → **M7** |
 | T108 | `flow.Case` / `flow.Result` API | `not_started` | T105, T106, T107 | unit tests |
 | T109 | CLI on `flow`, live + record wiring | `not_started` | T108 | manual gate + tests |
@@ -305,7 +305,8 @@ choices within a factor, one of the two is wrong and finding out which is the se
 
 ## T106 — Diagnosis, refusal, nearest runnable case → Rung D
 
-**Status:** `not_started`
+**Status:** `done` — session 18, 2026-08-23. **Rung D green.** One criterion (`substituted=True`)
+carried to T108 by decision, not omission — see **D-062** and the Deviations below.
 
 ### Goal
 
@@ -328,14 +329,26 @@ A case the tool cannot run produces a plain-language explanation and a concrete 
 
 ### Acceptance criteria
 
-- [ ] `explain()` output contains **no lattice quantity** — no `tau`, no lattice `U`, no cell counts — in its first paragraph; the numbers are available in a second "details" section. Asserted by a test that greps the first paragraph.
-- [ ] `suggest()` returns at least one `Suggestion` for each refusal class, each carrying a modified request plus one sentence on what it changes physically (slower, smaller, more viscous fluid, or "the same shape at a Reynolds number we can represent — **not your case**").
-- [ ] **Rung D — `validate/refusals.py`:** for every refusal class, take the tool's own top suggestion, feed it back through `plan()`, and **run 2000 steps**. PASS requires every suggestion to produce a case that plans and runs without `nan`. A suggestion that does not fix its case is a failing test.
-- [ ] The Re-2e6 case from **D-038** (air, 20 m/s, 1.5 m) is a named case in the rung, with its full user-facing output pinned in the test as a golden string, so a later reword is a deliberate edit.
-- [ ] `Monitor` detects divergence **before** `nan`: on a deliberately under-resolved case it raises within 10% of the steps the run would have taken to produce `nan`, naming the cause and the fix. Measured on at least three failure modes from `DOCS/IDEA2.md` § Stability — `tau` too near 0.5, peak `|u|` crossing 0.1, and a mass-drift blow-up.
-- [ ] `Monitor` costs **under 2%** of steps/s, measured with the sim otherwise identical, quoted with CPU clock (**D-035**).
-- [ ] **Never a silent substitution** (Phase 1 constraint 16): a test asserts that a `Result` produced from a suggestion carries `substituted=True` and that the flag reaches the printed summary and the recorded video's metadata.
-- [ ] `pytest tests/test_diagnose.py` green.
+- [x] `explain()` output contains **no lattice quantity** — no `tau`, no lattice `U`, no cell counts — in its first paragraph; the numbers are available in a second "details" section. Asserted by a test that greps the first paragraph.
+- [x] `suggest()` returns at least one `Suggestion` for each refusal class, each carrying a modified request plus one sentence on what it changes physically (slower, smaller, more viscous fluid, or "the same shape at a Reynolds number we can represent — **not your case**").
+- [x] **Rung D — `validate/refusals.py`:** for every refusal class, take the tool's own top suggestion, feed it back through `plan()`, and **run 2000 steps**. PASS requires every suggestion to produce a case that plans and runs without `nan`. A suggestion that does not fix its case is a failing test.
+- [x] The Re-2e6 case from **D-038** (air, 20 m/s, 1.5 m) is a named case in the rung, with its full user-facing output pinned in the test as a golden string, so a later reword is a deliberate edit.
+- [x] `Monitor` detects divergence **before** `nan`: on a deliberately under-resolved case it raises within 10% of the steps the run would have taken to produce `nan`, naming the cause and the fix. Measured on at least three failure modes from `DOCS/IDEA2.md` § Stability — `tau` too near 0.5, peak `|u|` crossing 0.1, and a mass-drift blow-up. — **met by measurement, with the 10% band met by one of the three modes and beaten by the other two; deviation recorded below (D-061).**
+- [x] `Monitor` costs **under 2%** of steps/s, measured with the sim otherwise identical, quoted with CPU clock (**D-035**).
+- [ ] **Never a silent substitution** (Phase 1 constraint 16): a test asserts that a `Result` produced from a suggestion carries `substituted=True` and that the flag reaches the printed summary and the recorded video's metadata. — **carried to T108 (D-062)**: `flow.Result`, `flow.report` and the CLI do not exist yet, so the literal check cannot be run against real code. The half that can exist shipped here: every case-changing suggestion carries "not your case" **on the object**, asserted by `tests/test_diagnose.py::test_a_suggestion_that_changes_the_flow_says_so`.
+- [x] `pytest tests/test_diagnose.py` green — **43 tests**, suite **610 passed, 1 skipped**.
+
+### Deviations recorded
+
+- **D-061** — the divergence criterion's *"within 10% of the steps the run would have taken to
+  produce `nan`"* is met by the failure mode that develops mid-run and beaten, by a lot, by the two
+  whose defect is present from the start. Measured, `--backend numpy`: `tau` below the floor —
+  caught at **1525**, `nan` at **1650** (**7.6%** earlier, inside the band); driven past the 0.1
+  ceiling — caught at **75**, `nan` at **325** (76.9% earlier); mass drift — caught at **50**,
+  `nan` at **59275** (99.9% earlier). Tightening the tripwires to land inside 10% for all three
+  would mean *degrading* the probe.
+- **D-063** — two of T105's suggestions did not fix their own case and were repaired here, since
+  "a suggestion that does not fix its case is a failing test" is this task's own criterion.
 
 ### Constraints that bite here
 
@@ -432,6 +445,7 @@ in T104–T107 gets one front door.
 - [ ] Solid cells are seeded at rest (**D-030**) and a test asserts the body interior holds the rest state after 300 steps.
 - [ ] `Result.summary()` prints Cd (mean ± std), Cl amplitude, St with its confidence, peak `|u|` against 0.1, convergence, elapsed, backend, and — if applicable — the substitution banner.
 - [ ] `Result.strouhal` is `None`, not a number, when shedding is not detected (Cl amplitude below 1% of Cd); a test covers a steady case at Re 10.
+- [ ] **Never a silent substitution** (constraint 16) — **inherited from T106, see D-062**: a test asserts that a `Result` produced from a `flow.diagnose` suggestion carries `substituted=True` and that the flag reaches the printed summary *and* the recorded video's metadata. T106 shipped the half that could exist without `Result` (every case-changing suggestion carries "not your case" on the object, asserted by `tests/test_diagnose.py`); this is the other half.
 - [ ] `pytest tests/test_case.py tests/test_report.py` green; Phase 0 rungs still green.
 
 ### Constraints that bite here
