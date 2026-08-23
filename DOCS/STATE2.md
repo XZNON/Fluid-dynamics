@@ -14,19 +14,35 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T107` — Geometry preparation + shape corpus (`DOCS/TASKS2.md`) — **Rung C** → **M7** |
+| **Current task** | `T108` — `flow.Case` / `flow.Result` API (`DOCS/TASKS2.md`) — gate: unit tests |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**. Phase 0: T001 … T011, all done |
-| **Milestone reached** | **M6** (2026-08-19, `flow/autoconfig.py`, Rung B green, 24/24 sweep cases pass). Phase 1 targets M7 → M8. **T106 has no milestone of its own** — Rung D is a gate inside it and is re-run by M8 (`DOCS/PLAN2.md` § Milestone gates) |
-| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run this session on `--backend warp` (R1/R2 on numpy) printing session 11/15's digits |
-| **Phase 1 rung status** | **A 🟩** · **B 🟩** · C ⬜ · **D 🟩** · E ⬜ — Rung D green in full: every refusal class's own top suggestion plans and runs 2000 steps clean, `Monitor` catches all three `DOCS/IDEA2.md` § Stability failure modes before `nan` with the cause named, and costs under 2% (under the machine's own noise floor) |
-| **Last updated** | 2026-08-23 — session 18 (**T106 done**: `flow/diagnose.py` — `explain`, `suggest`, `apply_suggestion`, `Monitor`, `Diverging`; `validate/refusals.py` = **Rung D green**; **D-061** the measured divergence-detection numbers, **D-062** the `substituted` criterion carried to T108, **D-063** two T105 suggestions repaired; `pytest` **610 passed, 1 skipped**) |
+| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**, **T107**. Phase 0: T001 … T011, all done |
+| **Milestone reached** | **M7** (2026-08-23, `flow/prepare.py`, Rung C green: `python -m validate.shapes` prints PASS, 15/15 corpus images get their committed verdict and measured properties, no manual step). Phase 1 targets M8. **T106 has no milestone of its own** — Rung D is a gate inside it and is re-run by M8 (`DOCS/PLAN2.md` § Milestone gates) |
+| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run this session (R3/R4 on `--backend warp`, R1/R2 on numpy) printing session 11/15/18's digits exactly |
+| **Phase 1 rung status** | **A 🟩** · **B 🟩 on numpy, 🟥 on warp** · **C 🟩** · **D 🟩** · E ⬜. **Rung C green** — 15 corpus images, every verdict and every measured property against the committed table, PASS in 7.8 s. **Rung B is green on numpy** (accuracy 8.1%, sweep 24/24) and **red on `--backend warp`, in its accuracy check only** (`Plan.estimated_seconds` predicts 5.61 s against an actual 3.19 s, 75.7% vs a 25% limit); the 24-case sweep passes on both backends with identical digits. Pre-existing, not a T107 regression — Rung B had never been run on warp before this session. Queued as `e4874a146490`, and it is **T110's problem by name**, because M8's gate is a wall clock on warp |
+| **Last updated** | 2026-08-23 — session 19 (**T107 done, M7 reached**: `flow/prepare.py`, 15-image corpus + generator, `validate/shapes.py` = **Rung C green**; **D-064** closes **Q-102** by measurement, **D-065** an unreachable resolution is a refusal, **D-066** the module's constants; `pytest` **663 passed, 1 skipped**); session 18 (**T106 done**: `flow/diagnose.py` — `explain`, `suggest`, `apply_suggestion`, `Monitor`, `Diverging`; `validate/refusals.py` = **Rung D green**; **D-061** the measured divergence-detection numbers, **D-062** the `substituted` criterion carried to T108, **D-063** two T105 suggestions repaired; `pytest` **610 passed, 1 skipped**) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
 ## Blockers
 
-None.
+**None for T108.** One rung is red and it is recorded rather than filed away:
+
+- **Rung B fails its accuracy check on `--backend warp`** — `Plan.estimated_seconds` predicts
+  **5.61 s** against an actual **3.19 s**, a **75.7%** error against the rung's 25% limit, measured
+  on an idle machine (AMD Ryzen 7 5800H at 3201 of 3201 MHz on mains, RTX 3050 Laptop, driver
+  592.82 — **D-035**). The 24-case sweep passes on **both** backends with identical digits (worst
+  peak `|u|` 0.0695, worst `Re` error 0.0000%), and **Rung B on numpy is PASS the same day**
+  (predicted 61.05 s, actual 56.46 s, **8.1%**). This is **pre-existing and not a T107 regression**:
+  Rung B had only ever been run on numpy (4.2% in session 17, 15.0% in session 18) and **D-059**
+  calibrated the estimator against the numpy column of § Performance baseline. The case is
+  360x390 = 140k cells, between that table's measured warp rows at 40k (4155 steps/s) and 1M (757
+  steps/s); a GPU at that size is partly kernel-launch-bound rather than bandwidth-bound, so a
+  log-log interpolation between two bandwidth-bound points over-predicts. **What would unblock it:**
+  a warp calibration point near 100–200k cells in § Performance baseline, or an explicit
+  launch-overhead term in `estimated_seconds` for GPU backends. Queued as `e4874a146490`. **It does
+  not block T108** (which does not time anything) but it **does block M8**, whose gate is a wall
+  clock on warp — so it belongs to **T110**.
 
 ## Open questions
 
@@ -34,9 +50,16 @@ None.
   `python -m flow` exists, or become a pointer to it? T109 decides and records it. Both are
   defensible; the M4 gate output in `old-Docs/STATE1.md` § Snapshot must remain reproducible or be
   explicitly marked historical.
-- **Q-102** — is D-017's documented limit (a thin appendage **fused** to a thick body shares its
-  component and is not reported) closable without false-alarming on a plain disc? T107 must measure
-  this, not inherit it. If no metric clears both, the limit stays with the measurement recorded.
+- ~~**Q-102** — is D-017's documented limit (a thin appendage **fused** to a thick body shares its
+  component and is not reported) closable without false-alarming on a plain disc?~~
+  **Closed in session 19 by measurement — see D-064. Yes.** `flow.prepare.thin_branch_depth` reads
+  **2** on every plain disc tested (radius 3..60, four sub-cell offsets each), **1** on squares and
+  on Rung 4's two bodies, **2** on Rung 3's cylinder — and **`L+1`** on a hairline of length `L`
+  fused to a disc, where `min_thickness` reads the disc throughout. Threshold 3. What D-017's two
+  predecessors were missing is the *question*: they asked whether a given cell is thin, which
+  digitised curvature answers yes to on every convex body, where this asks how far the thin part
+  reaches — and curvature's answer to that is bounded while a hairline's is its own length. The
+  measurement is not archived: `validate/shapes.py` section 4 re-runs it every time Rung C runs.
 - ~~**Q-103** — what tolerance does cross-backend whole-step agreement actually need?~~
   **Closed in session 15 by measurement — see D-056.** The contract's `max|Δu|/U < 1e-4` at 1000
   steps was met without being touched, and the interesting half of the answer is that the
@@ -137,6 +160,9 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-061 | 2026-08-23 | **`Monitor`'s three tripwires, and the measured gap between catching a run and losing it.** Tripwires: peak `|u|` at or above the constraint-3 ceiling on **3 consecutive samples** (sustained, not instantaneous), total fluid mass more than **1%** away from its starting value, and a last-resort "already not finite". Cause is attributed *separately* from symptom: a case at or below **D-029**'s 0.54 floor is blamed on the relaxation time whatever tripwire fired, because `DOCS/IDEA2.md` § Stability row 1 says everything else is downstream of it. **Measured, `numpy`, `SAMPLE_EVERY = 25`:** `tau` 0.533 disc — caught **1525**, `nan` **1650** (7.6% of the run's life earlier); inlet `U` 0.25 at `tau` 0.6 — caught **75**, `nan` **325** (76.9%); inlet-fed, sealed downstream — caught **50**, `nan` **59275** (99.9%). The T106 criterion's *"within 10% of the steps the run would have taken to produce `nan`"* is therefore met by the mode that develops mid-run and beaten by the two whose defect is present from step one. | Two measurements forced each half. **(a) Sustained, not instantaneous**: the D-029 case crosses 0.1 briefly around step **155** and recovers, then dies at 1650 — sampling every 5 steps sees the transient, every 25 does not. A tripwire that fires on it is a false-alarm generator, and a probe users learn to ignore is worse than no probe, so the crossing must persist. **(b) The 10% band cannot be met by all three without making the probe worse.** An over-driven inlet is over the ceiling at step 1 and a sealed outlet leaks mass from the first sample; the only way to delay those to 90% of the run's life is to raise the thresholds past the physics that defines them (constraint 3's 0.1, and incompressibility). Separately measured and worth recording: **peak `|u|` over 0.1 usually does not produce `nan` at all** — a body-force channel ran 30000 steps at peak **7.75** without one, and inlet `U` 0.15 and 0.20 both survived 30000 steps. It produces a *plausible, invalid* answer instead, which is constraint 5's named failure mode, so `Monitor` trips on it regardless of whether a `nan` would ever arrive. Cost, alternating rounds, best round per variant (**D-035**), AMD Ryzen 7 5800H at 3201 of 3201 MHz on mains: **+1.10% / +0.98% / -1.09% / -2.10%** across four measurements — every one inside the 2% limit and inside the machine's own run-to-run spread, so the honest reading is "below the noise floor", not "free". |
 | D-062 | 2026-08-23 | **T106's `substituted=True` acceptance criterion is carried to T108 rather than satisfied against a stub.** The criterion names `Result`, the printed summary and the recorded video's metadata; `flow/case.py`, `flow/report.py` and the CLI are T108/T109 and none exist. It is now an explicit acceptance criterion in `DOCS/TASKS2.md` § T108, citing this entry. **The half that could exist shipped in T106**: every suggestion that changes the flow carries *"This is a different flow from the one you asked for -- not your case."* **on the `Suggestion` object**, not in one rendering of it, asserted by `tests/test_diagnose.py::test_a_suggestion_that_changes_the_flow_says_so`. | User's call when the three options were put side by side (defer whole / partial now / build a `Result` stub). `PROMPTS/018` predicted this exact gap and said to raise it at confirmation time rather than reinterpret the criterion or build a stub T108 would then have to reconcile. Constraint 16 is about *every artifact* saying so, which is precisely why the label belongs on the object rather than on the pretty-printer: a note only `explain()` knows about is a note the report and the video metadata will not carry. The dependency order in `DOCS/PLAN2.md` is not wrong — T108 depends on T106 — but one T106 criterion reaches forward past that edge, and this is the record of it. |
 | D-063 | 2026-08-23 | **Two of `flow/autoconfig.py`'s suggestions did not fix their own case, and were repaired in T106.** The empty-mask refusal offered `change="size"` with a 1.0 m length — a physics knob for a problem no physics knob touches — and a mask whose thinnest feature no resolution can save offered `quality="accurate"`, which re-raises the identical refusal. Both are now `change="mask"`. The `Suggestion` vocabulary therefore grows from `{speed, size, quality}` to `{quality, mask, fluid, speed, size}` = `flow.diagnose.SUGGESTION_ORDER`, applied by `flow.diagnose.apply_suggestion`; `"fluid"` is created only by `flow/diagnose.py` and only after the library entry's cited `nu` is checked to actually clear the floor. Since the tool cannot invent the user's geometry, a `"mask"` suggestion's `value` is a *description* and Rung D substitutes `flow.diagnose.EXAMPLE_MASK` (the same disc `validate/autoconfig.py` holds fixed) to execute the claim. | T106's own acceptance criterion is *"a suggestion that does not fix its case is a failing test"*, so finding two was the rung working, and leaving them would have meant a Rung D that passes by not looking. `Suggestion.value` stays a `str`/`Quantity` rather than gaining an `ndarray` variant: `Suggestion` is a frozen dataclass, and an array field breaks its generated `__eq__` and `__hash__` for no gain. **Ranking** is by `SUGGESTION_ORDER` and is not cosmetic: `tau = 0.5 + 3 U N / Re` means resolution is the *only* knob that raises `tau` without changing the Reynolds number, so `quality` is the one fix that answers the user's own question and every other fix answers a different one — which is what D-045's *"clearly labelled as not your case"* is about. |
+| D-064 | 2026-08-23 | **Q-102 is closed by measurement, not restated: `flow.prepare.thin_branch_depth` detects a hairline *fused* to a thick body and does not false-alarm on a plain disc.** The metric: with `d` the Chebyshev wall distance D-017 already uses, a **core** cell has `d >= 2` (its whole 3x3 is solid) and the **shell** is `d == 1`; the depth is the 8-connected geodesic distance *within the shell* from the nearest core cell. Threshold `THIN_BRANCH_DEPTH = 3`. **Measured this session**, and re-measured by `validate/shapes.py` section 4 on every run rather than quoted: discs of radius 3..60 at four sub-cell offsets each, worst **2**; squares 3..60, worst **1**; straight 3-cell plates **1**; Rung 3's cylinder body **2**; Rung 4's square and polygon bodies **1** and **1**; a 1- or 2-cell hairline of length `L` fused to a disc reads **`L+1`** (3 at L=2, 6 at 5, 11 at 10, 21 at 20) while `min_thickness` reads the *disc* (21) throughout. **The cost is recorded rather than hidden**: the metric also fires on shapes whose thinness is intended — a rotated triangle's apex **4**, a 40x3 ellipse's tip **5**, a three-cell-stroke ring of radius 60 **6**. Every one of those genuinely has a one-cell-thick region, so they are true positives under constraint 12's own rule, but a user meets them as their shape being blunted — which is why `thicken` reports itself in `actions`. | D-017 states the bar in as many words: its own two candidate metrics (run lengths, per-cell 3x3 opening) were written first and *both false-alarm on a plain cylinder*, and a check that cries wolf on the project's own passing benchmarks gets suppressed. So the disc is not one test among many, it is **the** test — which is why the sweep covers sub-cell offsets: `validate/cylinder.py` deliberately offsets its disc by half a cell to break mirror symmetry, the offset disc reads 2 where the centred one reads 1, and a threshold of 2 would therefore have failed on the project's own Rung 3 body. The core/shell split is what the two predecessors were missing. They asked *is this cell thin*, which digitised curvature answers yes to on every convex body; this asks *how far does the thin part reach*, and curvature's answer to that is bounded while a hairline's is its own length. Recording the tapered-shape hits as measured cost rather than filing them as false alarms is the honest reading: an ellipse tapering to one cell leaks through bounce-back exactly as a hairline does. |
+| D-065 | 2026-08-23 | **A body size the picture cannot deliver is a refusal, not a quieter resolution.** When no raster box makes the *repaired* body `cells_across` cells across to within `RESOLUTION_TOL = 1`, `prepare()` returns `verdict="refused"` with a `Fix(change="resolution")` naming a size the picture **can** reach — and that size is iterated to a **fixed point** (`_reachable_size`), because the size the search happened to land on is not automatically one that comes back when it is asked for. | Found by a test, not by reasoning: a two-pixel-wide plate in a 200-pixel picture, asked for 40 cells across, was returning a **61-cell** body, silently. That is constraint 16's named failure mode at the worst possible place — **D-040** exists because `tau = 0.5 + 3 U N / Re` is computed from the number that comes back, so a substituted resolution is substituted *physics*, not a cosmetic difference, and D-040's own evidence is a body that ran at `tau = 0.527` while the printed summary claimed 30 cells of resolution. The fixed-point iteration is not fussiness either: the first attempt named 75 cells, and asking for 75 landed somewhere else again, because a feature that only survives at a finer raster changes what `thicken` does. A fix that fails its own case is a failing test (**D-063**), and this one did until it was iterated. |
+| D-066 | 2026-08-23 | **`flow/prepare.py`'s remaining constants, and the order the repairs run in.** The order is fixed at `REPAIRS = (fill_holes, drop_specks, largest_component, thicken)` whatever order a caller passes them in, so two callers asking for the same set get the same mask. `MIN_BODY_CELLS = 8` — under it a body cannot be `MIN_THICKNESS_CELLS = 3` thick *and* have an outline, and every quantity derived from `D` (**D-019**) becomes a rounding artefact. A speck is `min(1% of the largest component's area, SPECK_MAX_CELLS = 12)`; the cap is what stops a *small* body having a proportionally small neighbour dropped out from under it. `MAX_THICKEN_PASSES = 4`, where one pass turns a one-cell feature into three, so a shape still failing after four is refused rather than fattened indefinitely into a different shape. **And every repair runs on the solid's bounding box plus `_REPAIR_PAD = 6` cells of fluid, not on the picture** — which is what makes Rung C **10.6 s** rather than over two minutes. | `DOCS/PLAN2.md` section Risks names *a pile of tuned constants nobody can defend* at this layer, and **D-059** set the standard: cite a decision or measure it in the session that adds it. The cropping is the one that was measured into existence — the first working version timed out at two minutes on a corpus of fifteen small images, because `lbm.geometry._label`'s max-propagation costs one pass per component diameter and a 400x400 picture of a 50-pixel body pays for all the whitespace. It is not an approximation: every repair here is local to the solid, and the pad leaves room for the only one that grows outward, which is what makes it a free 20x rather than a trade. **D-059** asks Rung C to be seconds so B, C and D together stay minutes; this is how. |
 
 ### Constraint fate table (D-046)
 
@@ -1066,3 +1092,144 @@ four Phase 0 rungs plus A and B were re-run anyway.
 **M7**. It is the last dependency T108 is waiting on, and it owns **Q-102** (D-017's documented
 limit: a thin appendage fused to a thick body shares its component and is not reported). Prompt
 written to `PROMPTS/019-t107-prepare.md`.
+
+### 2026-08-23 — Session 19: T107, geometry preparation and the shape corpus — **Rung C**, **M7**
+
+**Task:** T107 — Geometry preparation + shape corpus. **Status: done.** Every acceptance criterion
+was run, not read. `pytest` **663 passed, 1 skipped** (610 -> 663; 53 new: 51 in
+`tests/test_prepare.py`, 2 auto-parametrised in `tests/test_flow_package.py` for the new module).
+`lbm/` untouched — `git status -- lbm` is empty — and every rung at or below this task was re-run
+anyway.
+
+**Done**
+
+- **`flow/prepare.py`** — `prepare(source, cells_across, *, repair=True, verbose=False) -> Prepared`
+  (frozen output record: `mask` `(ny, nx)` bool cropped to the body, `verdict` `"ok" | "repaired" |
+  "refused"`, `actions`, `properties`, `reason`, `fix`, `warnings`), plus `Fix`, `apply_fix`,
+  `measure`, `thin_branch_depth`, `REPAIRS`, `VERDICTS`. Accepts a PNG, an SVG (the **D-031**
+  subset) or a bool array. It builds **on** `lbm/geometry.py` and forks nothing — `check_mask`,
+  `min_thickness`, `_label` and `_wall_distance` are imported, asserted by
+  `test_prepare_builds_on_lbm_geometry_rather_than_forking_it`.
+- **Four repairs, each individually switchable (`repair=False` / `repair=["fill_holes", ...]`) and
+  each reporting itself** as one keyed line in `actions` (`"fill_holes: filled 1 interior hole
+  (37 cells) that the flow could never reach"`): `fill_holes`, `drop_specks`, `largest_component`,
+  `thicken`. Order is fixed at `REPAIRS` whatever order a caller passes (**D-066**), so two callers
+  asking for the same set get the same mask.
+- **`thin_branch_depth` — the Q-102 metric** (**D-064**), which closes D-017's documented limit.
+  `prepare` also records `min_thickness_before` / `thin_branch_depth_before` / `components_before` /
+  `holes_before` in `properties`, so the corpus records what went **in** broken, not only what came
+  out clean.
+- **`tests/data/shapes/`** — **15 committed images (46 KB in total) plus `generate.py`, the
+  generator that produces them**, and `expectations.json`.
+  `test_the_committed_images_are_the_ones_the_generator_produces` compares the committed PNGs to the
+  generator pixel for pixel, so a hand-edited binary is a failing test.
+- **`validate/shapes.py`** — **Rung C**, `python -m validate.shapes [--write-expectations]`, four
+  sections: the corpus against the committed table; constraint 12 after repair; **D-040** (measured
+  body vs requested, within 1 cell); refusals whose own fix is executed; and the **Q-102
+  measurement, re-run every time rather than quoted**.
+- **`flow/__init__.py`** re-exports the new surface. Note the deliberate shadowing: `flow.prepare`
+  the *callable* wins over `flow.prepare` the *module* on the package, because `flow.prepare(picture,
+  40)` is the API the product wants; the module is reached as `from flow.prepare import ...` or
+  `sys.modules["flow.prepare"]`.
+- **`CLAUDE.md`** § Commands gained the Rung C line and § Module map gained the `flow/prepare.py`
+  row.
+
+**Measured**
+
+- **Rung C — PASS in 7.8 s** (`myenv/Scripts/python.exe -m validate.shapes`), 15/15 images. Seconds,
+  not minutes, as **D-059** asks. The corpus, with the defect each image exists for:
+
+  | image | verdict | thickness before -> after | branch before -> after | repair |
+  |---|---|---|---|---|
+  | `disc`, `square`, `antialiased`, `huge_margin` | ok | 27->27 / 37->37 | 1->1 | — |
+  | `hairline_appendage` | repaired | 27->27 (**blind**) | **29**->1 | thicken |
+  | `self_touching` | repaired | 29->29 (**blind**) | **4**->1 | thicken |
+  | `specks` | repaired | 1->27 | 1->1 | drop_specks |
+  | `two_bodies` | repaired | 15->27 | 1->1 | largest_component |
+  | `donut` | repaired | 11->27 (1 hole -> 0) | 1->1 | fill_holes |
+  | `unclosed_outline`, `diagonal_line`, `extreme_aspect` | repaired | 1->3 | 0->1 | thicken |
+  | `tiny_body` (asked 6 across) | refused | — | — | fix `resolution` -> 8, **runs** |
+  | `all_white`, `all_black` | refused | — | — | fix `picture`, runs against `EXAMPLE_MASK` |
+
+  The two rows marked **blind** are the whole of Q-102: `min_thickness` reports 27 and 29 — the
+  *body* — while the hairline and the pinched waist are what is actually wrong.
+- **Q-102 closed (D-064).** `thin_branch_depth` over discs of radius 3..60 at four sub-cell offsets
+  each: worst **2**. Squares 3..60: **1**. Straight 3-cell plates: **1**. Rung 3's cylinder body:
+  **2**. Rung 4's square and polygon bodies: **1** and **1**. A 1- or 2-cell hairline of length `L`
+  fused to a disc: **`L+1`** (3 at L=2, 6 at 5, 11 at 10, 21 at 20). Threshold 3 separates them.
+  Cost recorded rather than hidden: it also fires on a rotated triangle's apex (**4**), a 40x3
+  ellipse's tip (**5**) and a stroke-3 ring of radius 60 (**6**) — all genuinely one cell thick, so
+  true positives under constraint 12's own rule.
+- **Every rung at or below this task, re-run, all on an idle machine:**
+
+  | Rung | Command | Result |
+  |---|---|---|
+  | R1 | `validate.poiseuille` | **PASS** — L2 **0.3650%**, peak lattice velocity 0.07955 |
+  | R2 | `validate.cavity --re 100` | **PASS** — max dev vs Ghia **0.75%**, vortex **0.21 cells** |
+  | R3 | `validate.cylinder --backend warp --headless` | **PASS** — St **0.1731**, Cd **1.4031 +- 0.0086**, peak 0.09685 |
+  | R4 | `validate.polygons --backend warp --headless` | **PASS** — square Cd **1.5279 +- 0.0271**; polygon Cd **1.4276 +- 0.0226**, Cl amplitude 0.3689, peak 0.08944 |
+  | A | `validate.parity --backend warp` | **PASS** — worst 5.960e-08, whole step **9.611e-06**, checkpoint **8.196e-06** |
+  | **C** | `validate.shapes` | **PASS in 7.8 s** — 15/15, all four repairs exercised by the corpus |
+  | D | `validate.refusals` | **PASS** — caught / `nan` at **1525/1650**, **75/325**, **50/59275**; cost 0.01% |
+  | B | `validate.autoconfig` (numpy) | **PASS** — predicted 61.05 s, actual **56.46 s**, **8.1%**; 24/24; worst peak 0.0695; worst Re error 0.0000% |
+  | B | `validate.autoconfig --backend warp` | **FAIL** — accuracy check only: predicted 5.61 s, actual **3.19 s**, **75.7%**. Sweep 24/24, identical digits |
+
+  Every Phase 0 digit is session 11/15/18's exactly.
+
+**A measurement this session got wrong first, and the correction**
+
+Rung B's numpy run was first measured at **92.12 s actual against the same 61.05 s prediction —
+33.7%, a FAIL** — and the warp run at 48.3%. Both were taken while **this session's own orphaned
+processes were still running**: several `validate` runs survived their background tasks being
+killed, and one (PID 16358) was alive through most of Rung B's window. Re-run on an idle machine,
+numpy came in at **56.46 s / 8.1% — PASS**, and warp got *worse*, **3.19 s / 75.7%**. The first
+warp issue queued this session was **dropped** for that reason and re-filed with the clean numbers
+(`e4874a146490`). **D-035** is why this was caught rather than published: it requires the machine
+state beside every timing, and a rung whose prediction is byte-identical across three sessions while
+the measurement swings 53 -> 92 s is reporting the machine, not the model.
+
+**Decisions made**
+
+- **D-064** — Q-102 closed by measurement: the core/shell geodesic metric, the threshold, the disc
+  false-alarm bar it clears, and the tapered-shape hits recorded as measured cost.
+- **D-065** — a body size the picture cannot deliver is a **refusal** naming a reachable size
+  (iterated to a fixed point), not a quieter resolution. Found by a test: a two-pixel plate asked
+  for 40 cells across was silently returning **61**.
+- **D-066** — `flow/prepare.py`'s constants and repair order, including the bounding-box cropping
+  that is the difference between Rung C at 7.8 s and Rung C at over two minutes.
+
+**Not done / deferred**
+
+- **Nothing in the T107 contract is outstanding.** All eight acceptance criteria are checked in
+  `DOCS/TASKS2.md` § T107.
+- **Rung B on `--backend warp`** — see § Blockers. Pre-existing, queued `e4874a146490`, owned by
+  **T110** because M8's gate is a wall clock on warp. T108 does not time anything.
+- **A feature too small for the requested raster is dropped silently by thresholding**, not by
+  repair — `from_png` area-averages and thresholds at 0.5 (**D-040**), so a 1-pixel whisker at
+  5 px/cell simply is not there, and `prepare` returns `verdict="ok"` because the mask it was handed
+  is clean. `prepare` refuses when the *body size* is unreachable (**D-065**) but says nothing about
+  a *feature* lost to resolution. Not in the T107 contract; worth a `/new-task` if T108's report is
+  meant to speak to it.
+- **`Monitor` on warp** is still unmeasured (session 18's deferral, unchanged).
+
+**Blockers:** none for T108. One red rung, recorded in § Blockers with what would unblock it.
+
+**Housekeeping**
+
+- `DOCS/ISSUES.jsonl` — `d58a860250c5` queued and then **dropped** (contaminated measurement);
+  `e4874a146490` queued in its place with the idle-machine numbers. The `.gitignore` entry from
+  session 16 (`495777c58269`) is still open and still not this task's to fix; it was checked against
+  the new files and does **not** catch them — `git check-ignore` is clean on all 15 PNGs, the
+  generator, `expectations.json`, `flow/prepare.py`, `validate/shapes.py` and
+  `tests/test_prepare.py`.
+
+**Rung status after this session**
+
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run, session 11/15/18's digits.
+- Phase 1: **A 🟩** · **B 🟩 numpy / 🟥 warp (accuracy check only)** · **C 🟩** · **D 🟩** · E ⬜.
+  **M7 reached.**
+
+**Next:** **T108 — `flow.Case` / `flow.Result` API**, session 20, gate unit tests. It is the front
+door over everything T104–T107 built, and it carries **D-062**'s forward-referenced criterion: the
+`substituted=True` flag must reach `Result`, the printed summary and the recorded video's metadata.
+Prompt written to `PROMPTS/020-t108-case-result.md`.

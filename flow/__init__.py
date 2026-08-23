@@ -44,6 +44,19 @@ from flow.diagnose import (
     suggest,
 )
 from flow.fluids import FLUIDS, Fluid, fluid, known_fluids
+from flow.prepare import (
+    MIN_BODY_CELLS,
+    MIN_THICKNESS_CELLS,
+    REPAIRS,
+    THIN_BRANCH_DEPTH,
+    VERDICTS,
+    Fix,
+    Prepared,
+    apply_fix,
+    measure,
+    prepare,
+    thin_branch_depth,
+)
 from flow.quantity import (
     DENSITY,
     DIMENSIONS,
@@ -90,4 +103,15 @@ __all__ = [
     "classify",
     "explain",
     "suggest",
+    "Prepared",
+    "Fix",
+    "prepare",
+    "measure",
+    "thin_branch_depth",
+    "apply_fix",
+    "REPAIRS",
+    "VERDICTS",
+    "MIN_BODY_CELLS",
+    "MIN_THICKNESS_CELLS",
+    "THIN_BRANCH_DEPTH",
 ]

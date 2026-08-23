@@ -1,0 +1,322 @@
+{
+  "written_by": "validate/shapes.py --write-expectations",
+  "note": "Rung C's known answer. The verdict is designed (see tests/data/shapes/generate.py); the properties are measured and pinned so a change in how a shape is repaired shows as a diff.",
+  "cases": {
+    "disc": {
+      "cells_across": 40,
+      "verdict": "ok",
+      "actions": [],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 40,
+        "solid_cells": 1208,
+        "min_thickness": 27,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.755,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 27,
+        "thin_branch_depth_before": 1,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "square": {
+      "cells_across": 40,
+      "verdict": "ok",
+      "actions": [],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 40,
+        "solid_cells": 1596,
+        "min_thickness": 37,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.9975,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 37,
+        "thin_branch_depth_before": 1,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "hairline_appendage": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "thicken"
+      ],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 68,
+        "solid_cells": 1324,
+        "min_thickness": 27,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.486765,
+        "aspect_ratio": 1.7,
+        "min_thickness_before": 27,
+        "thin_branch_depth_before": 29,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "specks": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "drop_specks"
+      ],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 40,
+        "solid_cells": 1240,
+        "min_thickness": 27,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.775,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 1,
+        "thin_branch_depth_before": 1,
+        "components_before": 5,
+        "holes_before": 0
+      }
+    },
+    "donut": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "fill_holes"
+      ],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 40,
+        "solid_cells": 1256,
+        "min_thickness": 27,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.785,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 11,
+        "thin_branch_depth_before": 1,
+        "components_before": 1,
+        "holes_before": 1
+      }
+    },
+    "unclosed_outline": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "thicken"
+      ],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 38,
+        "solid_cells": 402,
+        "min_thickness": 3,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.264474,
+        "aspect_ratio": 0.95,
+        "min_thickness_before": 1,
+        "thin_branch_depth_before": 0,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "antialiased": {
+      "cells_across": 40,
+      "verdict": "ok",
+      "actions": [],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 40,
+        "solid_cells": 1248,
+        "min_thickness": 27,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.78,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 27,
+        "thin_branch_depth_before": 1,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "huge_margin": {
+      "cells_across": 40,
+      "verdict": "ok",
+      "actions": [],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 39,
+        "solid_cells": 1210,
+        "min_thickness": 27,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.775641,
+        "aspect_ratio": 0.975,
+        "min_thickness_before": 27,
+        "thin_branch_depth_before": 1,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "tiny_body": {
+      "cells_across": 6,
+      "verdict": "refused",
+      "actions": [],
+      "properties": {
+        "body_cells_across": 6,
+        "body_cells_along": 6,
+        "solid_cells": 24,
+        "min_thickness": 3,
+        "thin_branch_depth": 2,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.666667,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 3,
+        "thin_branch_depth_before": 2,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "extreme_aspect": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "thicken"
+      ],
+      "properties": {
+        "body_cells_across": 41,
+        "body_cells_along": 3,
+        "solid_cells": 123,
+        "min_thickness": 3,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 1.0,
+        "aspect_ratio": 0.073171,
+        "min_thickness_before": 1,
+        "thin_branch_depth_before": 0,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "diagonal_line": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "thicken"
+      ],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 40,
+        "solid_cells": 194,
+        "min_thickness": 3,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.12125,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 1,
+        "thin_branch_depth_before": 0,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "self_touching": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "thicken"
+      ],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 88,
+        "solid_cells": 2600,
+        "min_thickness": 29,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.738636,
+        "aspect_ratio": 2.2,
+        "min_thickness_before": 29,
+        "thin_branch_depth_before": 4,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    },
+    "two_bodies": {
+      "cells_across": 40,
+      "verdict": "repaired",
+      "actions": [
+        "largest_component"
+      ],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 39,
+        "solid_cells": 1196,
+        "min_thickness": 27,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 0.766667,
+        "aspect_ratio": 0.975,
+        "min_thickness_before": 15,
+        "thin_branch_depth_before": 1,
+        "components_before": 2,
+        "holes_before": 0
+      }
+    },
+    "all_white": {
+      "cells_across": 40,
+      "verdict": "refused",
+      "actions": [],
+      "properties": {
+        "body_cells_across": 0,
+        "body_cells_along": 0,
+        "solid_cells": 0,
+        "min_thickness": 0,
+        "thin_branch_depth": 0,
+        "components": 0,
+        "holes": 0,
+        "fill_fraction": 0.0,
+        "aspect_ratio": 0.0,
+        "min_thickness_before": 0,
+        "thin_branch_depth_before": 0,
+        "components_before": 0,
+        "holes_before": 0
+      }
+    },
+    "all_black": {
+      "cells_across": 40,
+      "verdict": "refused",
+      "actions": [],
+      "properties": {
+        "body_cells_across": 40,
+        "body_cells_along": 40,
+        "solid_cells": 1600,
+        "min_thickness": 39,
+        "thin_branch_depth": 1,
+        "components": 1,
+        "holes": 0,
+        "fill_fraction": 1.0,
+        "aspect_ratio": 1.0,
+        "min_thickness_before": 39,
+        "thin_branch_depth_before": 1,
+        "components_before": 1,
+        "holes_before": 0
+      }
+    }
+  }
+}

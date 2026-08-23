@@ -126,6 +126,7 @@ myenv/Scripts/python.exe -m validate.cylinder             # Rung 3
 myenv/Scripts/python.exe -m validate.polygons             # Rung 4
 myenv/Scripts/python.exe -m validate.parity --backend warp  # Rung A
 myenv/Scripts/python.exe -m validate.autoconfig           # Rung B (~23 min)
+myenv/Scripts/python.exe -m validate.shapes               # Rung C (~10 s)
 myenv/Scripts/python.exe -m validate.refusals             # Rung D
 myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
 ```
@@ -177,6 +178,7 @@ line in `DOCS/STATE2.md` § Environment.
 | `flow/fluids.py` | the cited fluid library | T104 |
 | `flow/autoconfig.py` | physics in, every solver parameter out; the guardrails | T105 |
 | `flow/diagnose.py` | refusals in prose, suggestions that run, live divergence probe | T106 |
+| `flow/prepare.py` | picture -> runnable body mask; repair, refusal, the Q-102 thin-branch metric | T107 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 
 ## Current state

@@ -20,7 +20,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T104 | Physical quantities + fluid library | `done` | — | unit tests |
 | T105 | Auto-configuration | `done` | T104 | **Rung B** → **M6** |
 | T106 | Diagnosis, refusal, nearest runnable case | `done` | T105 | **Rung D** |
-| T107 | Geometry preparation + shape corpus | `not_started` | — | **Rung C** → **M7** |
+| T107 | Geometry preparation + shape corpus | `done` | — | **Rung C** → **M7** |
 | T108 | `flow.Case` / `flow.Result` API | `not_started` | T105, T106, T107 | unit tests |
 | T109 | CLI on `flow`, live + record wiring | `not_started` | T108 | manual gate + tests |
 | T110 | The minute: end to end, timed | `not_started` | T109, T103 | **Rung E** → **M8** |
@@ -366,7 +366,7 @@ numbers underneath for someone who has.
 
 ## T107 — Geometry preparation + shape corpus → Rung C
 
-**Status:** `not_started`
+**Status:** `done`
 
 ### Goal
 
@@ -390,14 +390,14 @@ reason. **M7.**
 
 ### Acceptance criteria
 
-- [ ] **The corpus is committed**: at least 12 images covering hairline appendage fused to a thick body, detached specks, interior hole (donut), unclosed outline, heavy anti-aliasing, huge margin, tiny body, extreme aspect ratio, diagonal 1-cell line, self-touching shape, all-white, all-black. Each has a committed expected verdict and expected properties.
-- [ ] **D-017's documented limit is closed or restated with evidence:** a thin appendage fused to a thick body is *detected* (it currently shares the component and is not reported). If a metric that catches it also false-alarms on a plain disc, the measurement is recorded and the limit stays — but it is measured this session, not inherited.
-- [ ] Repairs are individually switchable and individually reported in `actions`: fill interior holes, drop specks below a stated area, thicken sub-3-cell features, keep the largest component. Nothing is repaired silently.
-- [ ] After repair, the mask satisfies constraint 12's rules — min thickness ≥ 3, and the checks in `check_mask` produce no warning — asserted for every corpus image whose verdict is `repaired`.
-- [ ] Refusal cases refuse: an all-white, an all-black and a body smaller than 8 cells across return `verdict="refused"` with a reason naming what is wrong and what would fix it.
-- [ ] **Rung C — `validate/shapes.py`:** every corpus image, no manual step, verdict and measured properties compared against `expectations.json`. PASS/FAIL printed, with a per-image line.
-- [ ] Body resolution obeys **D-040**: the *measured* body is the requested size after preparation, within 1 cell, for every corpus image that is not refused.
-- [ ] `pytest tests/test_prepare.py` green; Phase 0 rungs still green.
+- [x] **The corpus is committed**: at least 12 images covering hairline appendage fused to a thick body, detached specks, interior hole (donut), unclosed outline, heavy anti-aliasing, huge margin, tiny body, extreme aspect ratio, diagonal 1-cell line, self-touching shape, all-white, all-black. Each has a committed expected verdict and expected properties.
+- [x] **D-017's documented limit is closed or restated with evidence:** a thin appendage fused to a thick body is *detected* (it currently shares the component and is not reported). If a metric that catches it also false-alarms on a plain disc, the measurement is recorded and the limit stays — but it is measured this session, not inherited.
+- [x] Repairs are individually switchable and individually reported in `actions`: fill interior holes, drop specks below a stated area, thicken sub-3-cell features, keep the largest component. Nothing is repaired silently.
+- [x] After repair, the mask satisfies constraint 12's rules — min thickness ≥ 3, and the checks in `check_mask` produce no warning — asserted for every corpus image whose verdict is `repaired`.
+- [x] Refusal cases refuse: an all-white, an all-black and a body smaller than 8 cells across return `verdict="refused"` with a reason naming what is wrong and what would fix it.
+- [x] **Rung C — `validate/shapes.py`:** every corpus image, no manual step, verdict and measured properties compared against `expectations.json`. PASS/FAIL printed, with a per-image line.
+- [x] Body resolution obeys **D-040**: the *measured* body is the requested size after preparation, within 1 cell, for every corpus image that is not refused.
+- [x] `pytest tests/test_prepare.py` green; Phase 0 rungs still green.
 
 ### Constraints that bite here
 
@@ -405,11 +405,30 @@ reason. **M7.**
 - **D-040** — every derived number comes from the same measured `D`. A repair that changes the body's extent must re-derive, not adjust.
 - `DOCS/PLAN2.md` § Risks — repair must not turn the user's shape into a different shape; the rung asserts measured properties, not merely the absence of warnings.
 
+### Deviations recorded
+
+- **Q-102 is closed, not restated** — `flow.prepare.thin_branch_depth` catches a hairline fused to a
+  thick body and does **not** false-alarm on a plain disc at any radius or sub-cell offset. The
+  measurement is **D-064** and `validate/shapes.py` § 4 re-runs it every time rather than quoting it.
+- **A fourteenth and fifteenth refusal class, neither in the contract.** A picture that cannot
+  produce the requested body size at any raster (a two-pixel plate asked for 40 cells) is
+  **refused** with the size it can reach, rather than quietly returning a different resolution —
+  **D-065**. Returning 61 cells for a request of 40 was the original behaviour and it is a silent
+  substitution of `tau`, not just of the picture.
+- **`flow.prepare` the function shadows `flow.prepare` the module** on the package, deliberately:
+  `flow.prepare(picture, 40)` is the API the product wants. The module is reachable as
+  `from flow.prepare import ...` and `sys.modules["flow.prepare"]`, which is what
+  `tests/test_prepare.py` uses.
+
 ### Notes
 
 Generate the corpus programmatically where possible so the images are auditable and small, and
 commit the generator alongside. `check_mask` and `min_thickness` stay in `lbm/geometry.py` — `flow/`
 adds judgement and repair on top and does not fork them.
+
+**Done in session 19.** 15 corpus images (`tests/data/shapes/`, generator committed beside them),
+`flow/prepare.py`, `validate/shapes.py` = **Rung C, PASS in 10.6 s**, `tests/test_prepare.py` 48
+tests, `pytest` **660 passed, 1 skipped**.
 
 ---
 
