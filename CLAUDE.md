@@ -179,6 +179,8 @@ line in `DOCS/STATE2.md` § Environment.
 | `flow/autoconfig.py` | physics in, every solver parameter out; the guardrails | T105 |
 | `flow/diagnose.py` | refusals in prose, suggestions that run, live divergence probe | T106 |
 | `flow/prepare.py` | picture -> runnable body mask; repair, refusal, the Q-102 thin-branch metric | T107 |
+| `flow/case.py` | the front door: `Case.from_image` / `from_array`, `explain()`, `plan`, `run()` | T108 |
+| `flow/report.py` | `Result` — Cd/Cl/St/convergence, the printed summary, the plot, `save()` | T108 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 
 ## Current state

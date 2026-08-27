@@ -14,19 +14,20 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T108` — `flow.Case` / `flow.Result` API (`DOCS/TASKS2.md`) — gate: unit tests |
+| **Current task** | `T109` — CLI on `flow`, live + record wiring (`DOCS/TASKS2.md`) — gate: manual gate + tests |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**, **T107**. Phase 0: T001 … T011, all done |
+| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**, **T107**, **T108**. Phase 0: T001 … T011, all done |
 | **Milestone reached** | **M7** (2026-08-23, `flow/prepare.py`, Rung C green: `python -m validate.shapes` prints PASS, 15/15 corpus images get their committed verdict and measured properties, no manual step). Phase 1 targets M8. **T106 has no milestone of its own** — Rung D is a gate inside it and is re-run by M8 (`DOCS/PLAN2.md` § Milestone gates) |
-| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run this session (R3/R4 on `--backend warp`, R1/R2 on numpy) printing session 11/15/18's digits exactly |
-| **Phase 1 rung status** | **A 🟩** · **B 🟩 on numpy, 🟥 on warp** · **C 🟩** · **D 🟩** · E ⬜. **Rung C green** — 15 corpus images, every verdict and every measured property against the committed table, PASS in 7.8 s. **Rung B is green on numpy** (accuracy 8.1%, sweep 24/24) and **red on `--backend warp`, in its accuracy check only** (`Plan.estimated_seconds` predicts 5.61 s against an actual 3.19 s, 75.7% vs a 25% limit); the 24-case sweep passes on both backends with identical digits. Pre-existing, not a T107 regression — Rung B had never been run on warp before this session. Queued as `e4874a146490`, and it is **T110's problem by name**, because M8's gate is a wall clock on warp |
-| **Last updated** | 2026-08-23 — session 19 (**T107 done, M7 reached**: `flow/prepare.py`, 15-image corpus + generator, `validate/shapes.py` = **Rung C green**; **D-064** closes **Q-102** by measurement, **D-065** an unreachable resolution is a refusal, **D-066** the module's constants; `pytest` **663 passed, 1 skipped**); session 18 (**T106 done**: `flow/diagnose.py` — `explain`, `suggest`, `apply_suggestion`, `Monitor`, `Diverging`; `validate/refusals.py` = **Rung D green**; **D-061** the measured divergence-detection numbers, **D-062** the `substituted` criterion carried to T108, **D-063** two T105 suggestions repaired; `pytest` **610 passed, 1 skipped**) |
+| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run in session 20 (R3/R4 on `--backend warp`, R1/R2 on numpy) printing session 11/15/18's digits exactly |
+| **Phase 1 rung status** | **A 🟩** · **B 🟩 on numpy, 🟥 on warp** · **C 🟩** · **D 🟩** · E ⬜. A, C and D re-run in session 20 and unchanged (**A** worst step 9.611e-06 / checkpoint 8.196e-06; **C** PASS in 6.6 s; **D** PASS, caught/`nan` at 1525/1650, 75/325, 50/59275). **Rung B was not re-run in session 20** — T108 times nothing and Rung B costs ~23 min; its status is session 19's: green on numpy (accuracy 8.1%, sweep 24/24), **red on `--backend warp` in its accuracy check only** (`Plan.estimated_seconds` predicts 5.61 s against an actual 3.19 s, 75.7% vs a 25% limit), queued as `e4874a146490` and **T110's problem by name**, because M8's gate is a wall clock on warp |
+| **Last updated** | 2026-08-27 — session 20 (**T108 done**: `flow/case.py` = `Case`, `flow/report.py` = `Result`; the three `DOCS/IDEA3.md` lines run end to end; **D-067** a refusal is carried, not raised at construction, **D-068** a geometry fix arrives as a quality level, **D-069** the measurement window starts after the kick washes out, **D-070** the three Strouhal gates, **D-071** the frame-memory budget and the un-drawn run; `pytest` **721 passed, 1 skipped** in 63.9 s; **Q-104** opened — the product path's own domain puts Cd/St outside Rung 3's bands, which is M8's gate and T110's to decide); session 19 (**T107 done, M7 reached**: `flow/prepare.py`, 15-image corpus + generator, `validate/shapes.py` = **Rung C green**; **D-064** closes **Q-102** by measurement, **D-065** an unreachable resolution is a refusal, **D-066** the module's constants; `pytest` **663 passed, 1 skipped**); session 18 (**T106 done**: `flow/diagnose.py` — `explain`, `suggest`, `apply_suggestion`, `Monitor`, `Diverging`; `validate/refusals.py` = **Rung D green**; **D-061** the measured divergence-detection numbers, **D-062** the `substituted` criterion carried to T108, **D-063** two T105 suggestions repaired; `pytest` **610 passed, 1 skipped**) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
 ## Blockers
 
-**None for T108.** One rung is red and it is recorded rather than filed away:
+**None for T109.** One rung is red and one gate is now known to be unreachable as the constants
+stand; both are recorded rather than filed away, and neither stops the CLI:
 
 - **Rung B fails its accuracy check on `--backend warp`** — `Plan.estimated_seconds` predicts
   **5.61 s** against an actual **3.19 s**, a **75.7%** error against the rung's 25% limit, measured
@@ -41,10 +42,35 @@ Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
   log-log interpolation between two bandwidth-bound points over-predicts. **What would unblock it:**
   a warp calibration point near 100–200k cells in § Performance baseline, or an explicit
   launch-overhead term in `estimated_seconds` for GPU backends. Queued as `e4874a146490`. **It does
-  not block T108** (which does not time anything) but it **does block M8**, whose gate is a wall
+  not block T108 or T109** (neither times anything) but it **does block M8**, whose gate is a wall
   clock on warp — so it belongs to **T110**.
 
+- **The product path's own domain puts `Cd` and `St` outside Rung 3's published bands** — measured
+  in session 20 through the new `flow.Case`, numpy, idle machine: water, 0.005 m/s, 0.02 m,
+  `quality="fast"` (Re 99.6), 78000 steps = 130 convective times, window the last 50%:
+  **`Cd` 1.5955 ± 0.0157, `St` 0.1841** (peak 44x the next distinct one, 12.0 periods), peak `|u|`
+  0.09761, 478 s. Rung 3's bands are `Cd` 1.25–1.45 and `St` 0.155–0.175. **The physics is not in
+  question** — R3 and R4 print session 11/15's digits on the same day — the **domain** is:
+  `flow/autoconfig.py` chooses `SPAN_D = 12` (8.3% blockage) and `UPSTREAM_D = 3`, where
+  `validate/cylinder.py` chooses 24 (4.2%) and 8 *deliberately*, and its own `SPAN_D` docstring
+  records the measurement that confinement raises drag — 15 D of span gave `Cd` 1.4635, "just over
+  the top of the acceptance band". 12 D is tighter still. **What this blocks: M8**, whose gate is
+  reaching exactly those bands *through* `flow.Case` (`DOCS/PLAN2.md` § Milestone gates). **What
+  would unblock it:** widen `SPAN_D`/`UPSTREAM_D` toward Rung 3's, at a cost in cells and therefore
+  in M8's wall clock — or state the bands for a confined case and say why. Note the tension: the
+  change that makes M8's bands reachable makes M8's minute harder. Queued as `a924f78acc32`;
+  it is **T110's decision** (see **Q-104**), not T108's to make and not T109's.
+
 ## Open questions
+
+- **Q-104** — does `flow/autoconfig.py`'s domain widen to Rung 3's (24 D span, 8 D upstream), or do
+  Rung E's bands get restated for a confined case? Measured this session at the 12 D span the
+  chooser picks today: `Cd` **1.5955**, `St` **0.1841**, against bands of 1.25–1.45 and
+  0.155–0.175 — so as things stand **M8's gate cannot be met however long the run is**, because the
+  domain and not the run length is the reason. Widening costs cells: 24 D span roughly doubles the
+  cell count and therefore the wall clock M8 also gates on, which is why this is a decision and not
+  a fix. **T110 owns it** (`DOCS/PLAN2.md` § Session map), and it should be decided *before* Rung E
+  is written, not after it fails. Queued as `a924f78acc32`.
 
 - **Q-101** — does `python -m lbm.runner` (the M4 gate command) survive as a working entry point once
   `python -m flow` exists, or become a pointer to it? T109 decides and records it. Both are
@@ -184,6 +210,12 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | **14** | — | **New.** Every refusal names a fix, and the fix is machine-checked (Rung D). |
 | **15** | — | **New.** `flow/` may import `lbm/`; `lbm/` may never import `flow/`. |
 | **16** | — | **New.** No silent substitution — a run that differs from the request says so in every artifact. |
+| D-067 | 2026-08-27 | **A refused `Case` is built, not raised: the refusal rides on the object and `run()` raises it.** `Case.from_image(...)` always returns a `Case`; `case.runnable` is `False`, `case.refusal` holds the `Unrepresentable` (or the `Prepared` with `verdict="refused"`), `case.explain()` prints the refusal and its way forward, and `case.run()` raises before a single timestep. **D-065**'s picture refusal is raised as the *same* `Unrepresentable` a physics refusal is, built from the `Prepared`'s `reason` and `fix`, so one `except Unrepresentable` catches both. | The T108 contract's first criterion is that building "runs nothing" and that `explain()` prints the plan **or** the way forward — and a constructor that raises can print neither: the caller has an exception, not an object to interrogate. T109's `--explain` has to print a refusal and exit 2, and doing that through exception plumbing in a CLI is how the explanation ends up living in two places. The rejected alternative was raising at construction and offering a separate `flow.explain_request(...)` free function, which is the same information reachable two ways — the thing **D-062** and **D-045** exist to prevent for `substituted`. What is *not* softened: nothing runs. `run()` raises, and it raises the structured refusal with its suggestions, so constraint 16 holds where it matters. |
+| D-068 | 2026-08-27 | **A geometry `Fix` is translated into the user's vocabulary before it is applied: `change="resolution"` becomes the *finest quality level the picture can actually resolve*, and a picture that cannot reach even `"fast"` is substituted by `flow.diagnose.EXAMPLE_MASK` with a sentence saying so.** `Case.nearest()` is where that happens; `flow.prepare.apply_fix` is still what executes the `"picture"` branch. | `flow.prepare.apply_fix` speaks `cells_across`, and the T108 contract says by name that `cells_across` is `prepare`'s argument and **not** `Case`'s (constraint 13) — so a fix cannot be handed back through this layer in the units it was written in. The user-facing knob for body size *is* `quality`, so that is what the fix becomes. **Finest that fits, not coarsest**: the nearest runnable case should be the one nearest to what was asked, and the corpus's `tiny_body.png` shows the difference — refused at `"accurate"` (50 cells) with a reachable size of **41**, it comes back as `"balanced"` (40) rather than `"fast"` (30). When nothing fits, inventing the user's geometry is not an option, so the worked example is run and labelled — exactly the escape `apply_fix` and Rung D already use, rather than a new one. |
+| D-069 | 2026-08-27 | **Nothing is measured until the startup kick has switched off *and* washed out of the domain: the measurement window starts at `max(50% of the run, kick_steps + one flow-through)`, and a run shorter than that reports nothing at all rather than reporting the kick.** `flow.case.SETTLE_FLOW_THROUGHS = 1.0`; the shortfall is a `Result.warnings` line naming the step count that would work. | Found by the Re 10 acceptance criterion, and measured rather than reasoned: on a steady Re 10 disc, a window that opens the instant the kick stops reports a lift **amplitude of 0.5463 against a `Cd` of 3.6115** — 15% — which is the kick's shutdown transient decaying, and which reads to everything downstream as a shedding wake. The full decay, 30000 steps, lift amplitude as a fraction of `Cd` per 3000-step block: **0.890, 0.151, 0.041, 0.0123, 0.0043, 0.0018, 0.0009, 0.0005, 0.00012, 0.00004** — monotone through the 1% shedding gate at ~12000 steps. One domain flow-through (`nx / U`) is the time for the perturbed fluid to leave, which is the physical quantity involved; it is also a *floor* rather than a rival to Rung 3's choice, which discards 70 convective times where its kick stops at 3 (~2.5 flow-throughs). Reporting `nan` with a sentence beats reporting a number nobody measured. |
+| D-070 | 2026-08-27 | **`Result.strouhal` survives three gates or it is `None`: (1) lift amplitude over `CL_AMPLITUDE_MIN = 1%` of `\|Cd\|`, (2) the window long enough to hold `MIN_PERIODS = 2` of the **longest plausible** period `D / (U * 0.05)`, (3) the estimate inside `ST_PLAUSIBLE = (0.05, 0.5)`.** Gate 2 is deliberately *not* counted against the period the estimate itself implies. | The contract names gate 1, and gate 1 alone is not enough: measured, a synthetic sine planted at `St = 0.17` with **one** period in the window returns **0.459** with a peak 56x the next distinct one — a confident wrong answer, and the artefact constraint 5 exists to prevent. The first attempt at gate 2 counted periods of the *estimate*, which is self-referential and passes exactly when it should fire: the wrong 0.459 implies a short period and therefore "2.7 periods observed". Counting against the slowest shedding we would believe (St 0.05, 20 convective times) is a question whose answer does not depend on the answer being guarded, and it costs nothing real — Rung 3 measures over 60 convective times, and the 130-convective-time product run in this session reports `St` 0.1841 with 12.0 periods. Gate 3's band cites `validate/cylinder.py::lowpass`'s own measurement, an unfiltered FFT reporting `St = 1.49` from the domain's acoustics. |
+| D-071 | 2026-08-27 | **Frames kept in memory are budgeted at `FRAME_MEMORY_BUDGET = 512 MB` and the shortfall is *reported*, and a run with no sink and `keep_frames=False` renders nothing at all.** The budget's overflow adds a `Result.warnings` line naming how many of how many frames were kept and what to pass instead; the un-drawn run pushes a shared 1x1 placeholder, never `None`. | `Plan.steps_per_frame` is computed for 60 fps playback, so the default 20-convective-time run at `quality="fast"` asks for ~6000 frames of 421 KB — **2.5 GB**, which is not a default anyone chose. A silent cap was the obvious fix and is the wrong one: a truncated list reads as "these are your frames" when it is the first third of them, so the count kept and the count seen both go in the summary. The placeholder is not cosmetic: `None` is `lbm.runner.RingBuffer`'s "the buffer is empty" sentinel, so returning it from `field` would make a pushed frame indistinguishable from an empty ring and leave `RunStats.delivered` counting frames that were never delivered. |
+
 
 ## Session log
 
@@ -1233,3 +1265,121 @@ the measurement swings 53 -> 92 s is reporting the machine, not the model.
 door over everything T104–T107 built, and it carries **D-062**'s forward-referenced criterion: the
 `substituted=True` flag must reach `Result`, the printed summary and the recorded video's metadata.
 Prompt written to `PROMPTS/020-t108-case-result.md`.
+
+### 2026-08-27 — Session 20: T108, the `Case` / `Result` front door
+
+**Task:** T108 — `flow.Case` / `flow.Result` API. **Status: done.** Every acceptance criterion was
+run, not read. `pytest` **721 passed, 1 skipped** in 63.9 s (663 -> 721; 58 new: 29 in
+`tests/test_case.py`, 25 in `tests/test_report.py`, 4 auto-parametrised in
+`tests/test_flow_package.py` for the two new modules). `lbm/` untouched — `git status -- lbm` is
+empty — and every rung at or below this task was re-run anyway.
+
+**Done**
+
+- **`flow/case.py`** — `Case`, a facade and nothing more. `Case.from_image(path, *, fluid, speed,
+  size, quality="balanced", repair=True, backend="numpy")` and `Case.from_array(mask, ...)`;
+  `case.plan` (the `Plan`, or `None`), `case.prepared` (the `Prepared`), `case.runnable`,
+  `case.refusal`, `case.suggestions`, `case.fix`, `case.nearest()`, `case.explain()`, `case.run()`,
+  and `case.sim` (the `Sim` of the most recent run — the escape hatch T110 will want). Building runs
+  `prepare` and `plan` and **no timesteps**.
+- **`flow/report.py`** — `Result`, a frozen output record (**D-060**'s exemption applies to its
+  generated constructor and to nothing else): `cd` / `cd_std` / `cd_amplitude`, `cl` / `cl_mean`,
+  `strouhal` / `strouhal_confidence` / `periods`, `convergence` (+ its history), `peak_u`,
+  `elapsed`, `substituted` / `substitution`, `frames`, `backend`, `steps`, `stable`, the `Cd`/`Cl`
+  histories, the `Plan` and the `Prepared`. Plus `summary()` (prints and returns), `as_dict()`,
+  `save(path)`, `plot(path=None)`, `metadata()`, and the shared `metadata_entries()` builder.
+- **The three `DOCS/IDEA3.md` lines run end to end.** Measured, water at Re 99.6 through
+  `disc.png`, `quality="fast"`, 78000 steps = 130 convective times, numpy, idle machine:
+  **`Cd` 1.5955 +- 0.0157, `Cl` amplitude 0.416, `St` 0.1841** (peak 44x the next distinct one, 12.0
+  periods), peak `|u|` **0.09761**, **478.2 s**. That is a working product path — and its `Cd`/`St`
+  sit *outside* Rung 3's bands for a reason that is the chooser's domain and not this task's:
+  **Q-104**, § Blockers, queued `a924f78acc32`.
+- **Assembly ported from `lbm/runner.py`'s CLI**, which is the behaviour that already works (M4):
+  the body placed at `UPSTREAM_D` diameters with one cell of asymmetry, the solid seeded at rest
+  (**D-030**), the startup kick at 0.20 for 5 convective times, `steps_per_frame` taken **from the
+  plan** and never computed here (constraint 7 / **D-023** — asserted by reading the source).
+- **`Result.save()` writes both sinks** — `wake.mp4` through `RecordSink`, `frames/` through
+  `HeadlessSink` — and a video written *either* way (by `save()` afterwards or by `run(record=...)`
+  as it goes) carries the same provenance comment from one builder, into the container's comment
+  atom. `flow/` colours nothing: the only name it imports from `lbm.render` is `render` (and
+  `LiveSink`), asserted by an AST scan.
+- **`flow/__init__.py`** re-exports `Case` and `Result`; `CLAUDE.md` § Module map gained the two
+  rows.
+
+**Measured**
+
+- **Every rung at or below this task, re-run:**
+
+  | Rung | Command | Result |
+  |---|---|---|
+  | R1 | `validate.poiseuille` | **PASS** — L2 **0.3650%**, peak lattice velocity 0.07955 |
+  | R2 | `validate.cavity --re 100` | **PASS** — max dev vs Ghia **0.75%**, vortex **0.21 cells** |
+  | R3 | `validate.cylinder --backend warp --headless` | **PASS** — St **0.1731**, Cd **1.4031 +- 0.0086**, peak 0.09685 |
+  | R4 | `validate.polygons --backend warp --headless` | **PASS** — polygon Cd **1.4276 +- 0.0226**, Cl amplitude 0.3689, peak 0.08944 |
+  | A | `validate.parity --backend warp` | **PASS** — whole step **9.611e-06**, checkpoint **8.196e-06** |
+  | C | `validate.shapes` | **PASS in 6.6 s** — 15/15 |
+  | D | `validate.refusals` | **PASS** — caught / `nan` at 1525/1650, 75/325, 50/59275; Monitor cost **-0.53%** |
+
+  Every digit is session 11/15/18/19's exactly. **Rung B was not re-run** — it costs ~23 min, T108
+  times nothing, and its warp accuracy failure is recorded in § Blockers as session 19 left it.
+  **Disclosure (D-035):** `pytest` overlapped the tail of R3/R4, so R3's 294 steps/s is not a clean
+  timing; every pass condition there is a physics band, and Rung D's cost check ran clean and in the
+  safe direction (a negative cost cannot be manufactured by contention).
+- **Re 10 is steady, and settles slowly.** 30000 steps, lift amplitude as a fraction of `Cd` per
+  3000-step block: **0.890, 0.151, 0.041, 0.0123, 0.0043, 0.0018, 0.0009, 0.0005, 0.00012,
+  0.00004** — through the 1% gate at ~12000 steps. This is the measurement behind **D-069**, and the
+  reason the suite's Re 10 test asserts the cheap half (no `St`, a run that says it measured
+  nothing, a visibly decaying history) rather than paying ~110 s for a post-settling window.
+- **The one-period trap, measured**: a synthetic sine planted at `St = 0.17` with one period in the
+  window returns **0.459** with a peak 56x the next distinct one (**D-070**).
+
+**Not done / deferred**
+
+- **Nothing in the T108 contract is outstanding.** All nine acceptance criteria are checked in
+  `DOCS/TASKS2.md` § T108, with five deviations recorded there and carrying D-ids.
+- **`Case` has no checkpoint/resume surface.** `Sim` has one (**D-022**, **D-050**) and `case.sim`
+  reaches it, but nothing in `flow/` wraps it. Not in the contract; T109 or a `/new-task` if the CLI
+  wants `--checkpoint`.
+- **`live=True` is composed and mode-tested but never opened in a test** — a window in a test suite
+  is a hang waiting to happen, so `LiveSink` is stubbed and the *rule* (**D-039**) is what is
+  asserted. T109's manual gate is where a real window gets opened.
+- **Rung B on `--backend warp`** — unchanged, § Blockers, **T110's**.
+- **`Monitor` on warp** is still unmeasured (session 18's deferral, unchanged).
+
+**Decisions made**
+
+- **D-067** — a refused `Case` is carried, not raised at construction; `run()` raises it, and a
+  picture refusal is raised as the same `Unrepresentable` a physics refusal is (**D-065**'s path).
+- **D-068** — a geometry `Fix` is translated into a quality level, never into `cells_across`
+  (constraint 13); finest that fits, and the worked example when nothing fits.
+- **D-069** — the measurement window starts after the kick has washed out; a run too short for that
+  measures nothing and says so.
+- **D-070** — the three Strouhal gates, and why the period count is taken against the slowest
+  plausible period rather than against the estimate's own.
+- **D-071** — the frame-memory budget, reported rather than silently capped, and the 1x1 placeholder
+  that keeps the ring buffer's `None` sentinel meaning what it says.
+
+**Blockers:** none for T109. Two things are recorded in § Blockers, both **T110's**: Rung B's warp
+estimator, and **Q-104** — the product path's domain versus Rung 3's bands, which is M8's gate.
+
+**Housekeeping**
+
+- `DOCS/ISSUES.jsonl` — `a924f78acc32` queued (the domain-versus-bands finding). The `.gitignore`
+  entry from session 16 (`495777c58269`) is still open and still not this task's to fix; it was
+  checked against the new files and does **not** catch them — `git check-ignore` is clean on
+  `flow/case.py`, `flow/report.py`, `tests/test_case.py` and `tests/test_report.py`.
+- The suite's wall clock roughly doubled, 32 s -> 63.9 s, and that is deliberate: four of T108's
+  criteria (**D-030** after 300 steps, the tee writing two files, the Re 10 case, the substituted
+  run recording an MP4) cannot be asserted without running the solver. The Re 10 test is the
+  expensive one at ~27 s.
+
+**Rung status after this session**
+
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run, session 11/15's digits.
+- Phase 1: **A 🟩** · **B 🟩 numpy / 🟥 warp (accuracy check only, not re-run this session)** ·
+  **C 🟩** · **D 🟩** · E ⬜. **M7 stands; M8 is T110's.**
+
+**Next:** **T109 — CLI on `flow`, live + record wiring**, session 21, gate manual + tests.
+`python -m flow` replaces `python -m lbm.runner` as the thing a person runs, built on `Case`. It
+also decides **Q-101** (does `python -m lbm.runner` survive as an entry point, or become a pointer).
+Prompt written to `PROMPTS/021-t109-cli.md`.

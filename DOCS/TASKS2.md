@@ -21,7 +21,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T105 | Auto-configuration | `done` | T104 | **Rung B** → **M6** |
 | T106 | Diagnosis, refusal, nearest runnable case | `done` | T105 | **Rung D** |
 | T107 | Geometry preparation + shape corpus | `done` | — | **Rung C** → **M7** |
-| T108 | `flow.Case` / `flow.Result` API | `not_started` | T105, T106, T107 | unit tests |
+| T108 | `flow.Case` / `flow.Result` API | `done` | T105, T106, T107 | unit tests |
 | T109 | CLI on `flow`, live + record wiring | `not_started` | T108 | manual gate + tests |
 | T110 | The minute: end to end, timed | `not_started` | T109, T103 | **Rung E** → **M8** |
 
@@ -434,7 +434,7 @@ tests, `pytest` **660 passed, 1 skipped**.
 
 ## T108 — `flow.Case` / `flow.Result` API
 
-**Status:** `not_started`
+**Status:** `done`
 
 ### Goal
 
@@ -457,21 +457,46 @@ in T104–T107 gets one front door.
 
 ### Acceptance criteria
 
-- [ ] `Case.from_image("x.png", fluid="air", speed="5 m/s", size="0.1 m")` builds without running anything, and `explain()` prints the plan, every `why` line, the geometry verdict and actions, and the estimated wall clock.
-- [ ] **No lattice quantity appears in any public signature of `flow/`** — asserted by an introspection test over every public callable's annotations and defaults (Phase 1 constraint 13).
-- [ ] `run()` accepts `live=`, `record=`, `headless=` and composes them through `TeeSink`, selecting `drop` by **D-039** (any file-writing sink ⇒ `drop=False`); a test asserts the mode chosen for each combination.
-- [ ] `Result.save("wake.mp4")` and `.save("frames/")` both work and go through `lbm.record`; `flow/` **colours nothing** — asserted by a test that no `flow` module imports a colormap or builds RGB (constraint 10).
-- [ ] Solid cells are seeded at rest (**D-030**) and a test asserts the body interior holds the rest state after 300 steps.
-- [ ] `Result.summary()` prints Cd (mean ± std), Cl amplitude, St with its confidence, peak `|u|` against 0.1, convergence, elapsed, backend, and — if applicable — the substitution banner.
-- [ ] `Result.strouhal` is `None`, not a number, when shedding is not detected (Cl amplitude below 1% of Cd); a test covers a steady case at Re 10.
-- [ ] **Never a silent substitution** (constraint 16) — **inherited from T106, see D-062**: a test asserts that a `Result` produced from a `flow.diagnose` suggestion carries `substituted=True` and that the flag reaches the printed summary *and* the recorded video's metadata. T106 shipped the half that could exist without `Result` (every case-changing suggestion carries "not your case" on the object, asserted by `tests/test_diagnose.py`); this is the other half.
-- [ ] `pytest tests/test_case.py tests/test_report.py` green; Phase 0 rungs still green.
+- [x] `Case.from_image("x.png", fluid="air", speed="5 m/s", size="0.1 m")` builds without running anything, and `explain()` prints the plan, every `why` line, the geometry verdict and actions, and the estimated wall clock.
+- [x] **No lattice quantity appears in any public signature of `flow/`** — asserted by an introspection test over every public callable's annotations and defaults (Phase 1 constraint 13).
+- [x] `run()` accepts `live=`, `record=`, `headless=` and composes them through `TeeSink`, selecting `drop` by **D-039** (any file-writing sink ⇒ `drop=False`); a test asserts the mode chosen for each combination.
+- [x] `Result.save("wake.mp4")` and `.save("frames/")` both work and go through `lbm.record`; `flow/` **colours nothing** — asserted by a test that no `flow` module imports a colormap or builds RGB (constraint 10).
+- [x] Solid cells are seeded at rest (**D-030**) and a test asserts the body interior holds the rest state after 300 steps.
+- [x] `Result.summary()` prints Cd (mean ± std), Cl amplitude, St with its confidence, peak `|u|` against 0.1, convergence, elapsed, backend, and — if applicable — the substitution banner.
+- [x] `Result.strouhal` is `None`, not a number, when shedding is not detected (Cl amplitude below 1% of Cd); a test covers a steady case at Re 10.
+- [x] **Never a silent substitution** (constraint 16) — **inherited from T106, see D-062**: a test asserts that a `Result` produced from a `flow.diagnose` suggestion carries `substituted=True` and that the flag reaches the printed summary *and* the recorded video's metadata. T106 shipped the half that could exist without `Result` (every case-changing suggestion carries "not your case" on the object, asserted by `tests/test_diagnose.py`); this is the other half.
+- [x] `pytest tests/test_case.py tests/test_report.py` green; Phase 0 rungs still green.
 
 ### Constraints that bite here
 
 - Constraint 10 — one `render()`, three sinks. `flow/` composes them; it does not add a fourth renderer for plots — matplotlib figures are a separate, non-frame output and say so.
 - Constraint 7 / **D-023** — `steps_per_frame` comes from `dt`, through the plan.
 - **D-045 / constraint 16** — `substituted` is carried by `Result` and printed, never dropped on the way out.
+
+### Deviations recorded
+
+- **`Case` does not raise for a refused case at construction; it carries the refusal and `run()`
+  raises it** (**D-067**). The contract says `from_image(...)` "builds without running anything" and
+  that `explain()` prints the way forward — both of which a constructor that raises makes
+  impossible, and T109's `--explain` needs to print a refusal and exit 2 without exception plumbing.
+  Nothing is ever run in place of a refused case: `run()` raises, and **D-065**'s picture refusal is
+  raised as the same `Unrepresentable` a physics refusal is.
+- **A geometry `Fix` is translated into `quality`, never into `cells_across`** (**D-068**). The
+  contract names `cells_across` as `prepare`'s argument and not `Case`'s (constraint 13), so
+  `flow.prepare.apply_fix`'s `change="resolution"` arrives as the finest quality level the picture
+  can actually resolve — and when even `"fast"` is too much for it, the worked example is
+  substituted and says so, exactly as `apply_fix` does for a `"picture"` fix.
+- **The measurement window starts after the startup kick has washed out, not when it switches off**
+  (**D-069**), and a run too short for that reports **nothing** rather than the kick. Found by the
+  Re 10 criterion: measured, the window that opens at kick-off reports a lift "amplitude" of 0.55
+  against a `Cd` of 3.6, which is a decaying transient reading as a shedding wake.
+- **`Result.strouhal` passes three gates, not one** (**D-070**). The contract names the lift-amplitude
+  gate; two more were needed because a window can hold an amplitude and still hold no frequency —
+  measured, a one-period synthetic sine planted at `St = 0.17` returns **0.459**.
+- **The Re 10 criterion is covered end to end at 6000 steps plus a hand-measured trace**, not by a
+  full post-settling window: at this domain size a measurable window does not open until ~21600
+  steps (~110 s), which is more than the whole suite costs. The full trace is in `DOCS/STATE2.md`
+  § session 20 and in the test's docstring.
 
 ### Notes
 

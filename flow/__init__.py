@@ -16,15 +16,24 @@ Two rules govern everything that lands here, and both have tests:
 * **Constraint 10** — ``flow/`` colours nothing. There is one ``render()`` and
   it lives in ``lbm/render.py``.
 
-What exists so far: physical quantities and the fluid library (T104); the
-chooser, ``flow/autoconfig.py`` (T105); the refusals and the live divergence
-probe, ``flow/diagnose.py`` (T106). Geometry preparation
-(``flow/prepare.py``, T107) and the ``Case``/``Result`` API (T108) land in the
-tasks named beside them — ``DOCS/TASKS2.md``.
+What exists: physical quantities and the fluid library (T104); the chooser,
+``flow/autoconfig.py`` (T105); the refusals and the live divergence probe,
+``flow/diagnose.py`` (T106); geometry preparation, ``flow/prepare.py`` (T107);
+and the front door over all four — ``flow/case.py``'s :class:`~flow.case.Case`
+and ``flow/report.py``'s :class:`~flow.report.Result` (T108). The CLI over
+:class:`~flow.case.Case` is T109 (``DOCS/TASKS2.md``).
+
+The three lines the phase exists to make run (``DOCS/IDEA3.md`` § What Phase 1
+is, concretely)::
+
+    case = flow.Case.from_image("wing.png", fluid="air", speed="5 m/s", size="10 cm")
+    case.explain()
+    result = case.run(record="wake.mp4")
 """
 
 from __future__ import annotations
 
+from flow.case import Case
 from flow.autoconfig import (
     QUALITY_LEVELS,
     Plan,
@@ -57,6 +66,7 @@ from flow.prepare import (
     prepare,
     thin_branch_depth,
 )
+from flow.report import Result
 from flow.quantity import (
     DENSITY,
     DIMENSIONS,
@@ -73,6 +83,8 @@ from flow.quantity import (
 )
 
 __all__ = [
+    "Case",
+    "Result",
     "Quantity",
     "parse",
     "to_si",
