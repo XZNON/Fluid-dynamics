@@ -14,20 +14,22 @@ history and is never edited. Decision numbering continues here at **D-041**.
 | Field | Value |
 |---|---|
 | **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T109` — CLI on `flow`, live + record wiring (`DOCS/TASKS2.md`) — gate: manual gate + tests |
+| **Current task** | `T110` — The minute: end to end, timed (`DOCS/TASKS2.md`) — gate: **Rung E** → **M8** |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**, **T107**, **T108**. Phase 0: T001 … T011, all done |
+| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**, **T107**, **T108**, **T109**. Phase 0: T001 … T011, all done |
 | **Milestone reached** | **M7** (2026-08-23, `flow/prepare.py`, Rung C green: `python -m validate.shapes` prints PASS, 15/15 corpus images get their committed verdict and measured properties, no manual step). Phase 1 targets M8. **T106 has no milestone of its own** — Rung D is a gate inside it and is re-run by M8 (`DOCS/PLAN2.md` § Milestone gates) |
-| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run in session 20 (R3/R4 on `--backend warp`, R1/R2 on numpy) printing session 11/15/18's digits exactly |
-| **Phase 1 rung status** | **A 🟩** · **B 🟩 on numpy, 🟥 on warp** · **C 🟩** · **D 🟩** · E ⬜. A, C and D re-run in session 20 and unchanged (**A** worst step 9.611e-06 / checkpoint 8.196e-06; **C** PASS in 6.6 s; **D** PASS, caught/`nan` at 1525/1650, 75/325, 50/59275). **Rung B was not re-run in session 20** — T108 times nothing and Rung B costs ~23 min; its status is session 19's: green on numpy (accuracy 8.1%, sweep 24/24), **red on `--backend warp` in its accuracy check only** (`Plan.estimated_seconds` predicts 5.61 s against an actual 3.19 s, 75.7% vs a 25% limit), queued as `e4874a146490` and **T110's problem by name**, because M8's gate is a wall clock on warp |
-| **Last updated** | 2026-08-27 — session 20 (**T108 done**: `flow/case.py` = `Case`, `flow/report.py` = `Result`; the three `DOCS/IDEA3.md` lines run end to end; **D-067** a refusal is carried, not raised at construction, **D-068** a geometry fix arrives as a quality level, **D-069** the measurement window starts after the kick washes out, **D-070** the three Strouhal gates, **D-071** the frame-memory budget and the un-drawn run; `pytest` **721 passed, 1 skipped** in 63.9 s; **Q-104** opened — the product path's own domain puts Cd/St outside Rung 3's bands, which is M8's gate and T110's to decide); session 19 (**T107 done, M7 reached**: `flow/prepare.py`, 15-image corpus + generator, `validate/shapes.py` = **Rung C green**; **D-064** closes **Q-102** by measurement, **D-065** an unreachable resolution is a refusal, **D-066** the module's constants; `pytest` **663 passed, 1 skipped**); session 18 (**T106 done**: `flow/diagnose.py` — `explain`, `suggest`, `apply_suggestion`, `Monitor`, `Diverging`; `validate/refusals.py` = **Rung D green**; **D-061** the measured divergence-detection numbers, **D-062** the `substituted` criterion carried to T108, **D-063** two T105 suggestions repaired; `pytest` **610 passed, 1 skipped**) |
+| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run in session 21 (R3/R4 on `--backend warp`, R1/R2 on numpy) printing session 11/15/18's digits exactly: R1 L2 0.3650%, R2 0.75% / 0.21 cells, R3 St 0.1731 Cd 1.4031, R4 polygon Cd 1.4276 |
+| **Phase 1 rung status** | **A 🟩** · **B 🟩 on numpy, 🟥 on warp** · **C 🟩** · **D 🟩** · E ⬜. A, C and D re-run in session 21 and unchanged (**A** worst step 9.611e-06 / checkpoint 8.196e-06, restart bit-identical; **C** PASS in 6.7 s, 15/15; **D** PASS, caught/`nan` at 1525/1650, 75/325, 50/59275, Monitor cost **0.57%**). **Rung D failed its cost check once this session at 2.57%** as the third rung of a chained R4→A→D run, and passed at 0.57% re-run alone twenty minutes later on an idle machine — the check's measured spread (−2.10% … +2.57% across sessions) is wider than its own ±2% gate, queued as `71a74d08789c`; the tolerance was **not** touched. **Rung B was not re-run in session 21** — T109 times nothing and Rung B costs ~23 min; its status is session 19's: green on numpy (accuracy 8.1%, sweep 24/24), **red on `--backend warp` in its accuracy check only** (`Plan.estimated_seconds` predicts 5.61 s against an actual 3.19 s, 75.7% vs a 25% limit), queued as `e4874a146490` and **T110's problem by name**, because M8's gate is a wall clock on warp |
+| **Last updated** | 2026-08-27 — session 21 (**T109 done**: `flow/cli.py` + `flow/__main__.py` = `python -m flow`, built on `Case`; `tests/test_cli.py` **47 tests**; **D-072** closes **Q-101** — `python -m lbm.runner` is kept working with a pointer line, and the M4 gate reproduces to the digit; **D-073** `--live` is three-valued and `--no-live` reaches D-071's un-drawn run; **D-074** the T109 criterion's own example command is refused, as T011's was under D-038; `pytest` **772 passed, 1 skipped** in 87.5 s); session 20 (**T108 done**
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
 ## Blockers
 
-**None for T109.** One rung is red and one gate is now known to be unreachable as the constants
-stand; both are recorded rather than filed away, and neither stops the CLI:
+**None for T110's start, but both entries below are now T110's to answer.** One rung is red and one
+gate is known to be unreachable as the constants stand. T109 shipped past both because the CLI times
+nothing and chooses no domain; **T110 can do neither**, because M8's gate is exactly a wall clock on
+warp *and* Rung 3's bands through the product path:
 
 - **Rung B fails its accuracy check on `--backend warp`** — `Plan.estimated_seconds` predicts
   **5.61 s** against an actual **3.19 s**, a **75.7%** error against the rung's 25% limit, measured
@@ -72,10 +74,17 @@ stand; both are recorded rather than filed away, and neither stops the CLI:
   a fix. **T110 owns it** (`DOCS/PLAN2.md` § Session map), and it should be decided *before* Rung E
   is written, not after it fails. Queued as `a924f78acc32`.
 
-- **Q-101** — does `python -m lbm.runner` (the M4 gate command) survive as a working entry point once
-  `python -m flow` exists, or become a pointer to it? T109 decides and records it. Both are
-  defensible; the M4 gate output in `old-Docs/STATE1.md` § Snapshot must remain reproducible or be
-  explicitly marked historical.
+- ~~**Q-101** — does `python -m lbm.runner` (the M4 gate command) survive as a working entry point
+  once `python -m flow` exists, or become a pointer to it?~~ **Closed in session 21 — see D-072.
+  It survives, working, plus a pointer line.** Constraint 15 removed one of the three options
+  before judgement got a say: `flow/` may import `lbm/` and `lbm/` may **never** import `flow/`, so
+  "delegating" was never available and the choice was only keep-vs-pointer. Keeping it costs one
+  `--help` line and preserves the knobs `flow` deliberately has not got — `--re` / `--nu`,
+  `--resolution` in cells, `--span-d` / `--upstream-d` / `--downstream-d`, `--u-lattice`,
+  `--tau-floor`, `--checkpoint` — one of which (`--span-d`) is the knob **Q-104** is a question
+  about. The M4 gate command was re-run in full and reproduces to the digit: **301 frames, 40033
+  steps, peak |u| 0.06554**, 0.32 MB, h264 528x368 at 60 fps, so `old-Docs/STATE1.md` § Snapshot
+  needs no historical marking.
 - ~~**Q-102** — is D-017's documented limit (a thin appendage **fused** to a thick body shares its
   component and is not reported) closable without false-alarming on a plain disc?~~
   **Closed in session 19 by measurement — see D-064. Yes.** `flow.prepare.thin_branch_depth` reads
@@ -215,6 +224,9 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-069 | 2026-08-27 | **Nothing is measured until the startup kick has switched off *and* washed out of the domain: the measurement window starts at `max(50% of the run, kick_steps + one flow-through)`, and a run shorter than that reports nothing at all rather than reporting the kick.** `flow.case.SETTLE_FLOW_THROUGHS = 1.0`; the shortfall is a `Result.warnings` line naming the step count that would work. | Found by the Re 10 acceptance criterion, and measured rather than reasoned: on a steady Re 10 disc, a window that opens the instant the kick stops reports a lift **amplitude of 0.5463 against a `Cd` of 3.6115** — 15% — which is the kick's shutdown transient decaying, and which reads to everything downstream as a shedding wake. The full decay, 30000 steps, lift amplitude as a fraction of `Cd` per 3000-step block: **0.890, 0.151, 0.041, 0.0123, 0.0043, 0.0018, 0.0009, 0.0005, 0.00012, 0.00004** — monotone through the 1% shedding gate at ~12000 steps. One domain flow-through (`nx / U`) is the time for the perturbed fluid to leave, which is the physical quantity involved; it is also a *floor* rather than a rival to Rung 3's choice, which discards 70 convective times where its kick stops at 3 (~2.5 flow-throughs). Reporting `nan` with a sentence beats reporting a number nobody measured. |
 | D-070 | 2026-08-27 | **`Result.strouhal` survives three gates or it is `None`: (1) lift amplitude over `CL_AMPLITUDE_MIN = 1%` of `\|Cd\|`, (2) the window long enough to hold `MIN_PERIODS = 2` of the **longest plausible** period `D / (U * 0.05)`, (3) the estimate inside `ST_PLAUSIBLE = (0.05, 0.5)`.** Gate 2 is deliberately *not* counted against the period the estimate itself implies. | The contract names gate 1, and gate 1 alone is not enough: measured, a synthetic sine planted at `St = 0.17` with **one** period in the window returns **0.459** with a peak 56x the next distinct one — a confident wrong answer, and the artefact constraint 5 exists to prevent. The first attempt at gate 2 counted periods of the *estimate*, which is self-referential and passes exactly when it should fire: the wrong 0.459 implies a short period and therefore "2.7 periods observed". Counting against the slowest shedding we would believe (St 0.05, 20 convective times) is a question whose answer does not depend on the answer being guarded, and it costs nothing real — Rung 3 measures over 60 convective times, and the 130-convective-time product run in this session reports `St` 0.1841 with 12.0 periods. Gate 3's band cites `validate/cylinder.py::lowpass`'s own measurement, an unfiltered FFT reporting `St = 1.49` from the domain's acoustics. |
 | D-071 | 2026-08-27 | **Frames kept in memory are budgeted at `FRAME_MEMORY_BUDGET = 512 MB` and the shortfall is *reported*, and a run with no sink and `keep_frames=False` renders nothing at all.** The budget's overflow adds a `Result.warnings` line naming how many of how many frames were kept and what to pass instead; the un-drawn run pushes a shared 1x1 placeholder, never `None`. | `Plan.steps_per_frame` is computed for 60 fps playback, so the default 20-convective-time run at `quality="fast"` asks for ~6000 frames of 421 KB — **2.5 GB**, which is not a default anyone chose. A silent cap was the obvious fix and is the wrong one: a truncated list reads as "these are your frames" when it is the first third of them, so the count kept and the count seen both go in the summary. The placeholder is not cosmetic: `None` is `lbm.runner.RingBuffer`'s "the buffer is empty" sentinel, so returning it from `field` would make a pushed frame indistinguishable from an empty ring and leave `RunStats.delivered` counting frames that were never delivered. |
+| D-072 | 2026-08-27 | **`python -m lbm.runner` survives as a working entry point, plus a one-line pointer at `python -m flow` (`lbm.runner.PHASE1_CLI_POINTER`, printed by `main` and repeated in `--help`). Closes Q-101.** The M4 gate command in `old-Docs/STATE1.md` § Snapshot stays literally reproducible and is **not** marked historical. | The T109 contract offered three options and **constraint 15 deleted one of them before judgement got a say**: `flow/` may import `lbm/` and `lbm/` may never import `flow/`, so `lbm/runner.py` cannot delegate to `flow/cli.py` and the pointer has to be a string rather than a call. That left keep-vs-pointer, and keeping wins on what it costs versus what it preserves: one `--help` line against `--re` / `--nu`, `--resolution` in cells, `--span-d` / `--upstream-d` / `--downstream-d`, `--u-lattice`, `--tau-floor` and `--checkpoint` — every solver-level knob `flow` deliberately has not got (constraint 13), and `--span-d` is precisely the knob **Q-104** is a question about, so deleting it would have removed a tool **T110** may want in the very next session. Verified rather than assumed: the gate command re-run in full prints **301 frames, 40033 steps, peak |u| 0.06554**, 0.32 MB, h264 528x368 at 60 fps — session 11's digits exactly, with only the wall clock differing (304.5 s vs 334.9 s), which is not a published band. `tests/test_cli.py` pins all three halves: that it still writes an MP4, that the pointer is in `--help`, and that the nine knobs are still there and still absent from `flow`. |
+| D-073 | 2026-08-27 | **`--live` is three-valued, not a switch: absent means Phase 0's rule (a window opens only when no file sink was asked for), `--live` forces one, and `--no-live` suppresses it — and `--no-live` with neither `--out` nor `--frames-dir` is the only way to reach D-071's un-drawn run.** `--quiet` prints the summary and nothing else; it does **not** hide the result. | Both halves were found by running the CLI, not by reading it. **(a)** Preserving `lbm.runner`'s "no sink means open a window" rule is right — it is the behaviour the T109 contract says to preserve — but it left `Case.run`'s un-drawn path (**D-071**: no vorticity field computed, no frame coloured, a 1x1 placeholder to `NullSink`) unreachable from the command line, which is exactly the shape a script or a CI job wants and the shape a person asking "what is the drag coefficient" wants. Phase 0 had no way to ask for it because Phase 0's CLI had no numbers to print at the end. Measured through it: 75000 steps on warp in **50.7 s**, `Cd` **1.5955 ± 0.0157** and `St` **0.1838** — session 20's numpy digits, through the CLI, drawing nothing. **(b)** `--quiet` first passed `quiet=True` straight through to `Case.run`, which suppresses `Result.summary()` as well, so the command printed **nothing at all** while `--help` promised "numbers only". The first version of the test asserted only that the *plan* was absent, which is how it got past; it now asserts both halves. A flag that hides the result is not a quieter answer, it is no answer. |
+| D-074 | 2026-08-27 | **The T109 contract's own example command is refused, and that is the correct outcome — D-038 repeating one layer up.** `--shape wing.png --fluid air --speed "5 m/s" --size "10 cm"` is `Re = 5 * 0.1 / 1.516e-5 = 32982`; `tau` reads **0.500182** against the 0.54 bluff-body floor (**D-029**). The criterion is met through `--nearest`, which runs the tool's own top suggestion and marks it. | Identical in shape to **D-038** and settled the same way: two acceptance criteria of one task cannot both be met by one literal command — "writes a playable file" and "refuses a case it cannot represent" — and the refusal wins, because a solver that quietly runs Re 33000 on a 40-cell body with no turbulence model produces exactly the artefact constraint 5 exists to prevent. What T109 has that T011 did not is a **way through**: `flow.diagnose` exists now, so the CLI does not dead-end at the refusal. Run end to end from a cold shell with `--nearest`, the literal command exits **0** and writes a playable 6-frame MP4 whose container comment reads `substituted=True; fluid -> honey: ...` — constraint 16 surviving into the file, checked with `ffmpeg -i` rather than from the counter. Recorded as a decision rather than silently substituting a working command into the criteria, because the next session reading "criterion 1 passed" should know which command actually passed it. |
 
 
 ## Session log
@@ -1383,3 +1395,126 @@ estimator, and **Q-104** — the product path's domain versus Rung 3's bands, wh
 `python -m flow` replaces `python -m lbm.runner` as the thing a person runs, built on `Case`. It
 also decides **Q-101** (does `python -m lbm.runner` survive as an entry point, or become a pointer).
 Prompt written to `PROMPTS/021-t109-cli.md`.
+
+### 2026-08-27 — Session 21: T109, `python -m flow` — the CLI on `Case`
+
+**Task:** T109 — CLI on `flow`, live + record wiring. **Status: done.** Every acceptance criterion
+was run, not read — including the cold-shell command and both exit codes. `pytest` **772 passed,
+1 skipped** in 87.5 s (721 -> 772; 51 new: 47 in `tests/test_cli.py`, 4 auto-parametrised in
+`tests/test_flow_package.py` for `flow.cli` and `flow.__main__`). The only change under `lbm/` is
+**+22 lines in `lbm/runner.py`** — a constant, a `--help` line and one `print` — and the diff was
+read to confirm it before any rung was blamed on it.
+
+**Done**
+
+- **`flow/cli.py`** — `build_parser()` and `main(argv) -> int`, and nothing else. Flags:
+  `--shape` / `--fluid` / `--speed` / `--size` (all required), `--quality`, `--seconds`,
+  `--no-repair`, `--out` / `--frames-dir` / `--live` / `--no-live` / `--record` / `--headless`,
+  `--backend`, `--explain` (`--dry-run`), `--nearest`, `--quiet`. Exit codes **0** ran or
+  explained, **1** started and did not survive (`nan`, or `Monitor` tripped), **2** nothing ran.
+- **`flow/__main__.py`** — the `python -m flow` entry point, with a `__name__` guard that is
+  load-bearing: `tests/test_flow_package.py` imports every module under `flow.` to scan it for
+  constraint 13, so without it collecting the suite would run the CLI.
+- **Every decision is relayed, not made here.** `Case` prepares, plans, refuses and composes the
+  sinks; `Result` prints the numbers. The CLI does not re-derive `drop` — **D-039**'s rule stays in
+  `flow.case._resolve_sinks`, and the eight-combination test reads `drop` back out of it rather
+  than out of a second copy.
+- **`lbm/runner.py` keeps its CLI** and gained `PHASE1_CLI_POINTER` (**D-072**, closing **Q-101**).
+- **`CLAUDE.md`** § Commands gained the two `python -m flow` lines and § Module map the
+  `flow/cli.py` row; `flow/__init__.py`'s docstring names the CLI and says why it is deliberately
+  **not** re-exported.
+
+**Measured**
+
+- **Every rung at or below this task, re-run on an idle machine:**
+
+  | Rung | Command | Result |
+  |---|---|---|
+  | R1 | `validate.poiseuille` | **PASS** — L2 **0.3650%**, peak 0.07955 |
+  | R2 | `validate.cavity --re 100` | **PASS** — max dev vs Ghia **0.75%**, vortex **0.21 cells** |
+  | R3 | `validate.cylinder --backend warp --headless` | **PASS** — St **0.1731**, Cd **1.4031**, peak 0.09685 |
+  | R4 | `validate.polygons --backend warp --headless` | **PASS** — polygon Cd **1.4276**, Cl amplitude 0.3689, peak 0.08944 |
+  | A | `validate.parity --backend warp` | **PASS** — whole step **9.611e-06**, checkpoint **8.196e-06**, restart bit-identical |
+  | C | `validate.shapes` | **PASS in 6.7 s** — 15/15 |
+  | D | `validate.refusals` | **PASS** — 1525/1650, 75/325, 50/59275; Monitor cost **0.57%** |
+
+  Every digit is session 11/15/18/19's exactly. **Rung B was not re-run** — ~23 min, T109 times
+  nothing, and its warp failure is § Blockers as session 19 left it.
+- **Rung D failed once and passed on re-measurement, and both numbers are recorded.** As the third
+  rung of a chained `R4 -> A -> D` run its `Monitor` cost check read **2.57%** against a 2% limit
+  (bare 253.7 / watched 247.2); re-run **alone** on a confirmed-idle machine twenty minutes later
+  it read **0.57%** (bare 250.1 / watched 248.6). All three detections were identical in both runs.
+  The tolerance was **not** touched. The finding is that the check's spread across sessions
+  (**-2.10% ... +2.57%**, D-061's four readings plus 0.01% in session 19, -0.53% in session 20 and
+  both of this session's) is **wider than its own ±2% gate**, so it fails intermittently on noise —
+  queued as `71a74d08789c`. Note the direction: the failing run's *bare* figure was the faster of
+  the pair, so the machine was not slow, the ratio was noisy.
+- **The M4 gate command reproduces to the digit** (**D-072**): 301 frames, 40033 steps, peak |u|
+  **0.06554**, 0.32 MB, verified from the file as h264 528x368 at 60 fps. Only the wall clock moved
+  (304.5 s vs 334.9 s), which is not a published band.
+- **The product path through the CLI, un-drawn, on warp:** 75000 steps in **50.7 s**, `Cd`
+  **1.5955 ± 0.0157**, `St` **0.1838** (peak 196.3x, 11.5 periods), peak |u| 0.09761 — session 20's
+  numpy digits (1.5955 ± 0.0157, 0.1841) reached through `python -m flow`. **This is evidence for
+  T110, not a verdict on M8:** the run is at the chooser's present 12 D span, which is exactly what
+  **Q-104** asks about, and widening it roughly doubles the cell count and the wall clock with it.
+- **A 45000-step live-window run reported `St = None` and was right to.** Cl amplitude was 27.7% of
+  Cd so gate 1 passed; **D-070**'s gate 2 wants 2 periods of the slowest plausible shedding
+  (`D / (U * 0.05)` = 12000 steps, so 24000) and the window held 22500. The 75000-step run above
+  recovers `St`. Recorded so a future session does not read that `None` as a regression.
+- **Constraint 16 survives into the container:** the substituted run's MP4 comment atom reads
+  `substituted=True; fluid -> honey: ...`, read back with `ffmpeg -i`, not from a counter.
+
+**Two findings, queued rather than fixed — both are T108 code and outside this contract**
+
+- **`2fd69b874c32` — `Case.explain()` prints a different suggestion list than `Case.nearest()`
+  acts on.** `explain` renders the `Unrepresentable`'s own suggestions; `nearest` takes the top of
+  `Case.suggestions`, which is `flow.diagnose.suggest`'s list and which **D-063** prepends a
+  `"fluid"` option to. Measured on the criterion's own case: `explain` shows *speed, size* while
+  `nearest` runs *fluid -> honey*, so `flow/case.py:548`'s "applies the first of these" is false
+  whenever a fluid substitution exists. The two agree on **D-038**'s air/20/1.5 case (no fluid is
+  thick enough at Re 2e6), which is why T108's tests did not catch it. **The CLI prints
+  `case.suggestions` — the list it will actually execute — so its own output is honest**, and
+  `test_the_suggestions_the_cli_prints_are_the_ones_nearest_would_run` pins the divergence.
+- **`71a74d08789c`** — Rung D's cost-check spread, above.
+
+**Not done / deferred**
+
+- **Nothing in the T109 contract is outstanding.** All seven acceptance criteria are checked in
+  `DOCS/TASKS2.md` § T109, with **D-074** recording that criterion 1's *literal* command is a
+  refusal and is met through `--nearest`.
+- **No `--checkpoint` / `--resume` on `python -m flow`.** `Sim` has one (**D-022**, **D-050**) and
+  `case.sim` reaches it; nothing in `flow/` wraps it. Session 20 flagged this as "T109 or a
+  `/new-task`"; T109 did not take it, because it is not in the contract and a checkpoint flag on a
+  CLI whose run length is a physical duration needs a decision about what resuming *means* first.
+- **Rung B on `--backend warp`** — unchanged, § Blockers, **T110's**.
+- **`Monitor` on warp** is still unmeasured (session 18's deferral, unchanged).
+
+**Decisions made**
+
+- **D-072** — `python -m lbm.runner` survives, working, plus a pointer line. **Closes Q-101.**
+  Constraint 15 removed the "delegating" option before judgement got a say.
+- **D-073** — `--live` is three-valued; `--no-live` with no file sink is the only route to
+  **D-071**'s un-drawn run; and `--quiet` prints the summary rather than swallowing it.
+- **D-074** — the T109 contract's own example command is refused, as T011's was under **D-038**,
+  and is met through `--nearest` with the substitution marked in every artifact.
+
+**Blockers:** none stopping T110 from starting, but **both § Blockers entries are now T110's to
+answer** — Rung B's warp estimator, and **Q-104**, the product path's domain versus Rung 3's bands.
+M8 gates on both.
+
+**Housekeeping**
+
+- `DOCS/ISSUES.jsonl` — `2fd69b874c32` and `71a74d08789c` queued. The `.gitignore` entry from
+  session 16 (`495777c58269`) is still open and still not this task's to fix; checked against the
+  new files and it does **not** catch them — `git check-ignore` is clean on `flow/cli.py`,
+  `flow/__main__.py` and `tests/test_cli.py`, `flow/__main__.py` being the one worth checking
+  because `.gitignore` drops `*/__init__.py`.
+
+**Rung status after this session**
+
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run, session 11/15's digits.
+- Phase 1: **A 🟩** · **B 🟩 numpy / 🟥 warp (accuracy check only, not re-run this session)** ·
+  **C 🟩** · **D 🟩** · E ⬜. **M7 stands; M8 is T110's.**
+
+**Next:** **T110 — The minute: end to end, timed**, session 22, gate **Rung E** → **M8**. It is the
+last task of Phase 1 and it owns both blockers. Prompt written to `PROMPTS/022-t110-the-minute.md`.

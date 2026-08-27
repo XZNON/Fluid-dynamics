@@ -1253,6 +1253,22 @@ DEMO_KICK_TC: float = 5.0
 #: wake (constraint 9: fixed and symmetric, never per-frame).
 DEMO_VMAX_FACTOR: float = 4.0
 
+#: One line pointing at the Phase 1 CLI, printed by :func:`main` and repeated in
+#: ``--help``. **D-072** decided ``Q-101``: this entry point is *kept, working
+#: and tested*, rather than reduced to a pointer, so the M4 gate in
+#: ``old-Docs/STATE1.md`` § Snapshot stays literally reproducible and the
+#: solver-level knobs stay reachable. Delegating was never available: ``flow/``
+#: may import ``lbm/`` and ``lbm/`` may **never** import ``flow/`` (constraint
+#: 15), so this is a string and not a call.
+PHASE1_CLI_POINTER: str = (
+    "note: `python -m flow` is the Phase 1 command and is the one to reach for "
+    "-- a picture,\n  a fluid, a speed and a size, with every lattice number "
+    "derived and printed. This one is\n  kept for the solver-level knobs it "
+    "has and `flow` deliberately does not: --re / --nu,\n  --resolution in "
+    "cells, --span-d / --upstream-d / --downstream-d, --u-lattice,\n  "
+    "--tau-floor and --checkpoint (D-072)."
+)
+
 
 def _body_mask(
     path: str | Path, cells: int, *, invert: bool = False, verbose: bool = True
@@ -1427,6 +1443,7 @@ def _build_parser() -> Any:
             "the resolution it\n"
             "would need. --re describes a case this solver can actually "
             "represent.\n"
+            "\n" + PHASE1_CLI_POINTER + "\n"
         ),
     )
 
@@ -1560,6 +1577,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("give --geometry PATH or --demo cylinder")
     if args.fluid is None and args.nu is None and args.re is None:
         parser.error("describe the fluid: --fluid air | --nu 1.5e-5 | --re 100")
+
+    # D-072 / Q-101: this entry point still works, and still says where the
+    # product command is. Printed before anything can refuse, so a user who
+    # meets the refusal has already been told about `python -m flow`.
+    say(f"\n  {PHASE1_CLI_POINTER}")
 
     # --- geometry ---------------------------------------------------------
     try:

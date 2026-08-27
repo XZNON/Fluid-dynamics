@@ -22,7 +22,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T106 | Diagnosis, refusal, nearest runnable case | `done` | T105 | **Rung D** |
 | T107 | Geometry preparation + shape corpus | `done` | — | **Rung C** → **M7** |
 | T108 | `flow.Case` / `flow.Result` API | `done` | T105, T106, T107 | unit tests |
-| T109 | CLI on `flow`, live + record wiring | `not_started` | T108 | manual gate + tests |
+| T109 | CLI on `flow`, live + record wiring | `done` | T108 | manual gate + tests |
 | T110 | The minute: end to end, timed | `not_started` | T109, T103 | **Rung E** → **M8** |
 
 ---
@@ -507,7 +507,7 @@ in T104–T107 gets one front door.
 
 ## T109 — CLI on `flow`, live + record wiring
 
-**Status:** `not_started`
+**Status:** `done`
 
 ### Goal
 
@@ -529,13 +529,13 @@ with a one-line pointer (decide and record).
 
 ### Acceptance criteria
 
-- [ ] `python -m flow --shape wing.png --fluid air --speed "5 m/s" --size "10 cm" --out wake.mp4` runs end to end from a cold shell and writes a playable file.
-- [ ] `--explain` (or `--dry-run`) prints the full plan and exits **0 without simulating**; a refused case prints the explanation and its suggestions and exits **2** (matching Phase 0's convention, D-038).
-- [ ] `--quality fast|balanced|accurate`, `--seconds`, `--backend numpy|warp`, `--live`, `--record`, `--headless` are all wired; `--live --record` works together (**D-039**).
-- [ ] The old `python -m lbm.runner` invocation from the M4 gate still produces an MP4, or prints a one-line pointer to the new command — whichever is chosen is recorded as a decision and tested.
-- [ ] `--help` states the Re limit in plain words, as Phase 0's does (**D-038**), so the arithmetic is met before the run and not after.
-- [ ] Missing ffmpeg still produces `lbm.record.FFMPEG_HINT` before the first timestep, not a traceback.
-- [ ] `pytest tests/test_cli.py` green; Phase 0 rungs still green.
+- [x] `python -m flow --shape wing.png --fluid air --speed "5 m/s" --size "10 cm" --out wake.mp4` runs end to end from a cold shell and writes a playable file. **The literal command is a refusal** — that case is `Re = 32982` and `tau` reads 0.500182 against the 0.54 floor, which is **D-038** repeating one layer up; recorded as **D-074**. Met with `--nearest`: exit **0**, a playable 6-frame MP4 whose container comment reads `substituted=True; fluid -> honey: ...` (read back with `ffmpeg -i`). The cold-shell `python -m flow` form is also run as a subprocess in `tests/test_cli.py`.
+- [x] `--explain` (or `--dry-run`) prints the full plan and exits **0 without simulating**; a refused case prints the explanation and its suggestions and exits **2** (matching Phase 0's convention, D-038). "Without simulating" is asserted by spying on `Sim`'s constructor, not by the absence of a word in the output. The printed suggestion list is `case.suggestions` — the one `--nearest` actually executes — because `explain()`'s own list differs (queued `2fd69b874c32`).
+- [x] `--quality fast|balanced|accurate`, `--seconds`, `--backend numpy|warp`, `--live`, `--record`, `--headless` are all wired; `--live --record` works together (**D-039**) — all **eight** combinations asserted, with `drop` read back out of `flow.case._resolve_sinks` rather than re-derived. `--live` became three-valued (`--no-live`) so **D-071**'s un-drawn run is reachable: **D-073**.
+- [x] The old `python -m lbm.runner` invocation from the M4 gate still produces an MP4, or prints a one-line pointer to the new command — whichever is chosen is recorded as a decision and tested. **Both**, per **D-072** (closing **Q-101**): kept working *and* pointing. The gate command re-run in full prints session 11's digits exactly — 301 frames, 40033 steps, peak |u| 0.06554, h264 528x368 at 60 fps.
+- [x] `--help` states the Re limit in plain words, as Phase 0's does (**D-038**), so the arithmetic is met before the run and not after — `flow.cli.RE_LIMIT_NOTE`, which also names what to do about it, the half Phase 0 could not offer because `flow.diagnose` did not exist.
+- [x] Missing ffmpeg still produces `lbm.record.FFMPEG_HINT` before the first timestep, not a traceback — exit **2**, and checked *before the picture is loaded*, so no page of derived numbers is printed and then discarded. A `.gif` target still needs none, which is the hint's own last line.
+- [x] `pytest tests/test_cli.py` green (**47 tests**); Phase 0 rungs still green — R1 0.3650%, R2 0.75%, R3 St 0.1731 / Cd 1.4031, R4 polygon Cd 1.4276, plus A, C and D. Whole suite **772 passed, 1 skipped**.
 
 ### Constraints that bite here
 

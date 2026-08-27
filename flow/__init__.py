@@ -20,8 +20,10 @@ What exists: physical quantities and the fluid library (T104); the chooser,
 ``flow/autoconfig.py`` (T105); the refusals and the live divergence probe,
 ``flow/diagnose.py`` (T106); geometry preparation, ``flow/prepare.py`` (T107);
 and the front door over all four — ``flow/case.py``'s :class:`~flow.case.Case`
-and ``flow/report.py``'s :class:`~flow.report.Result` (T108). The CLI over
-:class:`~flow.case.Case` is T109 (``DOCS/TASKS2.md``).
+and ``flow/report.py``'s :class:`~flow.report.Result` (T108). ``flow/cli.py``
+is ``python -m flow``, the one-command form of the same three lines (T109);
+it is deliberately **not** re-exported here, because a CLI is a program and
+not part of the library's surface.
 
 The three lines the phase exists to make run (``DOCS/IDEA3.md`` § What Phase 1
 is, concretely)::
@@ -29,6 +31,11 @@ is, concretely)::
     case = flow.Case.from_image("wing.png", fluid="air", speed="5 m/s", size="10 cm")
     case.explain()
     result = case.run(record="wake.mp4")
+
+and the same thing as one command::
+
+    python -m flow --shape wing.png --fluid air --speed "5 m/s" --size "10 cm" \\
+        --out wake.mp4
 """
 
 from __future__ import annotations

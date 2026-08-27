@@ -129,6 +129,12 @@ myenv/Scripts/python.exe -m validate.autoconfig           # Rung B (~23 min)
 myenv/Scripts/python.exe -m validate.shapes               # Rung C (~10 s)
 myenv/Scripts/python.exe -m validate.refusals             # Rung D
 myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
+
+# the product command (T109). python -m lbm.runner is kept for the solver-level
+# knobs this one deliberately does not have (D-072).
+myenv/Scripts/python.exe -m flow --shape tests/data/shapes/disc.png \
+    --fluid water --speed "5 mm/s" --size "2 cm" --out wake.mp4
+myenv/Scripts/python.exe -m flow --shape ... --explain     # plan, exit 0, runs nothing
 ```
 
 ### Issue queue
@@ -181,6 +187,7 @@ line in `DOCS/STATE2.md` § Environment.
 | `flow/prepare.py` | picture -> runnable body mask; repair, refusal, the Q-102 thin-branch metric | T107 |
 | `flow/case.py` | the front door: `Case.from_image` / `from_array`, `explain()`, `plan`, `run()` | T108 |
 | `flow/report.py` | `Result` — Cd/Cl/St/convergence, the printed summary, the plot, `save()` | T108 |
+| `flow/cli.py` | `python -m flow` — the flags, the exit codes; `flow/__main__.py` is the entry point | T109 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 
 ## Current state
