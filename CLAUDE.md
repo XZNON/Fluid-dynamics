@@ -128,6 +128,7 @@ myenv/Scripts/python.exe -m validate.parity --backend warp  # Rung A
 myenv/Scripts/python.exe -m validate.autoconfig           # Rung B (~23 min)
 myenv/Scripts/python.exe -m validate.shapes               # Rung C (~10 s)
 myenv/Scripts/python.exe -m validate.refusals             # Rung D
+myenv/Scripts/python.exe -m validate.minute --backend warp  # Rung E (~47 s), the M8 gate
 myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
 
 # the product command (T109). python -m lbm.runner is kept for the solver-level
@@ -189,38 +190,40 @@ line in `DOCS/STATE2.md` § Environment.
 | `flow/report.py` | `Result` — Cd/Cl/St/convergence, the printed summary, the plot, `save()` | T108 |
 | `flow/cli.py` | `python -m flow` — the flags, the exit codes; `flow/__main__.py` is the entry point | T109 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
+| `validate/minute.py` | Rung E — the whole product path, timed from process start | T110 |
 
 ## Current state
 
-**Phase 0 is complete.** T001 → T011 done; **M4 reached** (2026-08-13). `lbm/` has `core`,
-`boundary`, `geometry`, `probe`, `runner`, `render`, `record`, `units`; `validate/` has
-`poiseuille`, `cavity`, `cylinder`, `polygons`; `bench.py` at the root prints the steps/s
-before/after table.
-Rungs R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete**. The performance budget is met
-(696.7 / 161.7 / 16.8 steps/s at 40k / 160k / 1M cells, floors 400 / 120 / 15). `python -m
-lbm.runner` turns a PNG plus physical numbers into an MP4 in one command.
+**Phase 0 is complete.** T001 -> T011 done; **M4 reached** (2026-08-13). `lbm/` has `core`,
+`boundary`, `geometry`, `probe`, `runner`, `render`, `record`, `units`, `backends/`; `validate/` has
+`poiseuille`, `cavity`, `cylinder`, `polygons`; `bench.py` at the root prints the steps/s table.
+Rungs R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **the ladder is complete**, and it stays a gate for every
+task above it.
 
-**Phase 1 is live** (planned in session 12, 2026-08-13): the product layer above the solver —
-`flow/` package plus CLI, on a Warp GPU backend, ten tasks `T101` → `T110`, five new rungs
-A–E, milestones M5 → M8. Spec `DOCS/IDEA3.md` · plan `DOCS/PLAN2.md` · backlog `DOCS/TASKS2.md` ·
-**live status `DOCS/STATE2.md`**. Rungs **A 🟩** · B ⬜ · C ⬜ · D ⬜ · E ⬜; **M5 reached**
-(2026-08-18).
+**Phase 1 is complete. M8 reached (2026-08-27, session 22).** T101 -> T110 all done. The product
+layer is `flow/` — `quantity`, `fluids`, `autoconfig`, `diagnose`, `prepare`, `case`, `report`,
+`cli` — on a Warp GPU backend behind `lbm/backends/`, and `python -m flow` is the thing a person
+runs. Rungs **A 🟩 · B 🟩 · C 🟩 · D 🟩 · E 🟩**, on both backends where both apply. Spec
+`DOCS/IDEA3.md` · plan `DOCS/PLAN2.md` · backlog `DOCS/TASKS2.md` · **live status
+`DOCS/STATE2.md`**.
 
-**T101 → T103 are done; M5 is reached** (session 15, 2026-08-18). `lbm/backends/` holds the
-`Backend` protocol, the registry, `numpy_backend` and `warp_backend`; `SimConfig.backend` selects
-between them and `lbm/runner.py` imports no kernel and no boundary. **The whole timestep runs on the
-GPU**: the protocol now covers allocation and the two general transfers as well as the kernels, the
-four boundaries and both halves of the Guo body force, backend arrays are opaque handles, and `Sim`
-owns device state — host reads go through `host_f()` / `host_u()` / `host_rho()` / `host_f_bb()` on
-frame and probe cadence, never per step.
+**The claim the phase is judged on, measured**: `python -m validate.minute --backend warp` reaches
+`Cd` **1.4040** (band 1.25–1.45) and `St` **0.1672** (band 0.155–0.175) — Rung 3's published bands,
+unwidened, through `flow.Case` from a committed PNG and three physical numbers — in **49.5 s of
+wall clock from process start**, against a 60 s limit. Conditions, per D-035: AMD Ryzen 7 5800H at
+3201 of 3201 MHz on mains, NVIDIA RTX 3050 Laptop GPU, driver 592.82.
 
-**Rung A is green in full**: every kernel and every boundary within **5.96e-08** of NumPy against a
-1e-6 bar, whole-step **9.6e-06** at 1000 steps against 1e-4 and *not compounding*, a checkpoint
-written on `warp` resuming on `numpy`, and restart bit-identical within a backend. All four Phase 0
-rungs pass with `--backend warp` printing session 11's digits. `bench.py --backend warp` clears
-**4155 / 757 / 441 steps/s** at 40k / 1M / 2M against floors of 2000 / 250 / 150 — 5x / 33x / 53x
-NumPy — using 391 MiB of the 4 GB card at 2M cells. The current task is `T104` (physical quantities
-and the fluid library), the first of the `flow/` package.
+**What session 22 changed under the product, and why it matters to anything built next**: the
+chooser's domain is now Rung 3's own (24 D span, 8 D upstream — **D-075**, superseding D-059),
+which is ~2.8x the cells, so the probe cadence dropped to 10 samples per convective time
+(**D-076**) and the default run length rose to 80 convective times (**D-079**). `flow/` is
+therefore *slower per case and correct*, where before it was fast and 14% high on drag. Two
+measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 160k / 400k anchors
+(**D-077**) and Rung D's cost check gained rounds (**D-078**).
+
+**Next is Phase 2** — the XLB swap (`idea.md`'s Phase 3), which the T101 backend seam exists to
+make a substitution rather than a rewrite. It gets its own spec, plan and state file; nothing in
+`DOCS/STATE2.md` is live any more except as history.
 
 **The 16 hard constraints above are the Phase 1 list**, folded in from `DOCS/STATE2.md` **D-046** by
 T101 — the constraints section is now the authority, and D-046 is the record of why each one reads

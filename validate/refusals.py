@@ -404,13 +404,28 @@ def check_no_false_alarm(backend: str, steps: int = STEPS_PER_CASE) -> dict[str,
 # ---------------------------------------------------------------------------
 
 
-def monitor_cost(backend: str, steps: int = 600, rounds: int = 5) -> dict[str, float]:
+def monitor_cost(backend: str, steps: int = 300, rounds: int = 9) -> dict[str, float]:
     """Steps/s with and without the probe, by alternating rounds (**D-035**).
 
     Two consecutive runs of the *identical* path differ by more than 10% on
     this machine, so all-of-A-then-all-of-B awards the win to whichever ran
     during the quieter minute. Alternating rounds with one ``Sim`` resident and
     the best round per variant is the protocol Phase 0 settled on.
+
+    **Nine short rounds rather than five long ones (D-078).** The protocol is
+    unchanged and so is :data:`COST_LIMIT`; only the sampling is. **D-075**
+    tripled the domain this runs on, one round went from ~2 s to ~8 s, and the
+    machine's own thermal drift over the resulting 80 seconds is larger than
+    the thing being measured — so each variant's maximum was landing on a
+    different part of a falling curve. Measured, same machine, same case, three
+    repeats each: **five rounds of 600** gave +0.79%, +5.82%, **-4.32%** (a
+    10-point spread against a 2-point gate), and **nine rounds of 300** gave
+    +0.49%, +1.17%, -1.25%. Same total timesteps either way. The independent
+    check that says which of those is the artefact: ``Monitor``'s sample is
+    0.45 ms of NumPy at this domain (0.159 ms for the speed field, 0.294 ms for
+    the masked mass sum) against a 13.2 ms timestep at a 25-step cadence —
+    **0.14%**, a contention-free upper bound that no honest measurement here
+    can exceed by 40x.
     """
     healthy = plan(**_planargs(BASE_REQUEST))
     solid = build_solid(healthy)

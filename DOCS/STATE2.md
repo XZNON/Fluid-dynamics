@@ -13,66 +13,49 @@ history and is never edited. Decision numbering continues here at **D-041**.
 
 | Field | Value |
 |---|---|
-| **Phase** | Phase 1 — the product layer (`DOCS/IDEA3.md`) |
-| **Current task** | `T110` — The minute: end to end, timed (`DOCS/TASKS2.md`) — gate: **Rung E** → **M8** |
-| **Task status** | `not_started` |
-| **Completed tasks** | Phase 1: **T101**, **T102**, **T103**, **T104**, **T105**, **T106**, **T107**, **T108**, **T109**. Phase 0: T001 … T011, all done |
-| **Milestone reached** | **M7** (2026-08-23, `flow/prepare.py`, Rung C green: `python -m validate.shapes` prints PASS, 15/15 corpus images get their committed verdict and measured properties, no manual step). Phase 1 targets M8. **T106 has no milestone of its own** — Rung D is a gate inside it and is re-run by M8 (`DOCS/PLAN2.md` § Milestone gates) |
-| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — the ladder is complete and stays a gate for every Phase 1 task; all four re-run in session 21 (R3/R4 on `--backend warp`, R1/R2 on numpy) printing session 11/15/18's digits exactly: R1 L2 0.3650%, R2 0.75% / 0.21 cells, R3 St 0.1731 Cd 1.4031, R4 polygon Cd 1.4276 |
-| **Phase 1 rung status** | **A 🟩** · **B 🟩 on numpy, 🟥 on warp** · **C 🟩** · **D 🟩** · E ⬜. A, C and D re-run in session 21 and unchanged (**A** worst step 9.611e-06 / checkpoint 8.196e-06, restart bit-identical; **C** PASS in 6.7 s, 15/15; **D** PASS, caught/`nan` at 1525/1650, 75/325, 50/59275, Monitor cost **0.57%**). **Rung D failed its cost check once this session at 2.57%** as the third rung of a chained R4→A→D run, and passed at 0.57% re-run alone twenty minutes later on an idle machine — the check's measured spread (−2.10% … +2.57% across sessions) is wider than its own ±2% gate, queued as `71a74d08789c`; the tolerance was **not** touched. **Rung B was not re-run in session 21** — T109 times nothing and Rung B costs ~23 min; its status is session 19's: green on numpy (accuracy 8.1%, sweep 24/24), **red on `--backend warp` in its accuracy check only** (`Plan.estimated_seconds` predicts 5.61 s against an actual 3.19 s, 75.7% vs a 25% limit), queued as `e4874a146490` and **T110's problem by name**, because M8's gate is a wall clock on warp |
-| **Last updated** | 2026-08-27 — session 21 (**T109 done**: `flow/cli.py` + `flow/__main__.py` = `python -m flow`, built on `Case`; `tests/test_cli.py` **47 tests**; **D-072** closes **Q-101** — `python -m lbm.runner` is kept working with a pointer line, and the M4 gate reproduces to the digit; **D-073** `--live` is three-valued and `--no-live` reaches D-071's un-drawn run; **D-074** the T109 criterion's own example command is refused, as T011's was under D-038; `pytest` **772 passed, 1 skipped** in 87.5 s); session 20 (**T108 done**
+| **Phase** | **Phase 1 — complete.** The product layer (`DOCS/IDEA3.md`) is built, validated and closed |
+| **Current task** | none — `T110` was the last. **Next is Phase 2**, the XLB swap (`idea.md`'s Phase 3), which needs its own spec, plan, backlog and state file |
+| **Task status** | `done` |
+| **Completed tasks** | Phase 1: **T101 … T110**, all ten. Phase 0: T001 … T011, all eleven |
+| **Milestone reached** | **M8** (2026-08-27, session 22) — `myenv/Scripts/python.exe -m validate.minute --backend warp` prints **PASS**: a committed PNG of a disc plus water at 5 mm/s past a 2 cm body, through `flow.Case` with no lattice quantity in the invocation, gives `Cd` **1.4040 ± 0.0173** (band 1.25–1.45) and `St` **0.1672** (band 0.155–0.175) in **49.5 s of wall clock from process start** against a 60 s limit. Conditions (**D-035**): AMD Ryzen 7 5800H at 3201 of 3201 MHz, on **mains**; NVIDIA RTX 3050 Laptop GPU, driver 592.82. **All four Phase 0 milestones and all four Phase 1 milestones are now reached: M1 … M8** |
+| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run in session 22 **on both backends**, printing session 11/15's digits: R1 L2 **0.3650%** numpy / **0.3649%** warp, R2 **0.75%** / **0.21 cells** on both, R3 St **0.1731** Cd **1.4031** on both, R4 square Cd **1.5279** and polygon Cd **1.4276** on both |
+| **Phase 1 rung status** | **A 🟩 · B 🟩 · C 🟩 · D 🟩 · E 🟩 — the whole ladder is green, and B is now green on _both_ backends.** A: worst kernel 5.960e-08, whole step 9.611e-06, checkpoint 8.196e-06, restart bit-identical. B: warp predicted 33.22 s vs actual 34.43 s (**3.5%**), numpy predicted 610.45 s vs actual 719.91 s (**15.2%**), sweep 24/24 on both. C: PASS in 16.2 s, 15/15. D: PASS, caught/`nan` at 1525/1650, 75/325, 50/59275, Monitor cost **-0.69%**. E: PASS on warp in **49.5 s**, and PASS on physics on numpy with the *same printed digits* |
+| **Last updated** | 2026-08-27 — session 22 (**T110 done, M8 reached, Phase 1 complete**: `validate/minute.py` is Rung E; **D-075** answers **Q-104** by giving the chooser Rung 3's own domain, 24 D span / 8 D upstream, which is what puts `Cd` inside the published band; **D-076** drops the force probe to 10 samples per convective time, which is how the widened domain still fits in the minute; **D-077** adds measured 160k / 400k rate anchors and closes the Rung B warp blocker; **D-078** re-samples Rung D's cost check; **D-079** raises the default run length to 80 convective times after the README quickstart printed `nan`; `pytest` **772 passed, 1 skipped**) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
 ## Blockers
 
-**None for T110's start, but both entries below are now T110's to answer.** One rung is red and one
-gate is known to be unreachable as the constants stand. T109 shipped past both because the CLI times
-nothing and chooses no domain; **T110 can do neither**, because M8's gate is exactly a wall clock on
-warp *and* Rung 3's bands through the product path:
+**None. Both of session 21's entries were T110's to answer and both are closed by measurement.**
 
-- **Rung B fails its accuracy check on `--backend warp`** — `Plan.estimated_seconds` predicts
-  **5.61 s** against an actual **3.19 s**, a **75.7%** error against the rung's 25% limit, measured
-  on an idle machine (AMD Ryzen 7 5800H at 3201 of 3201 MHz on mains, RTX 3050 Laptop, driver
-  592.82 — **D-035**). The 24-case sweep passes on **both** backends with identical digits (worst
-  peak `|u|` 0.0695, worst `Re` error 0.0000%), and **Rung B on numpy is PASS the same day**
-  (predicted 61.05 s, actual 56.46 s, **8.1%**). This is **pre-existing and not a T107 regression**:
-  Rung B had only ever been run on numpy (4.2% in session 17, 15.0% in session 18) and **D-059**
-  calibrated the estimator against the numpy column of § Performance baseline. The case is
-  360x390 = 140k cells, between that table's measured warp rows at 40k (4155 steps/s) and 1M (757
-  steps/s); a GPU at that size is partly kernel-launch-bound rather than bandwidth-bound, so a
-  log-log interpolation between two bandwidth-bound points over-predicts. **What would unblock it:**
-  a warp calibration point near 100–200k cells in § Performance baseline, or an explicit
-  launch-overhead term in `estimated_seconds` for GPU backends. Queued as `e4874a146490`. **It does
-  not block T108 or T109** (neither times anything) but it **does block M8**, whose gate is a wall
-  clock on warp — so it belongs to **T110**.
-
-- **The product path's own domain puts `Cd` and `St` outside Rung 3's published bands** — measured
-  in session 20 through the new `flow.Case`, numpy, idle machine: water, 0.005 m/s, 0.02 m,
-  `quality="fast"` (Re 99.6), 78000 steps = 130 convective times, window the last 50%:
-  **`Cd` 1.5955 ± 0.0157, `St` 0.1841** (peak 44x the next distinct one, 12.0 periods), peak `|u|`
-  0.09761, 478 s. Rung 3's bands are `Cd` 1.25–1.45 and `St` 0.155–0.175. **The physics is not in
-  question** — R3 and R4 print session 11/15's digits on the same day — the **domain** is:
-  `flow/autoconfig.py` chooses `SPAN_D = 12` (8.3% blockage) and `UPSTREAM_D = 3`, where
-  `validate/cylinder.py` chooses 24 (4.2%) and 8 *deliberately*, and its own `SPAN_D` docstring
-  records the measurement that confinement raises drag — 15 D of span gave `Cd` 1.4635, "just over
-  the top of the acceptance band". 12 D is tighter still. **What this blocks: M8**, whose gate is
-  reaching exactly those bands *through* `flow.Case` (`DOCS/PLAN2.md` § Milestone gates). **What
-  would unblock it:** widen `SPAN_D`/`UPSTREAM_D` toward Rung 3's, at a cost in cells and therefore
-  in M8's wall clock — or state the bands for a confined case and say why. Note the tension: the
-  change that makes M8's bands reachable makes M8's minute harder. Queued as `a924f78acc32`;
-  it is **T110's decision** (see **Q-104**), not T108's to make and not T109's.
+- ~~**Rung B fails its accuracy check on `--backend warp`**~~ — **closed, D-077.** The estimator
+  was interpolating log-log between two *bandwidth-bound* anchors (40k and 1M) straight through the
+  region where this card is *kernel-launch*-bound, and over-predicted the wall clock at 160k cells
+  by **1.78x**. Two measured anchors at 160k and 400k on both backends fixed it without touching
+  the model or the 25% tolerance: Rung B on warp now reads **predicted 33.22 s, actual 34.43 s,
+  error 3.5%**, and the sweep is 24/24 on both backends.
+- ~~**The product path's own domain puts `Cd` and `St` outside Rung 3's published bands**~~ —
+  **closed, D-075.** The chooser now uses Rung 3's own domain (24 D span, 8 D upstream), measured
+  through `flow.Case` to give `Cd` **1.4030** where Rung 3 itself prints **1.4031**. The bands were
+  not widened, and no domain flag was added to `flow/` or the CLI — `SPAN_D` and `UPSTREAM_D` are
+  module constants (constraint 13). Two follow-on defects that change caused were found by
+  *running* things and fixed in the same session: Rung D's cost check went noisy at the larger
+  domain (**D-078**) and the default run length stopped being long enough to measure anything at all
+  (**D-079**, found by pasting the README's own quickstart into a fresh shell).
 
 ## Open questions
 
-- **Q-104** — does `flow/autoconfig.py`'s domain widen to Rung 3's (24 D span, 8 D upstream), or do
-  Rung E's bands get restated for a confined case? Measured this session at the 12 D span the
-  chooser picks today: `Cd` **1.5955**, `St` **0.1841**, against bands of 1.25–1.45 and
-  0.155–0.175 — so as things stand **M8's gate cannot be met however long the run is**, because the
-  domain and not the run length is the reason. Widening costs cells: 24 D span roughly doubles the
-  cell count and therefore the wall clock M8 also gates on, which is why this is a decision and not
-  a fix. **T110 owns it** (`DOCS/PLAN2.md` § Session map), and it should be decided *before* Rung E
-  is written, not after it fails. Queued as `a924f78acc32`.
+- ~~**Q-104** — does `flow/autoconfig.py`'s domain widen to Rung 3's (24 D span, 8 D upstream), or
+  do Rung E's bands get restated for a confined case?~~ **Closed in session 22 by measurement — see
+  D-075. It widens, to Rung 3's own 24 D / 8 D.** The measurement that decided it is one case with
+  one thing changing: 12 D / 3 D gives `Cd` **1.5943**, 16 D / 6 D **1.4523** (still outside),
+  20 D / 6 D 1.4426, 24 D / 6 D 1.4360, **24 D / 8 D 1.4030** against Rung 3's own 1.4031. Two
+  things that were not obvious before measuring: the **upstream fetch is not second-order** — at a
+  fixed 24 D span it is the whole remaining distance to the benchmark's digit — and the cheapest
+  in-band option (20 D / 6 D, 288k cells) was rejected rather than taken, because a `Cd` sitting
+  0.5% under the band's top with a `cd_std` of 0.0177 is a pass a future session would have to
+  re-argue. The wall clock the widening spends was paid back by **D-076**, not by a shorter run:
+  Rung E lands at **49.5 s** of the 60.
 
 - ~~**Q-101** — does `python -m lbm.runner` (the M4 gate command) survive as a working entry point
   once `python -m flow` exists, or become a pointer to it?~~ **Closed in session 21 — see D-072.
@@ -161,6 +144,22 @@ against floors of 400 / 120 / 15 — all still cleared — with the fused/unfuse
 10's **1.00 / 1.01 / 1.14×** to **1.16 / 1.20 / 1.14×**. That is exactly what dropping the
 pre-collision copy from the fused path predicts, and the change is bitwise identical by test.
 
+**Calibration anchors between 40k and 1M, added in session 22 (D-077).** Same protocol —
+`bench.compare_backends`, backends alternated inside each round, one `Sim` resident, warmup, best
+round of 3 — at round grids near the sizes the product path actually runs at, rather than at any
+one case's exact size. Same conditions: AMD Ryzen 7 5800H at **3201 MHz of 3201 MHz**, on **mains**;
+NVIDIA GeForce RTX 3050 Laptop GPU, driver **592.82**.
+
+| Grid | Cells | NumPy measured | Warp measured | us/step (warp) |
+|---|---|---|---|---|
+| 800×200 | 160k | **185.6** | **3560.4** | 280.9 |
+| 800×500 | 400k | **76.5** | **1403.9** | 712.3 |
+
+These two rows are the whole of the Rung B fix. The warp curve is **nearly flat from 40k to 160k**
+(log-log slope **-0.11** — the kernel launches, not the bytes, are the cost at that size) and then
+turns over sharply (**-1.02** from 160k to 400k), so a model interpolating between 40k and 1M ran
+straight through the knee and over-predicted the wall clock at 160k by **1.78x**.
+
 **D-035 still governs every number here**: alternating-round A/B, best round per variant, and no
 absolute steps/s figure without the CPU clock, the power state and now the GPU name beside it.
 
@@ -227,6 +226,11 @@ never edit a past entry — supersede it with a new one that says so. Numbering 
 | D-072 | 2026-08-27 | **`python -m lbm.runner` survives as a working entry point, plus a one-line pointer at `python -m flow` (`lbm.runner.PHASE1_CLI_POINTER`, printed by `main` and repeated in `--help`). Closes Q-101.** The M4 gate command in `old-Docs/STATE1.md` § Snapshot stays literally reproducible and is **not** marked historical. | The T109 contract offered three options and **constraint 15 deleted one of them before judgement got a say**: `flow/` may import `lbm/` and `lbm/` may never import `flow/`, so `lbm/runner.py` cannot delegate to `flow/cli.py` and the pointer has to be a string rather than a call. That left keep-vs-pointer, and keeping wins on what it costs versus what it preserves: one `--help` line against `--re` / `--nu`, `--resolution` in cells, `--span-d` / `--upstream-d` / `--downstream-d`, `--u-lattice`, `--tau-floor` and `--checkpoint` — every solver-level knob `flow` deliberately has not got (constraint 13), and `--span-d` is precisely the knob **Q-104** is a question about, so deleting it would have removed a tool **T110** may want in the very next session. Verified rather than assumed: the gate command re-run in full prints **301 frames, 40033 steps, peak |u| 0.06554**, 0.32 MB, h264 528x368 at 60 fps — session 11's digits exactly, with only the wall clock differing (304.5 s vs 334.9 s), which is not a published band. `tests/test_cli.py` pins all three halves: that it still writes an MP4, that the pointer is in `--help`, and that the nine knobs are still there and still absent from `flow`. |
 | D-073 | 2026-08-27 | **`--live` is three-valued, not a switch: absent means Phase 0's rule (a window opens only when no file sink was asked for), `--live` forces one, and `--no-live` suppresses it — and `--no-live` with neither `--out` nor `--frames-dir` is the only way to reach D-071's un-drawn run.** `--quiet` prints the summary and nothing else; it does **not** hide the result. | Both halves were found by running the CLI, not by reading it. **(a)** Preserving `lbm.runner`'s "no sink means open a window" rule is right — it is the behaviour the T109 contract says to preserve — but it left `Case.run`'s un-drawn path (**D-071**: no vorticity field computed, no frame coloured, a 1x1 placeholder to `NullSink`) unreachable from the command line, which is exactly the shape a script or a CI job wants and the shape a person asking "what is the drag coefficient" wants. Phase 0 had no way to ask for it because Phase 0's CLI had no numbers to print at the end. Measured through it: 75000 steps on warp in **50.7 s**, `Cd` **1.5955 ± 0.0157** and `St` **0.1838** — session 20's numpy digits, through the CLI, drawing nothing. **(b)** `--quiet` first passed `quiet=True` straight through to `Case.run`, which suppresses `Result.summary()` as well, so the command printed **nothing at all** while `--help` promised "numbers only". The first version of the test asserted only that the *plan* was absent, which is how it got past; it now asserts both halves. A flag that hides the result is not a quieter answer, it is no answer. |
 | D-074 | 2026-08-27 | **The T109 contract's own example command is refused, and that is the correct outcome — D-038 repeating one layer up.** `--shape wing.png --fluid air --speed "5 m/s" --size "10 cm"` is `Re = 5 * 0.1 / 1.516e-5 = 32982`; `tau` reads **0.500182** against the 0.54 bluff-body floor (**D-029**). The criterion is met through `--nearest`, which runs the tool's own top suggestion and marks it. | Identical in shape to **D-038** and settled the same way: two acceptance criteria of one task cannot both be met by one literal command — "writes a playable file" and "refuses a case it cannot represent" — and the refusal wins, because a solver that quietly runs Re 33000 on a 40-cell body with no turbulence model produces exactly the artefact constraint 5 exists to prevent. What T109 has that T011 did not is a **way through**: `flow.diagnose` exists now, so the CLI does not dead-end at the refusal. Run end to end from a cold shell with `--nearest`, the literal command exits **0** and writes a playable 6-frame MP4 whose container comment reads `substituted=True; fluid -> honey: ...` — constraint 16 surviving into the file, checked with `ffmpeg -i` rather than from the counter. Recorded as a decision rather than silently substituting a working command into the criteria, because the next session reading "criterion 1 passed" should know which command actually passed it. |
+| D-075 | 2026-08-27 | **Q-104 answered: `flow/autoconfig.py` adopts Rung 3's own domain — `SPAN_D` 12 -> **24**, `UPSTREAM_D` 3 -> **8**, `DOWNSTREAM_D` unchanged at 9. Supersedes D-059's domain choice** (and only that; D-059's `TAU_FLOOR`, `QUALITY_CELLS` and `RUN_CONVECTIVE_TIMES` stand). The bands were **not** widened and no domain flag was added to `flow/` or to the CLI — these are module constants, which is what constraint 13 allows. | Measured, not argued: the finished product path on Rung 3's own case (water, 5 mm/s, 2 cm, `quality="fast"`, Re 99.6, 48000 steps, `warp`, one thing changing at a time) reads `Cd` **1.5943** at 12 D / 3 D against a published band of 1.25..1.45, and **1.4030** at 24 D / 8 D against Rung 3's own **1.4031** on the same machine. The intermediate rows are recorded in `flow/autoconfig.py`'s `SPAN_D` docstring: 16 D / 6 D **1.4523** (still outside), 20 D / 6 D 1.4426, 22 D / 6 D 1.4394, 24 D / 6 D 1.4360. Two things fall out of that table and both are decisions in themselves. **(a)** The upstream fetch is not second-order — at a fixed 24 D span, 6 D gives 1.4360 and 8 D gives 1.4030, which is the whole remaining distance to the benchmark, so restoring `SPAN_D` alone would have bought a pass with 0.014 of margin instead of a reproduction. **(b)** 20 D / 6 D *does* land inside the band at 288k cells rather than 389k, and was rejected: 1.4426 sits 0.5% under the band's top with a `cd_std` of 0.0177, which is a pass that a future session would have to re-argue, and D-059's own failure mode was choosing the cheapest domain that still cleared a rule. The alternative the T110 contract explicitly floated — restating the bands for a confined case — was rejected on the same evidence: the confined number is not a different-but-valid answer, it is 14% of drag from the walls, and `validate/cylinder.py`'s `SPAN_D` docstring had already measured that mechanism at 15 D. **The cost is stated rather than hidden**: 389k cells against 140k, `pytest` from 108 s to 208 s, and Rung B's 24-case sweep proportionally slower on `numpy` — all of it charged to M8's wall clock, where **D-076** paid it back. `DOWNSTREAM_D` stayed at 9 because 9 reproduces Rung 3's digit while Rung 3 spends 12, and three diameters of cells that change nothing are three diameters not worth spending. |
+| D-076 | 2026-08-27 | **`flow.case.FORCE_SAMPLES_PER_TIME` 50 -> 10.** The force/residual/peak-speed probe samples ten times per convective time, not fifty. | **D-075** roughly tripled the cell count and the probe is what pays for it on a device backend: one sample is **five host reads** (`forces()` downloads `f` and `f_bb`, `residual()` / `mark_residual()` / the peak-speed check download `u` three times), which at Rung E's 720x540 domain is ~37 MB across the bus, and at 50 samples per convective time that was **37.6 s of a 76.9 s run** — nearly as much wall clock as the timesteps themselves, solving the pair of measurements for a fixed cost plus a per-sample one. Measured on Rung E's own case, `warp`, 48000 steps, everything else identical: 50 samples/tc -> **76.9 s**, `Cd` 1.4030, `St` 0.1676; 10 samples/tc -> **46.8 s**, `Cd` **1.4030**, `St` **0.1676**. Identical to four decimals on both published quantities, 1.64x the speed. The one number that moves is peak `|u|`, 0.09761 -> 0.09725 — 0.4% *downward*, because a coarser sampler sees a slightly smaller maximum, which is a small real loss of pessimism in a constraint-3 check and is recorded rather than hidden. 10 is a floor and not a knob to keep turning: the acoustic ringing `flow.report._lowpass` exists to reject has a period of ~305 steps here, which is ~5 samples per period at this cadence and ~2.5 at half of it — the second margin goes first. |
+| D-077 | 2026-08-27 | **`flow.autoconfig._RATE_TABLE` gains measured anchors at 160k and 400k cells on both backends — `numpy` 185.6 / 76.5 steps/s, `warp` 3560.4 / 1403.9 — and that is the whole fix for Rung B on `warp`. The model (log-log interpolation) and the 25% tolerance are unchanged.** | The blocker's own diagnosis, confirmed by measurement. With only 40k / 1M / 2M anchors the model interpolated **between two bandwidth-bound points** straight through the region where this card is *kernel-launch*-bound: at 160k cells it predicted 1996 steps/s against a measured **3560.4**, i.e. a wall clock **1.78x** the real one — session 19's 75.7% error almost exactly, since Rung B measures the error on time. The measured slopes say it plainly — 40k -> 160k is **-0.11** in log-log (nearly flat: the launches, not the bytes, are the cost) and 160k -> 400k is **-1.02**. Adding an explicit launch-overhead term was the alternative and was rejected: a least-squares `t = a + b * cells` over all five measured points (a = 208.8 us, b = 1.049 us per 1000 cells) is **+34.1% at 160k** — worse than the 25% tolerance it would have to satisfy — because the launch-bound to bandwidth-bound transition is a knee, not a sum of two regimes. A model with a fitted constant nobody measured is also exactly what `DOCS/PLAN2.md` § Risks warns about at this layer. Anchors are measurements. Both are taken with `bench.compare_backends`'s own protocol (backends alternated inside each round, one `Sim` resident, warmup, best round) at 800x200 and 800x500 — **round grids near the product's sizes rather than at any case's exact size**, so the table is calibration and not curve-fitting to the rung that checks it. The `numpy` column was measured in the same alternating rounds for the same reason the speedup column exists (**D-035**). |
+| D-078 | 2026-08-27 | **Rung D's `Monitor` cost check samples nine rounds of 300 steps instead of five of 600 — same protocol, same total timesteps, same 2% limit, better statistics under thermal drift. The tolerance was not touched and `Monitor` was not changed.** | **D-075** tripled the domain the check runs on; a round went from ~2 s to ~8 s, and the machine's own drift across the resulting 80 seconds is larger than the 2% being measured, so each variant's *maximum* was landing on a different part of a falling curve. Measured, three repeats each on an idle machine: **5x600** gave **+0.79%, +5.82%, -4.32%** — a 10-point spread against a 2-point gate — and **9x300** gave **+0.49%, +1.17%, -1.25%**. What says which of those is the artefact is an independent, contention-free number: `Monitor`'s sample is **0.45 ms** of NumPy at this domain (0.159 ms for the speed field, 0.294 ms for the masked `float64` mass sum) against a **13.2 ms** timestep at a 25-step cadence — **0.14%**, an upper bound no honest measurement can exceed by 40x. This is `71a74d08789c` (queued in session 21 at a -2.10%..+2.57% spread) diagnosed rather than re-observed: the check was reporting the machine, and D-035's own answer to that is more alternation, not a wider gate. Rung D re-run after the change: **-0.69%**, with all three detections at their published steps (1525/1650, 75/325, 50/59275). |
+| D-079 | 2026-08-27 | **`flow.autoconfig.RUN_CONVECTIVE_TIMES` 20 -> 80. Supersedes D-059's run length.** The default run is now long enough that the report can report everything it reports. | Found by running the README's own quickstart command in a fresh shell, which is what that acceptance criterion is for: after **D-075** it printed `Cd` **`nan`** and *"the run ended after 16000 steps, before the startup kick had switched off (4000) and washed out of the domain (18400)"*. Two rules set the floor and both are arithmetic. **D-069** opens the window only after the kick has switched off (5 convective times) and washed out (one flow-through = `UPSTREAM_D + 1 + DOWNSTREAM_D` = **18**), so nothing is measured before 23 and — the window being the last 50% — a run under **46** measures nothing at all. **D-070**'s gate 2 wants two of the slowest plausible shedding periods in the window, 20 convective times each, which is 40 of window and **80** of run. 80 is the larger, so the default satisfies both. The interesting part is *why 20 had been passing*: the narrower domain made a flow-through shorter, so the constant D-059 chose for cheapness was silently coupled to the domain D-075 has now changed — exactly the failure mode a constant with a citation but no derivation has. It is written as arithmetic in the docstring now rather than as a number. **The cost is stated**: Rung B's numpy accuracy case goes from ~2 minutes to ~10, and the whole rung on numpy from ~23 minutes to ~65. A shorter run is still reachable, and reachable *honestly*, through `Case.run(seconds=...)`. |
 
 
 ## Session log
@@ -1518,3 +1522,215 @@ M8 gates on both.
 
 **Next:** **T110 — The minute: end to end, timed**, session 22, gate **Rung E** → **M8**. It is the
 last task of Phase 1 and it owns both blockers. Prompt written to `PROMPTS/022-t110-the-minute.md`.
+
+### 2026-08-27 — Session 22: T110, the minute — **Rung E**, **M8**, and the end of Phase 1
+
+**Task:** T110 — The minute: end to end, timed. **Status: done. M8 reached. Phase 1 is complete.**
+Every acceptance criterion was run, not read — including the timed gate on both backends and the
+README quickstart pasted into a fresh venv built by its own `pip install` line. `lbm/` untouched:
+`git status -- lbm` is empty. Five decisions, **D-075** … **D-079**, and both of session 21's
+blockers are closed by measurement.
+
+**The gate, first, because it is what the phase is judged on**
+
+```
+myenv/Scripts/python.exe -m validate.minute --backend warp
+
+1. physics - Rung 3's published bands, unwidened
+   grid 720x540 = 389k cells, blockage 4.17%, Re 99.6, tau 0.5452, 50400 steps
+   Cd  1.4040 +- 0.0173   band 1.25..1.45   [ok]
+   St  0.1672   band 0.155..0.175   [ok]
+   peak |u| 0.09725 of the 0.1 ceiling (constraint 3)
+
+2. the minute - process start to Result.summary()
+   49.5 s wall clock (48.0 s of it the run itself), limit 60 s   [ok]
+
+Rung E: PASS
+```
+
+Conditions (**D-035**): AMD Ryzen 7 5800H at **3201 MHz of 3201 MHz**, on **mains**; NVIDIA GeForce
+RTX 3050 Laptop GPU, driver **592.82**, CUDA Toolkit 12.9 / Driver 13.1. The wall clock is taken
+from `psutil`'s own `create_time`, so the interpreter, every import and the Warp context are inside
+the number — it is the shell's minute, not the solver's.
+
+**Done**
+
+- **`validate/minute.py`** — Rung E. A committed PNG (`tests/data/shapes/disc.png`, already Rung C's
+  corpus disc, so no new binary), `fluid="water"`, `speed="5 mm/s"`, `size="2 cm"`,
+  `quality="fast"` — no lattice quantity anywhere in the invocation (constraint 13). The two bands
+  are **imported** from `validate/cylinder.py` rather than copied, so this rung cannot drift from
+  Rung 3's published numbers even by a typo. The run length is **derived** from **D-070**'s gate 2
+  rather than chosen (`RUN_MARGIN * MIN_PERIODS / (ST_PLAUSIBLE[0] * (1 - TRANSIENT_FRACTION))` = 84
+  convective times), so it follows `flow/report.py` if those constants move. `machine_state()` is
+  collected *after* the run: it shells out to WMI three times and to `nvidia-smi`, which is seconds
+  a user never spends, and the clock starts at process start.
+- **`README.md`** — a quickstart at the top: clone, venv, one `pip install` line, and the product
+  command. Plus `--explain`, `--out wake.mp4`, the refusal path, and `python -m validate.minute`.
+  § Current state and § Roadmap were rewritten because they still said the LBM engine did not exist,
+  and the ladder table now carries all nine rungs with their measured numbers.
+- **`CLAUDE.md`** — § Commands gained the Rung E line, § Module map the `validate/minute.py` row, and
+  § Current state was rewritten for a finished Phase 1.
+- **Five decisions**, each measured in this session: **D-075** the domain, **D-076** the probe
+  cadence, **D-077** the rate-table anchors, **D-078** Rung D's cost sampling, **D-079** the default
+  run length.
+
+**Q-104, answered by measuring one case with one thing changing at a time**
+
+The product path's `Cd` was 1.5955 against a band of 1.25–1.45, and the question was whether to
+widen the chooser's domain or restate the bands. Measured on Rung E's own case (`warp`, 48000 steps,
+`quality="fast"`):
+
+| span / upstream | cells | blockage | `Cd` | `St` | wall clock |
+|---|---|---|---|---|---|
+| 12 D / 3 D | 140k | 8.33% | **1.5943** | 0.1835 | 32.0 s |
+| 16 D / 6 D | 230k | 6.25% | **1.4523** | 0.1729 | 46.8 s |
+| 20 D / 6 D | 288k | 5.00% | 1.4426 | 0.1713 | 58.6 s |
+| 22 D / 6 D | 317k | 4.55% | 1.4394 | 0.1705 | 69.9 s |
+| 24 D / 6 D | 346k | 4.17% | 1.4360 | 0.1696 | 72.1 s |
+| **24 D / 8 D** | **389k** | **4.17%** | **1.4030** | **0.1676** | 76.9 s |
+
+Rung 3 itself prints **1.4031** and 0.1731 on this machine on the same day, so the last row is the
+benchmark's own drag coefficient to four decimals. Two things only the table could say: the
+**upstream fetch is not second-order** — at a fixed 24 D span it is the whole remaining distance to
+Rung 3's digit — and the cheapest in-band option (20 D / 6 D) was **rejected rather than taken**,
+because a `Cd` 0.5% under the band's top with a `cd_std` of 0.0177 is a pass a future session would
+have to re-argue. Restating the bands for a confined case was rejected on the same evidence: the
+confined number is not a different-but-valid answer, it is 14% of drag contributed by the walls.
+
+**And the widening had to be paid for, twice, in ways that were only found by running things**
+
+- **The minute.** 24 D / 8 D at the old probe cadence is 76.9 s — over. The lever was
+  **D-076**: one force sample is five host reads (~37 MB across the bus at this domain), and at 50
+  samples per convective time that was 37.6 s of the 76.9. At 10 samples it is 7.5 s, and `Cd` and
+  `St` are **identical to four decimals** (1.4030 / 0.1676 either way). The one number that moves is
+  peak `|u|`, 0.09761 → 0.09725: a coarser sampler sees a slightly smaller maximum, which is a real
+  if small loss of pessimism in a constraint-3 check.
+- **Rung D went noisy.** The `Monitor` cost check read **5.86%** against its 2% limit on the bigger
+  domain — and `Monitor`'s arithmetic is 0.45 ms against a 13.2 ms timestep at a 25-step cadence,
+  which is **0.14%**, so the measurement was reporting the machine. Three repeats of the old
+  sampling: +0.79%, +5.82%, −4.32%. Three of the new: +0.49%, +1.17%, −1.25% (**D-078**). Same
+  protocol, same total timesteps, same tolerance — more alternation, which is D-035's own answer to
+  drift. Re-run: **−0.69%**.
+- **The default run stopped measuring anything.** The README quickstart, pasted into a fresh shell,
+  printed `Cd` **`nan`** and *"the run ended after 16000 steps, before the startup kick had ...
+  washed out (18400)"*. D-059's 20 convective times had been silently coupled to the old domain's
+  shorter flow-through. **D-079** raises it to 80 — the larger of D-069's floor (46) and D-070's
+  gate (80) — and writes it as arithmetic rather than as a number.
+
+**Rung B on warp, closed**
+
+`Plan.estimated_seconds` was interpolating log-log between two *bandwidth-bound* anchors (40k and
+1M) straight through the region where this card is *kernel-launch*-bound. Measured this session with
+`bench.compare_backends`'s own protocol at two round grids near the product's sizes:
+
+| Grid | Cells | NumPy | Warp | µs/step (warp) |
+|---|---|---|---|---|
+| 800×200 | 160k | **185.6** | **3560.4** | 280.9 |
+| 800×500 | 400k | **76.5** | **1403.9** | 712.3 |
+
+The old model predicted 1996 steps/s at 160k where the card does 3560.4 — a wall clock **1.78x** the
+real one, which is session 19's 75.7% almost exactly. The warp curve is nearly flat from 40k to 160k
+(log-log slope **−0.11**) and turns over at **−1.02** beyond it. A least-squares `t = a + b·cells`
+was tried and rejected: it is +34.1% at 160k, worse than the tolerance it would have to satisfy.
+Two anchors, no new model, no widened tolerance (**D-077**).
+
+**Measured — every rung, both backends where both apply**
+
+| Rung | Command | Result |
+|---|---|---|
+| R1 | `validate.poiseuille` | **PASS** — L2 **0.3650%**, peak 0.07955 |
+| R1 | `validate.poiseuille --backend warp` | **PASS** — L2 **0.3649%** |
+| R2 | `validate.cavity --re 100` | **PASS** — max dev vs Ghia **0.75%**, vortex **0.21 cells** |
+| R2 | `validate.cavity --re 100 --backend warp` | **PASS** — **0.75%**, **0.21 cells** |
+| R3 | `validate.cylinder --backend numpy` | **PASS** — St **0.1731**, Cd **1.4031**, peak 0.09685 |
+| R3 | `validate.cylinder --backend warp` | **PASS** — St **0.1731**, Cd **1.4031 +- 0.0086**, peak 0.09685 |
+| R4 | `validate.polygons --backend numpy` | **PASS** — square Cd **1.5279 +- 0.0271**, polygon Cd **1.4276 +- 0.0226**, peak 0.08944 — warp's digits exactly |
+| R4 | `validate.polygons --backend warp` | **PASS** — square Cd **1.5279 +- 0.0271**, polygon Cd **1.4276 +- 0.0226**, Cl amplitude 0.3689, peak 0.08944 |
+| A | `validate.parity --backend warp` | **PASS** — worst kernel 5.960e-08, whole step **9.611e-06**, checkpoint **8.196e-06**, restart bit-identical |
+| B | `validate.autoconfig --backend warp` | **PASS** — predicted **33.22 s**, actual **34.43 s**, **3.5%**; sweep 24/24 |
+| B | `validate.autoconfig` (numpy) | **PASS** — predicted **610.45 s**, actual **719.91 s**, **15.2%**; sweep 24/24, worst peak |u| 0.0656, worst Re error 0.0000% |
+| C | `validate.shapes` | **PASS in 16.2 s** — 15/15 |
+| D | `validate.refusals` | **PASS** — caught/`nan` at 1525/1650, 75/325, 50/59275; Monitor cost **-0.69%** |
+| **E** | `validate.minute --backend warp` | **PASS** — Cd **1.4040**, St **0.1672**, **49.5 s** |
+| **E** | `validate.minute --backend numpy` | **PASS on physics** — Cd **1.4040**, St **0.1672**, the *same printed digits* as warp; 1454.2 s, not a gate on this backend |
+
+Every Phase 0 digit is session 11/15/18/19/21's exactly, on both backends. **Disclosure (D-035):**
+R3/R4 and R1/R2 on `warp`, and R3/R4 on `numpy`, were run while Rung B's 24-case sweep was still
+running, so no steps/s figure from them is a clean timing. Every pass condition in those four rungs
+is a physics band, and the three checks that *are* timings — Rung B's accuracy check, Rung D's cost
+check and Rung E's wall clock — were each run with nothing else on the machine.
+
+**A re-run that failed, and why it is evidence rather than a regression**
+
+The final confirmation run of `validate.minute --backend warp` printed **FAIL at 71.9 s** — because
+the laptop had been unplugged: `Win32_Battery.BatteryStatus` 1, `CurrentClockSpeed` **1882 MHz of
+3201**. The physics is bit-for-bit the mains run's (`Cd` 1.4040 ± 0.0173, `St` 0.1672, peak `|u|`
+0.09725, 50400 steps), so nothing in the code moved; the CPU did. **This is exactly what D-035
+exists for** — an absolute timing without the power state beside it is not a measurement — and it is
+recorded here rather than quietly re-run, because a future session comparing 49.5 s to 71.9 s should
+find the reason next to the number. **M8's gate output is the mains run**: 49.5 s, 3201 of 3201 MHz,
+on mains, same 50400 steps, same digits. The suite's own wall clock moved the same way and for the
+same reason: 208 s on mains, 333 s on battery, `772 passed, 1 skipped` either way.
+
+**The README quickstart, actually pasted**
+
+A copy of the working tree, a **fresh venv created and populated by the quickstart's own
+`pip install` line**, and then the quickstart command:
+
+```
+Cd            1.4030 +- 0.0175      St            0.1676 (peak 3.5x, 6.7 periods observed)
+peak |u|      0.09725               elapsed       48.8 s for 48000 steps on backend 'warp'
+```
+
+50.7 s of total wall clock from the shell. That paste is what found **D-079**: the first attempt,
+before it, printed `nan`.
+
+**Decisions made**
+
+- **D-075** — the chooser's domain becomes Rung 3's own (24 D span, 8 D upstream); supersedes
+  D-059's domain choice. **Closes Q-104.**
+- **D-076** — the force probe drops to 10 samples per convective time, which is how the widened
+  domain still fits inside the minute.
+- **D-077** — `_RATE_TABLE` gains measured 160k / 400k anchors on both backends. **Closes the Rung B
+  warp blocker.**
+- **D-078** — Rung D's cost check samples nine rounds of 300 rather than five of 600.
+- **D-079** — the default run length rises from 20 to 80 convective times, derived from D-069 and
+  D-070 rather than chosen.
+
+**Not done / deferred**
+
+- **Nothing in the T110 contract is outstanding.** All seven acceptance criteria are checked in
+  `DOCS/TASKS2.md` § T110.
+- **`Monitor` on warp is still unmeasured** — session 18's deferral, carried through five sessions
+  and now the oldest open thread in the product layer. Rung D runs on `numpy` by design (the
+  failure modes it provokes are cheaper there), so the probe's device-side cost has never been
+  timed. Worth a `/new-task` in Phase 2 rather than a silent carry.
+- **`2fd69b874c32`** — `Case.explain()` prints a different suggestion list than `Case.nearest()`
+  acts on. Still open, still a T108 defect, still not user-facing because `flow/cli.py` prints the
+  list it will actually run.
+- **The suite is slower**: 108 s → **208 s** on mains. That is D-075 and D-079 charged to every test
+  that runs the solver, and it is the honest price of the domain being right.
+
+**Blockers:** none. Phase 1 is closed.
+
+**Housekeeping**
+
+- `DOCS/ISSUES.jsonl` — `a924f78acc32` (Q-104) and `e4874a146490` (Rung B on warp) dropped as
+  **fixed**, each with the decision that fixed it named in the reason; `71a74d08789c` (Rung D's cost
+  spread) dropped as fixed by **D-078**. The `.gitignore` entry from session 16 (`495777c58269`) is
+  still open and still not this task's to fix; `git check-ignore` is clean on `validate/minute.py`
+  and on every file changed this session.
+- An empty stray directory `d/` in the repo root, created 2026-08-27 by an earlier session, was
+  left alone — it is untracked, empty, and not this task's.
+
+**Rung status after this session**
+
+- Phase 0: R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — all four re-run **on both backends**.
+- Phase 1: **A 🟩 · B 🟩 · C 🟩 · D 🟩 · E 🟩**. **M8 reached. Phase 1 is complete.**
+
+**Next:** **Phase 2 — the XLB swap** (`idea.md`'s Phase 3), which is what the T101 backend seam was
+built to make a substitution rather than a rewrite. It needs its own spec, plan, backlog and state
+file, planned the way session 12 planned this one. `DOCS/STATE2.md` becomes history the moment that
+happens. Prompt written to `PROMPTS/023-phase2-planning.md`, and it asks the next session to decide
+*whether* Phase 2 is the XLB swap rather than to inherit it — the current backend is validated and
+fast, and `idea.md`'s ordering has been deliberately deviated from once already (**D-043**).

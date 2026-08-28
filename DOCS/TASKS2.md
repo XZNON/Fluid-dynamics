@@ -23,7 +23,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T107 | Geometry preparation + shape corpus | `done` | — | **Rung C** → **M7** |
 | T108 | `flow.Case` / `flow.Result` API | `done` | T105, T106, T107 | unit tests |
 | T109 | CLI on `flow`, live + record wiring | `done` | T108 | manual gate + tests |
-| T110 | The minute: end to end, timed | `not_started` | T109, T103 | **Rung E** → **M8** |
+| T110 | The minute: end to end, timed | `done` | T109, T103 | **Rung E** → **M8** |
 
 ---
 
@@ -552,7 +552,7 @@ the assembly now lives in `Case`.
 
 ## T110 — The minute: end to end, timed → Rung E, M8
 
-**Status:** `not_started`
+**Status:** `done` — session 22, 2026-08-27. **M8 reached.** Phase 1 closes here.
 
 ### Goal
 
@@ -573,21 +573,34 @@ section; `DOCS/STATE2.md` recording M8 with the gate output.
 
 ### Acceptance criteria
 
-- [ ] **Rung E — `validate/minute.py --backend warp`:** a committed PNG of a disc, plus fluid/speed/size chosen to give Re 100, driven through `flow.Case` with no lattice quantity anywhere in the invocation, produces **St in 0.155–0.175 and Cd in 1.25–1.45** — Rung 3's published bands, unwidened.
-- [ ] **Wall clock under 60 s**, printed, from process start to `Result.summary()`, on the dev machine with GPU name, driver, CPU clock and power state quoted (**D-035**). If it misses, the number is recorded honestly and the shortfall becomes a blocker, not a widened criterion.
-- [ ] The same rung run with `--backend numpy` **also passes on physics** (bands only, no time limit), so the product path is proven independent of the port.
-- [ ] All five Phase 1 rungs (A–E) re-run in this session and print PASS; all four Phase 0 rungs re-run and print numbers inside their published bands on both backends.
-- [ ] `README.md` gains a quickstart that is **copy-pasteable and was actually pasted** into a fresh shell this session, with its output recorded.
-- [ ] `myenv/Scripts/python.exe -m pytest` green.
-- [ ] `DOCS/STATE2.md` records **M8** with the gate output, and § Snapshot says Phase 1 is complete.
+- [x] **Rung E — `validate/minute.py --backend warp`:** a committed PNG of a disc, plus fluid/speed/size chosen to give Re 100, driven through `flow.Case` with no lattice quantity anywhere in the invocation, produces **St in 0.155–0.175 and Cd in 1.25–1.45** — Rung 3's published bands, unwidened. — **`Cd` 1.4040 ± 0.0173, `St` 0.1672.** The bands are *imported* from `validate/cylinder.py`, so they cannot drift by a typo. Reaching them needed **D-075**, the answer to Q-104.
+- [x] **Wall clock under 60 s**, printed, from process start to `Result.summary()`, on the dev machine with GPU name, driver, CPU clock and power state quoted (**D-035**). — **49.5 s** (48.0 s of it the run), measured from `psutil`'s own `create_time` so the interpreter, the imports and the Warp context are all inside it. AMD Ryzen 7 5800H at 3201 of 3201 MHz on mains; NVIDIA RTX 3050 Laptop GPU, driver 592.82.
+- [x] The same rung run with `--backend numpy` **also passes on physics** (bands only, no time limit).
+- [x] All five Phase 1 rungs (A–E) re-run in this session and print PASS; all four Phase 0 rungs re-run and print numbers inside their published bands on both backends.
+- [x] `README.md` gains a quickstart that is **copy-pasteable and was actually pasted** into a fresh shell this session, with its output recorded. — Pasted into a **fresh venv built by the quickstart's own `pip install` line**, in a clean copy of the tree: `Cd` **1.4030**, `St` **0.1676**, **50.7 s** total. That paste is what found **D-079**.
+- [x] `myenv/Scripts/python.exe -m pytest` green.
+- [x] `DOCS/STATE2.md` records **M8** with the gate output, and § Snapshot says Phase 1 is complete.
 
 ### Constraints that bite here
 
 - Constraint 5 — the whole ladder, in order, re-run. This is the session that proves the phase, not the session that finishes the last feature.
 - `idea.md` § Definition of success — this rung is that sentence, minus the drag-and-drop, plus the word *correct*.
 
+### Deviations recorded
+
+- **D-075** — Q-104 answered by widening the chooser's domain to Rung 3's own (24 D span, 8 D upstream), not by restating the bands. The Notes below said a smaller default domain "must be re-validated against the bands, in this rung, in this session"; the measurement went the other way — the *larger* domain is what the bands need — and the wall clock was paid for elsewhere.
+- **D-076** — the force probe drops from 50 to 10 samples per convective time, which is how the widened domain still fits in the minute. Identical `Cd`/`St` to four decimals; peak `|u|` 0.4% lower and that is recorded.
+- **D-077** — `_RATE_TABLE` gains measured 160k / 400k anchors, closing the Rung B warp blocker (75.7% → 3.5%).
+- **D-078** — Rung D's cost check samples nine rounds of 300 rather than five of 600, because D-075's domain made the old sampling noisier than its own 2% gate.
+- **D-079** — the default run length rises 20 → 80 convective times. Found by pasting the README quickstart into a fresh shell and getting `Cd` `nan`.
+
 ### Notes
 
 If the wall clock misses by a little, the honest options are a lower default quality level or a
 smaller default domain — **both of which change the physics** and therefore must be re-validated
 against the bands, in this rung, in this session. Widening the bands is not an option.
+
+**What actually happened**: the wall clock did not miss; the *bands* did, and for a reason the run
+length could not fix. The Notes' two options were both the wrong direction — a smaller domain is
+what put `Cd` 14% high in the first place. The lever that bought the minute back was the
+measurement cadence (**D-076**), which changes no physics at all.

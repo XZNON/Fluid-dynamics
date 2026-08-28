@@ -91,15 +91,40 @@ __all__ = ["Case", "KICK_FACTOR", "KICK_TIMES", "FORCE_SAMPLES_PER_TIME"]
 KICK_FACTOR: float = 0.20
 KICK_TIMES: float = 5.0
 
-#: Force samples per convective time ``D / U``. The shedding period is ~6
-#: convective times, so this is ~300 samples per period — far above what
-#: :func:`lbm.probe.strouhal` needs — while the acoustic ringing
-#: ``flow.report._lowpass`` exists to reject (period ~0.4 convective times at
-#: Rung 3's scale) still gets ~20 samples and cannot alias into the wake's
-#: band. Sampling forces costs two host reads, so it is done on a **probe
-#: cadence and never per step** (constraint 8, the T103 rule for device
-#: backends).
-FORCE_SAMPLES_PER_TIME: float = 50.0
+#: Force samples per convective time ``D / U`` — **10** (**D-076**,
+#: superseding T108's 50). The shedding period is ~6 convective times, so this
+#: is ~60 samples per period, still far above what :func:`lbm.probe.strouhal`
+#: needs, while the acoustic ringing ``flow.report._lowpass`` exists to reject
+#: (period ~305 steps, ~0.5 convective times here) still gets ~5 samples per
+#: period and so cannot alias into the wake's band — and
+#: :data:`flow.report.LOWPASS_SIGMA_TC` removes it anyway. Below ~10 that
+#: second margin is what goes first, which is why this is a floor and not a
+#: knob to keep turning.
+#:
+#: The reason it moved is measured, not aesthetic. One sample is **five** host
+#: reads on a device backend — ``forces()`` downloads ``f`` and ``f_bb``,
+#: ``residual()`` / ``mark_residual()`` / the peak-speed check download ``u``
+#: three times — which at Rung E's 720x540 domain is ~37 MB across the bus per
+#: sample. At 50 samples per convective time that is **37.6 s of a 76.9 s run —
+#: nearly as much wall clock as the timesteps themselves** (solving the two
+#: measurements for a fixed cost plus a per-sample one gives 39.3 s of compute
+#: and 7.5 s of probe at the new cadence). Measured, Rung E's own case on
+#: ``warp``, 48000 steps, everything else identical:
+#:
+#: =====================  ==========  ========  ========  ===========
+#: samples/convective     wall clock  ``Cd``    ``St``    peak ``|u|``
+#: =====================  ==========  ========  ========  ===========
+#: 50                     76.9 s      1.4030    0.1676    0.09761
+#: **10**                 **46.8 s**  1.4030    0.1676    0.09725
+#: =====================  ==========  ========  ========  ===========
+#:
+#: Identical to four decimals on both published quantities, 1.64x the speed,
+#: and the one number that does move is peak ``|u|``, by 0.4% and downward —
+#: a coarser sampler sees a slightly smaller maximum, which is a real (small)
+#: loss of pessimism in a constraint-3 check and is recorded rather than
+#: hidden. Sampling stays on a **probe cadence and never per step**
+#: (constraint 8, the T103 rule for device backends).
+FORCE_SAMPLES_PER_TIME: float = 10.0
 
 #: Settling allowance after the startup kick is switched off, in **domain
 #: flow-through times** (``nx / U`` steps each). Nothing is measured until the

@@ -46,10 +46,11 @@ Blockage and downstream fetch are **constant by construction**, not merely
 checked after the fact: the fluid span is a fixed multiple of ``D``
 (:data:`SPAN_D`) and so is the downstream fetch (:data:`DOWNSTREAM_D`), the
 same shape of guarantee **D-026** used for Rung 3 (a fixed span in diameters
-keeps blockage below the ceiling regardless of resolution). The margins here
-are smaller than Rung 3's tuned 24 D span — Rung 3 needed room to match a
-*published force coefficient*; Rung B only needs the guardrails satisfied and
-5000 clean steps, so a smaller, cheaper domain is the right trade (**D-059**).
+keeps blockage below the ceiling regardless of resolution). The margins **are**
+Rung 3's tuned ones — 24 D of span and 8 D of upstream fetch — because a
+product answer is a published force coefficient as far as its user is
+concerned. **D-075** supersedes **D-059**'s smaller, cheaper domain, which was
+measured to put ``Cd`` 14% above Rung 3's band on Rung 3's own case.
 The one guardrail that is not automatic is minimum solid thickness, because
 that depends on the mask's own proportions, so it is measured and checked
 explicitly.
@@ -101,38 +102,81 @@ QUALITY_LEVELS: tuple[str, ...] = ("fast", "balanced", "accurate")
 #: default for an arbitrary immersed mask.
 TAU_FLOOR: float = 0.54
 
-#: Fluid span, in diameters, wall to wall. **D-026** measured 24 D at 4.17%
-#: blockage for Rung 3's published force coefficients; this module does not
-#: need to reproduce a force coefficient, only stay under constraint 12's 10%
-#: ceiling with margin, so a smaller span is chosen to keep Rung B's domains
-#: small (**D-059**). 12 D is 8.33% blockage — under the 10% ceiling with a
-#: real margin (1.67 points), though a narrower one than Rung 3's own 24 D.
-SPAN_D: float = 12.0
+#: Fluid span, in diameters, wall to wall. **Rung 3's own 24 D** (4.17%
+#: blockage, **D-026**) — **D-075**, superseding **D-059**'s 12 D.
+#:
+#: D-059 argued that this module need not reproduce a force coefficient, only
+#: clear constraint 12's 10% ceiling, and picked 12 D (8.33%) to keep Rung B's
+#: domains cheap. Measured through the finished product path on Rung 3's own
+#: case (water, 5 mm/s, 2 cm, ``quality="fast"``, Re 99.6, 48000 steps, warp),
+#: that costs the answer its correctness: ``Cd`` reads **1.5943** against a
+#: published band of 1.25..1.45. The span is why — confinement accelerates the
+#: flow past the body, which ``validate/cylinder.py``'s own ``SPAN_D``
+#: docstring had already measured at 15 D. Measured here, same case, only the
+#: domain changing:
+#:
+#: =================  ==========  ========  ========
+#: span / upstream    blockage    ``Cd``    ``St``
+#: =================  ==========  ========  ========
+#: 12 D / 3 D         8.33%       1.5943    0.1835
+#: 16 D / 6 D         6.25%       1.4523    0.1729
+#: 20 D / 6 D         5.00%       1.4426    0.1713
+#: 22 D / 6 D         4.55%       1.4394    0.1705
+#: 24 D / 6 D         4.17%       1.4360    0.1696
+#: **24 D / 8 D**     **4.17%**   1.4030    0.1676
+#: =================  ==========  ========  ========
+#:
+#: Rung 3 itself prints ``Cd`` **1.4031** and ``St`` **0.1731** on this
+#: machine, so the last row is the benchmark's own number to four decimals.
+#: The cost is 389k cells against 140k, charged to Rung E's wall clock;
+#: **D-076** is where that was paid back.
+SPAN_D: float = 24.0
 
 #: Upstream fetch, in diameters. Not a constraint-12 rule (only the downstream
-#: fetch is, rule 2) — enough for the inlet's uniform profile to reach the
-#: body without a boundary layer forming first. Rung 3 used 8 D; this module
-#: uses a smaller value for the same domain-size reason as :data:`SPAN_D`
-#: (**D-059**).
-UPSTREAM_D: float = 3.0
+#: fetch is, rule 2) — enough for the inlet's uniform profile to reach the body
+#: without the body's own blockage reaching back to the inlet. **Rung 3's 8 D**
+#: (**D-026**), restored by **D-075** from **D-059**'s 3 D. It is not a
+#: second-order knob: at a fixed 24 D span, 6 D of fetch gives ``Cd`` 1.4360
+#: and 8 D gives **1.4030** — the whole remaining distance to Rung 3's digit
+#: (the table above).
+UPSTREAM_D: float = 8.0
 
 #: Downstream fetch, in diameters. Constraint 12 / **D-019**'s rule 2 sets an
 #: 8 D floor; this uses 9 D for a small margin above it rather than sitting
-#: exactly on the boundary (**D-059**).
+#: exactly on the boundary (**D-059**). **Unchanged by D-075**, deliberately:
+#: Rung 3 uses 12 D, and 9 D reproduces its ``Cd`` to four decimals, so the
+#: three extra diameters are cells this module does not need to spend.
 DOWNSTREAM_D: float = 9.0
 
 #: Minimum solid thickness in cells, constraint 12 / **D-017**.
 MIN_THICKNESS_CELLS: float = 3.0
 
 #: Convective times (``D / U``, the same unit ``validate/cylinder.py`` uses)
-#: the run length is sized for. Rung 3 uses 70 (transient) + 60 (measure) =
-#: 130 for a *published* force coefficient; this is a generic default sized
-#: to get well past the startup transient, not to publish a coefficient, so a
-#: much smaller budget is used and recorded as measured this session
-#: (**D-059** — chosen so Rung B's own 24-case sweep stays minutes, not
-#: hours; a case that needs a longer, converged run asks for it through
-#: ``flow.case`` (T108), which is layered on top of this default).
-RUN_CONVECTIVE_TIMES: float = 20.0
+#: the run length is sized for — **80** (**D-079**, superseding **D-059**'s 20).
+#:
+#: The default run has to be long enough that the report can report. Two
+#: independent rules set the floor, and both are arithmetic rather than taste:
+#:
+#: * **D-069** opens the measurement window only after the startup kick has
+#:   switched off (5 convective times) *and* washed out of the domain (one
+#:   flow-through = ``UPSTREAM_D + 1 + DOWNSTREAM_D`` = **18** convective
+#:   times), so nothing at all is measured before **23** — and since the window
+#:   is the last 50%, a run under **46** measures nothing and says so.
+#: * **D-070**'s gate 2 wants the window to hold two of the slowest plausible
+#:   shedding periods, 20 convective times each, which is 40 of window and
+#:   therefore **80** of run.
+#:
+#: 20 satisfied neither once **D-075** widened the domain, and the failure was
+#: found by running the README's own command: `Cd` came back **`nan`** with
+#: *"the run ended after 16000 steps, before the startup kick had ... washed
+#: out (18400)"*. It had been passing before only because the narrower domain
+#: made a flow-through shorter, which is the kind of coupling a constant chosen
+#: for cheapness hides. 80 is the larger of the two floors, so the default run
+#: reports every number :class:`flow.report.Result` has — and a longer,
+#: converged run is still asked for through ``flow.case`` (T108) on top of it.
+#: The cost is real and is recorded: Rung B's numpy accuracy case goes from
+#: ~2 minutes to ~10.
+RUN_CONVECTIVE_TIMES: float = 80.0
 
 #: Vorticity colour-limit factor, ``vorticity_limit = FACTOR * U / D``
 #: (constraint 9 / **D-028**: fixed, symmetric limits). ``validate/cylinder.py``
@@ -144,14 +188,37 @@ VORTICITY_FACTOR: float = 4.0
 FPS: float = 60.0
 PLAYBACK_SPEED: float = 1.0
 
-#: Measured steps/s at three grid sizes, alternating-round A/B, one ``Sim``
+#: Measured steps/s at five grid sizes, alternating-round A/B, one ``Sim``
 #: resident (**D-035**), from ``DOCS/STATE2.md`` § Performance baseline. Used
 #: by :meth:`Plan.estimated_seconds` as a log-log rate model. Quoted with their
 #: conditions: AMD Ryzen 7 5800H at 3201 MHz on mains; NVIDIA RTX 3050 Laptop
 #: GPU, driver 592.82, for the ``warp`` column.
+#:
+#: **The 160k and 400k rows are D-077**, and they are why Rung B passes on
+#: ``warp``. With only the 40k / 1M / 2M anchors this model interpolated
+#: log-log **between two bandwidth-bound points** and therefore straight
+#: through the region where a GPU this size is *kernel-launch*-bound: at 160k
+#: cells it predicted 1996 steps/s where the card does **3560.4**, which is
+#: the 75.7% Rung B error session 19 recorded. The measured slope says the
+#: same thing plainly — 40k to 160k is **-0.11** in log-log (nearly flat: the
+#: launches, not the bytes, are the cost) and 160k to 400k is **-1.02**. Two
+#: anchors inside the range the product actually runs in are the fix; the
+#: model itself is unchanged.
 _RATE_TABLE: dict[str, tuple[tuple[float, float], ...]] = {
-    "numpy": ((40_000.0, 775.1), (1_000_000.0, 23.0), (2_000_000.0, 8.3)),
-    "warp": ((40_000.0, 4155.0), (1_000_000.0, 757.3), (2_000_000.0, 441.0)),
+    "numpy": (
+        (40_000.0, 775.1),
+        (160_000.0, 185.6),
+        (400_000.0, 76.5),
+        (1_000_000.0, 23.0),
+        (2_000_000.0, 8.3),
+    ),
+    "warp": (
+        (40_000.0, 4155.0),
+        (160_000.0, 3560.4),
+        (400_000.0, 1403.9),
+        (1_000_000.0, 757.3),
+        (2_000_000.0, 441.0),
+    ),
 }
 
 
@@ -647,9 +714,15 @@ def plan(
         ),
         "steps": (
             f"{RUN_CONVECTIVE_TIMES:g} convective times (D/U each) at this "
-            "resolution and speed, enough to clear the startup transient and "
-            "observe several shedding periods, the same unit "
-            "validate/cylinder.py uses for its own run length."
+            "resolution and speed, the same unit validate/cylinder.py uses "
+            "for its own run length. Not a round number: the measurement "
+            "window is the last half of the run, it opens only after the "
+            "startup kick has washed out "
+            f"(5 + {UPSTREAM_D + 1.0 + DOWNSTREAM_D:g} = "
+            f"{5.0 + UPSTREAM_D + 1.0 + DOWNSTREAM_D:g} convective times, "
+            "D-069), and it has to hold two of the slowest shedding period we "
+            "would believe (20 convective times each, D-070) or there is no "
+            "Strouhal number to report."
         ),
         "steps_per_frame": (
             f"steps_per_frame(dt, fps={FPS:g}, speed={PLAYBACK_SPEED:g}) = "
