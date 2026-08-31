@@ -20,7 +20,7 @@ through :func:`lbm.render.render` and nothing here colours a field. The tracers
 are stamped onto the RGB frame that ``render`` returned, which is compositing,
 not a second renderer.
 
-    myenv/Scripts/python.exe streamlines.py --shape test2.png --fluid air \
+    myenv/Scripts/python.exe scripts/streamlines.py --shape examples/shapes/test2.png --fluid air \
         --speed "3 m/s" --size "0.36 mm" --downstream 2.5 --out wind_tracers.mp4
 
 Everything about the physics — grid, tau, domain, placement, run length — still
@@ -36,6 +36,14 @@ import time
 
 import numpy as np
 from numpy.typing import NDArray
+
+import sys
+from pathlib import Path
+
+# This script lives in ``scripts/`` but drives the packages at the repo root, so
+# put the root on the path before importing them. Keeps ``python scripts/x.py``
+# working from anywhere without an install step.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from flow import Case
 from flow.case import (
@@ -236,7 +244,8 @@ def main() -> int:
         velocity = s.host_u()
         trail = _advect(px, py, velocity[0], velocity[1], solid, float(spf), u, rng)
         _stamp(frame, trail)
-        return frame
+        # See windtunnel.py: RecordSink does not flip, LiveSink does.
+        return frame[::-1]
 
     sink = RecordSink(args.out, fps=args.fps)
     print(f"running {steps} steps ...", flush=True)

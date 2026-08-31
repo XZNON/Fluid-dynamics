@@ -192,6 +192,20 @@ line in `DOCS/STATE2.md` § Environment.
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 | `validate/minute.py` | Rung E — the whole product path, timed from process start | T110 |
 
+### Everything else at the root
+
+Not modules — the places experiments and their leavings go, so the repo root stays
+the map and not the dumping ground. Nothing here is imported by `lbm/` or `flow/`.
+
+| Path | What belongs there |
+|---|---|
+| `bench.py` | the steps/s table; stays at the root, cited above |
+| `scripts/` | visualisation drivers on top of `flow` — `slowmo`, `streamlines`, `windtunnel`. They change how a run is **drawn or paced**, never what it computes; every solver parameter still comes from `flow.autoconfig.plan`. Each puts the repo root on `sys.path` itself, so cwd does not matter. See `scripts/README.md` |
+| `examples/shapes/` | ad-hoc geometry for demos and issue repros. **Not** `tests/data/shapes/` — `validate/shapes.py` (Rung C) iterates every image in that one and `tests/test_prepare.py` cross-checks it against its `generate.py`, so a picture added there changes what a rung measures |
+| `outputs/` | rendered videos, GIFs and frame dumps. Gitignored; nothing reads from it |
+
+A throwaway probe script is scratch, not a root file — it does not get committed.
+
 ## Current state
 
 **Phase 0 is complete.** T001 -> T011 done; **M4 reached** (2026-08-13). `lbm/` has `core`,

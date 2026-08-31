@@ -74,9 +74,25 @@ Already in the repo, ready to use:
 source in the code. Spelling is forgiving: `H2O`, `He`, `glycerol`, `glycerin`, `olive_oil`,
 `Olive Oil` all resolve.
 
-Thickness matters more than you would expect — it is what decides whether a case can run at
-all. Thin to thick: helium, air, water, olive oil, glycerine, honey. If a case is refused for
-being too energetic, moving *down* that list (to a thicker fluid) is one of the three fixes.
+Thickness is what decides whether a case can run at all — but the thickness that matters is
+**kinematic** viscosity, `nu = mu / rho`, not the everyday sense of the word. Thin to thick:
+
+| fluid | nu (m^2/s) |
+|---|---|
+| water | 1.004e-06 |
+| air | 1.516e-05 |
+| olive oil | 8.400e-05 |
+| helium | 1.178e-04 |
+| glycerine | 1.120e-03 |
+| honey | 7.042e-03 |
+
+**Water is the thinnest thing here, 15x thinner than air.** It is 55x more viscous than air by
+`mu`, but 830x denser, and density wins. So swapping air for water at the same speed and size
+multiplies the Reynolds number by 15 and will usually get you refused. Helium is thicker than
+air for the same reason in reverse: it is a gas, but a very light one.
+
+If a case is refused for being too energetic, moving *down* that list is one of the three
+fixes. Moving from air to water is moving **up** it.
 
 You can also pass a viscosity directly instead of a name, e.g. `--fluid "1.5e-5 m^2/s"`.
 

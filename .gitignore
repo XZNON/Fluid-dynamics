@@ -4,8 +4,9 @@ myenv
 # images
 .claude
 
-# T011 CLI output: videos, GIFs and numbered PNG frames land in the working
-# directory by default. tests/data/*.png is committed geometry and stays.
+# T011 CLI output: videos, GIFs and numbered PNG frames. outputs/ is the
+# convention for rendered runs; tests/data/ and examples/shapes/ are
+# committed geometry and stay.
 *.mp4
 *.gif
 frames/
@@ -16,3 +17,8 @@ __init__.py
 tools
 
 study.md
+
+# rendered runs (videos, GIFs, frame dumps)
+outputs/
+
+.pytest_cache

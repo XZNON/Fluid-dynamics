@@ -8,7 +8,7 @@ This overrides ``Plan.steps_per_frame`` so the run yields a watchable number of
 frames instead. It changes nothing about the physics — only how often a frame is
 kept. Every solver parameter still comes from ``flow.autoconfig.plan``.
 
-    myenv/Scripts/python.exe slowmo.py --shape test_shape.png --fluid air \
+    myenv/Scripts/python.exe scripts/slowmo.py --shape examples/shapes/test_shape.png --fluid air \
         --speed "5 m/s" --size "0.36 mm" --out wake.mp4
 
 Drop ``--out`` for a live window instead.
@@ -18,6 +18,14 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+
+import sys
+from pathlib import Path
+
+# This script lives in ``scripts/`` but drives the packages at the repo root, so
+# put the root on the path before importing them. Keeps ``python scripts/x.py``
+# working from anywhere without an install step.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from flow import Case
 
@@ -40,6 +48,18 @@ def main() -> int:
         "span across the flow is NOT touched -- that one sets the blockage "
         "ratio the plan checked, and changing it would change the answer",
     )
+    p.add_argument("--span", type=float, default=None, metavar="D",
+                   help="cross-flow extent in body diameters (plan default 24, "
+                        "which is Rung 3's own domain, D-075). Blockage ratio is "
+                        "D/span: 24 -> 4.2%%, 14 -> 7.1%%, 10 -> 10%%, constraint "
+                        "12's ceiling. MEASURED on test2.png in air at 3 m/s, "
+                        "against span 24: at 14 D Cd +0.4%% (inside the run-to-run "
+                        "scatter) and St +1.7%%; at 10 D Cd +1.9%% and St +5.0%%. "
+                        "St is the sensitive one and rises monotonically -- "
+                        "confinement changes how the wake oscillates before it "
+                        "changes how hard the body is pushed. 14 D costs 42%% "
+                        "fewer cells for a change inside the noise; below 12 D "
+                        "you are correcting for blockage, not ignoring it")
     p.add_argument("--seconds", default=None, help="physical time; default the plan's own")
     p.add_argument("--out", default=None, help=".mp4 / .gif / a directory")
     p.add_argument("--fps", type=float, default=30.0, help="playback rate of the file")
@@ -75,6 +95,20 @@ def main() -> int:
     # distance and the blockage ratio exactly as planned and spends every new
     # cell behind the body. More downstream fetch than the plan asked for can
     # only help the outlet; it costs cells, not accuracy.
+    if args.span is not None:
+        ny0, nx0 = case.plan.domain
+        ny_new = int(round(args.span * case.plan.cells_per_length))
+        body = case.prepared.mask.shape[0]
+        if ny_new <= body + 2:
+            print(f"refused: span {args.span} D is {ny_new} cells, not larger "
+                  f"than the {body}-cell body.")
+            return 2
+        blockage = body / ny_new
+        flag = "  OVER constraint 12's 10%" if blockage > 0.10 else ""
+        print(f"span       {ny0} -> {ny_new} cells across the flow, "
+              f"blockage {blockage:.1%}{flag}")
+        case.plan = dataclasses.replace(case.plan, domain=(ny_new, nx0))
+
     if args.downstream != 1.0:
         ny, nx = case.plan.domain
         wide = int(round(nx * args.downstream))
