@@ -911,18 +911,46 @@ class WarpBackend:
         )
         return feq
 
-    def collide(self, f: Any, feq: Any, tau: float) -> None:
+    def collide(
+        self,
+        f: Any,
+        feq: Any,
+        tau: float,
+        *,
+        cs_smag: float = 0.0,
+        smag_out: Any = None,
+        smag_work: Any = None,
+    ) -> None:
         """See :meth:`lbm.backends.Backend.collide`.
+
+        The closure's **signature** lands here in T201 so the seam is one shape
+        on both backends; its **kernels** are T202. ``cs_smag = 0.0``, the
+        default and what every rung runs, is the path this backend has always
+        had, untouched and therefore still bitwise its own previous self
+        (constraint 19).
 
         Args:
             f: ``(9, ny, nx)`` ``float32`` device array, modified in place.
             feq: ``(9, ny, nx)`` ``float32`` device array.
             tau: relaxation time, greater than 0.5.
+            cs_smag: Smagorinsky constant. Anything but ``0.0`` raises until
+                T202.
+            smag_out: unused until T202.
+            smag_work: unused until T202.
 
         Raises:
             ValueError: if ``tau <= 0.5`` — the check and the message are
                 :func:`lbm.core.collide`'s (``CLAUDE.md`` constraint 2).
+            NotImplementedError: if ``cs_smag != 0.0`` (see DOCS/TASKS3.md T202).
         """
+        if cs_smag != 0.0:
+            raise NotImplementedError(
+                "the Smagorinsky closure is not on the warp backend yet "
+                "(see DOCS/TASKS3.md T202). T201 landed it in lbm/core.py and "
+                "the numpy backend; T202 ports the kernels and answers Q-201 "
+                "-- whether cs_smag = 0 stays bitwise through a fused "
+                "multiply-add (D-053) or needs a separately compiled kernel."
+            )
         one_minus_omega = self._one_minus_omega(tau)
         _, ny, nx = f.shape
         wp.launch(
@@ -964,6 +992,9 @@ class WarpBackend:
         f_pre: Any = None,
         solid: Any = None,
         f_bb: Any = None,
+        cs_smag: float = 0.0,
+        smag_out: Any = None,
+        smag_work: Any = None,
     ) -> Any:
         """See :meth:`lbm.backends.Backend.collide_stream` (**D-033**).
 
@@ -1003,6 +1034,14 @@ class WarpBackend:
             raise ValueError(
                 "collide_stream needs f_pre (the pre-collision copy, D-011) to "
                 "bounce back off solid: f_pre[OPP[i]] is the reflection."
+            )
+        if cs_smag != 0.0:
+            raise NotImplementedError(
+                "the Smagorinsky closure is not on the warp backend yet "
+                "(see DOCS/TASKS3.md T202). T201 landed it in lbm/core.py and "
+                "the numpy backend; T202 ports the kernels and answers Q-201 "
+                "-- whether cs_smag = 0 stays bitwise through a fused "
+                "multiply-add (D-053) or needs a separately compiled kernel."
             )
         one_minus_omega = self._one_minus_omega(tau)
 

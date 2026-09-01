@@ -15,7 +15,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 
 | ID | Title | Status | Depends on | Gate |
 |---|---|---|---|---|
-| T201 | Smagorinsky closure: `lbm/core.py` + NumPy backend | `not_started` | — | **Rung F** (numpy) |
+| T201 | Smagorinsky closure: `lbm/core.py` + NumPy backend | `done` | — | **Rung F** (numpy) 🟩 |
 | T202 | The closure on the Warp backend | `not_started` | T201 | **Rung F** (full) + Rung A |
 | T203 | Taylor–Green harness | `not_started` | T202 | **Rung G** → **M9** |
 | T204 | `flow/fidelity.py` — the bands, wired through | `not_started` | T203 | **Rung H** → **M10** |
@@ -29,7 +29,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 
 ## T201 — Smagorinsky closure: `lbm/core.py` + NumPy backend
 
-**Status:** `not_started`
+**Status:** `done` (session 24, 2026-09-02)
 
 ### Goal
 
@@ -57,16 +57,16 @@ it; `lbm/probe.py::eddy_viscosity(f, feq, tau, cs_smag) -> NDArray[np.float32]` 
 
 ### Acceptance criteria
 
-- [ ] `smagorinsky_omega` cites its source in the docstring — Hou et al. (1996) or equivalent — and the **exact algebra is pinned by a test**, not just the shape. The filter width is one lattice unit and the docstring says so.
-- [ ] **Bitwise degeneracy, both paths, asserted first:** with `cs_smag=0.0`, `collide` and `collide_stream` produce `f` `numpy.array_equal` to the Phase 1 functions after 1000 steps of Rung 3's case. Fused and unfused agree bitwise with each other, as **D-055** already requires.
-- [ ] The closure **defaults off**: no call site in `lbm/`, `flow/` or `validate/` passes `cs_smag` unless it is testing the closure. `git grep cs_smag` in those trees returns only the closure's own definitions and tests.
-- [ ] `nu_t = cs2 * (tau_eff - tau)` is derived through `tau`, never as a viscosity assigned directly — **constraint 2** applies to the effective relaxation time exactly as it applies to the base one, and a test asserts `nu_t >= 0` everywhere and `nu_t == 0` when `cs_smag == 0`.
-- [ ] `tau_eff >= tau` for every cell, always (the closure adds viscosity and never removes it); asserted on a case with strong shear.
-- [ ] **No allocation inside the step loop.** `smagorinsky_omega` takes an `out=` buffer, `Sim` preallocates it only when the closure is on, and a test asserts the allocation count is unchanged when it is off.
-- [ ] `validate/les.py` exists and prints PASS/FAIL. On numpy it asserts (a) the bitwise clause above and (b) Rung 3's case with `cs_smag=0.17` still prints `Cd` in 1.25–1.45 and `St` in 0.155–0.175.
-- [ ] `myenv/Scripts/python.exe -m validate.les` prints **PASS**.
-- [ ] **All nine existing rungs re-run and print their published digits.** R1–R4, A–E. Any moved digit is a stop-work.
-- [ ] `pytest` green, with the new tests counted in `DOCS/STATE3.md`.
+- [x] `smagorinsky_omega` cites its source in the docstring — Hou et al. (1996) or equivalent — and the **exact algebra is pinned by a test**, not just the shape. The filter width is one lattice unit and the docstring says so.
+- [x] **Bitwise degeneracy, both paths, asserted first:** with `cs_smag=0.0`, `collide` and `collide_stream` produce `f` `numpy.array_equal` to the Phase 1 functions after 1000 steps of Rung 3's case. Fused and unfused agree bitwise with each other, as **D-055** already requires.
+- [x] The closure **defaults off**: no call site in `lbm/`, `flow/` or `validate/` passes `cs_smag` unless it is testing the closure. `git grep cs_smag` in those trees returns only the closure's own definitions and tests.
+- [x] `nu_t = cs2 * (tau_eff - tau)` is derived through `tau`, never as a viscosity assigned directly — **constraint 2** applies to the effective relaxation time exactly as it applies to the base one, and a test asserts `nu_t >= 0` everywhere and `nu_t == 0` when `cs_smag == 0`.
+- [x] `tau_eff >= tau` for every cell, always (the closure adds viscosity and never removes it); asserted on a case with strong shear.
+- [x] **No allocation inside the step loop.** `smagorinsky_omega` takes an `out=` buffer, `Sim` preallocates it only when the closure is on, and a test asserts the allocation count is unchanged when it is off.
+- [x] `validate/les.py` exists and prints PASS/FAIL. On numpy it asserts (a) the bitwise clause above and (b) Rung 3's case with `cs_smag=0.17` still prints `Cd` in 1.25–1.45 and `St` in 0.155–0.175.
+- [x] `myenv/Scripts/python.exe -m validate.les` prints **PASS**.
+- [x] **All nine existing rungs re-run and print their published digits.** R1–R4, A–E. Any moved digit is a stop-work.
+- [x] `pytest` green, with the new tests counted in `DOCS/STATE3.md`.
 
 ### Constraints that bite here
 

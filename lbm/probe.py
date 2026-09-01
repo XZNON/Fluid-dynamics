@@ -24,11 +24,12 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from lbm.core import E, E_F32, OPP, Q
+from lbm.core import CS2, E, E_F32, OPP, Q, smagorinsky_tau_eff
 
 __all__ = [
     "BoundaryLinks",
     "boundary_links",
+    "eddy_viscosity",
     "forces",
     "residual",
     "strouhal",
@@ -485,3 +486,60 @@ def residual(
         np.copyto(work[1], zero, where=solid)
 
     return float(work.max()) / U
+
+
+# --- the eddy viscosity a run actually generated (T201) ----------------------
+
+
+def eddy_viscosity(
+    f: NDArray[np.float32],
+    feq: NDArray[np.float32],
+    tau: float,
+    cs_smag: float,
+    out: NDArray[np.float32] | None = None,
+) -> NDArray[np.float32]:
+    """The Smagorinsky eddy viscosity field, ``nu_t = cs2 (tau_eff - tau)``.
+
+    ``DOCS/IDEA4.md`` § The five things Phase 2 must get right, (1): the three
+    fidelity bands are decided from *"the eddy viscosity the run actually
+    generated"*, so this is the quantity **constraint 18** is evaluated on, and
+    the quantity Rung G (T203) compares against an exact decay rate. It is a
+    **probe**, not a kernel: it runs at frame or report cadence on host arrays
+    and never inside the step loop (constraint 8), which is why it is here and
+    not in :mod:`lbm.core`.
+
+    Constraint 2, restated for the closure (**D-081**)
+    -------------------------------------------------
+    ``nu_t`` is *derived* from the relaxation time and never assigned. The model
+    computes ``tau_eff`` (:func:`lbm.core.smagorinsky_tau_eff`); this function
+    subtracts ``tau`` and multiplies by ``cs2``, which is the same
+    ``nu = cs2 (tau - 0.5)`` relation applied to the increment. There is no path
+    from a viscosity back to a relaxation time anywhere in this package, for the
+    base one or for the effective one.
+
+    Two properties a test asserts rather than assumes: ``nu_t >= 0`` everywhere,
+    because the closure adds viscosity and never removes it; and ``nu_t == 0``
+    **exactly** when ``cs_smag == 0``, because
+    :func:`lbm.core.smagorinsky_tau_eff` returns ``float32(tau)`` unmodified in
+    that case and the subtraction below is then exact.
+
+    Args:
+        f: distribution function, shape ``(9, ny, nx)``, ``float32``, in the
+            host layout (constraint 4). Read only.
+        feq: the equilibrium of the same state, same shape and dtype. Read only.
+        tau: base BGK relaxation time, greater than 0.5.
+        cs_smag: the Smagorinsky constant the run used. ``0.0`` gives an
+            all-zero field.
+        out: optional preallocated output, shape ``(ny, nx)``, ``float32``.
+
+    Returns:
+        ``nu_t``, shape ``(ny, nx)``, ``float32``, lattice units, ``>= 0``.
+
+    Raises:
+        ValueError: if ``tau <= 0.5`` or ``cs_smag < 0`` (raised by
+            :func:`lbm.core.smagorinsky_tau_eff`).
+    """
+    nu_t = smagorinsky_tau_eff(f, feq, tau, cs_smag, out=out)
+    nu_t -= np.float32(tau)
+    nu_t *= np.float32(CS2)
+    return nu_t

@@ -289,12 +289,24 @@ therefore *slower per case and correct*, where before it was fast and 14% high o
 measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 160k / 400k anchors
 (**D-077**) and Rung D's cost check gained rounds (**D-078**).
 
-**Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 is next** and no
-Phase 2 code exists yet. Three deliverables: a **Smagorinsky closure** on the existing BGK collision
-(both backends, defaulting off), the **fidelity bands** that make it safe to ship, and a
-**pygame desktop application** shipped as `pip install fengdong`. Rungs **F ⬜ · G ⬜ · H ⬜ · I ⬜ ·
+**Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 landed in
+session 24** and **T202 is next**. Three deliverables: a **Smagorinsky closure** on the existing BGK
+collision (both backends, defaulting off), the **fidelity bands** that make it safe to ship, and a
+**pygame desktop application** shipped as `pip install fengdong`. Rungs **F 🟨 · G ⬜ · H ⬜ · I ⬜ ·
 J ⬜**, milestones **M9**–**M12**. Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog
 `DOCS/TASKS3.md` · **live status `DOCS/STATE3.md`**.
+
+**T201, done (session 24):** the closure is in `lbm/core.py` — `smagorinsky_tau_eff` (the primitive)
+and `smagorinsky_omega` (its reciprocal), `CS_SMAG_LITERATURE = 0.17`, `SMAG_Q_COEFF = 18 sqrt(2)` —
+with keyword-only `cs_smag` on `collide` / `collide_stream`, `lbm.probe.eddy_viscosity`,
+`SimConfig.cs_smag`, and the NumPy backend implementing it. **Rung F is green on numpy and 🟨 overall
+because warp is T202**: `cs_smag = 0` is bitwise Phase 1 on both the fused and unfused paths after
+1000 steps of Rung 3's case, and Rung 3 at `Cs = 0.17` prints Cd **1.4143**, St **0.1719** inside the
+unwidened bands. All nine existing rungs were re-run with **no physics digit moved**. The warp
+backend accepts `cs_smag` and **raises `NotImplementedError` naming T202** for a non-zero value
+rather than quietly computing plain BGK. **D-085** fixes the normalisation, **D-086** makes
+constraint 19 an explicit branch rather than a zero-valued term, **D-087** keeps one frozen Phase 1
+oracle.
 
 **What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
 picture"* and D-044 deferred that; everything beneath it is now validated by nine rungs, so this

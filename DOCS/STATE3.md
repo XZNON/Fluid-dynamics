@@ -15,15 +15,15 @@ numbering continues here at **D-080**.
 | Field | Value |
 |---|---|
 | **Phase** | **Phase 2 — live.** FengDong: the Smagorinsky closure, the fidelity bands, and the desktop application (`DOCS/IDEA4.md`) |
-| **Current task** | none yet — **T201** is next (Smagorinsky closure in `lbm/core.py` + NumPy backend) |
+| **Current task** | **T202** — the closure on the Warp backend |
 | **Task status** | `not_started` |
-| **Completed tasks** | Phase 0: T001 … T011, all eleven. Phase 1: T101 … T110, all ten. Phase 2: none yet |
+| **Completed tasks** | Phase 0: T001 … T011, all eleven. Phase 1: T101 … T110, all ten. Phase 2: **T201** |
 | **Milestone reached** | **M8** (2026-08-27, session 22) — the last of Phase 1. Phase 2's are **M9** … **M12** and none is reached |
-| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — last re-run session 22 **on both backends**: R1 L2 **0.3650%** numpy / **0.3649%** warp, R2 **0.75%** / **0.21 cells** on both, R3 St **0.1731** Cd **1.4031** on both, R4 square Cd **1.5279** and polygon Cd **1.4276** on both |
-| **Phase 1 rung status** | A 🟩 · B 🟩 · C 🟩 · D 🟩 · E 🟩 — A: worst kernel 5.960e-08, whole step 9.611e-06, checkpoint 8.196e-06, restart bit-identical. B: warp 3.5%, numpy 15.2%, sweep 24/24 on both. C: 15/15 in 16.2 s. D: caught before `nan` 3/3, Monitor cost −0.69%. E: warp **49.5 s**, Cd **1.4040**, St **0.1672** |
-| **Phase 2 rung status** | F ⬜ · G ⬜ · H ⬜ · I ⬜ · J ⬜ — none attempted; every harness is built by the task that needs it |
-| **Provenance of the rung rows above** | **All of them are session 22's measurements, carried forward.** Session 23 wrote documents only and re-ran nothing but `pytest` (**772 passed, 1 skipped**, twice). **T201 re-runs all nine** and is where these digits get re-confirmed |
-| **Last updated** | 2026-09-01 — session 23 (**Phase 2 planned**: `DOCS/IDEA4.md`, `DOCS/PLAN3.md`, `DOCS/TASKS3.md`, `DOCS/STATE3.md` written; `DOCS/STATE2.md` frozen; **D-080** chooses the phase against XLB and 3D on measured evidence; **D-081** … **D-084** rewrite constraint 1, add constraints 17–20, name the app package and price the document move. No code written. `pytest` **772 passed, 1 skipped**) |
+| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **re-run session 24 on numpy, every published digit unmoved**: R1 L2 **0.3650%**, R2 **0.75%** / **0.21 cells**, R3 St **0.1731** Cd **1.4031**, R4 square Cd **1.5279** and polygon Cd **1.4276**. The warp column is session 22's (R1 L2 0.3649%) and was not re-measured — **T202 re-runs all nine on both backends** and is where it is re-confirmed |
+| **Phase 1 rung status** | A 🟩 · B 🟩 · C 🟩 · D 🟩 · E 🟩 — **all re-run session 24**. A: worst kernel **5.960e-08**, whole step **9.611e-06**, checkpoint **8.196e-06**, restart bit-identical — every digit unmoved. B: sweep **24/24 on both**, accuracy warp **4.3%** (was 3.5%) and numpy **17.5%** (was 15.2%), both far inside the 25% limit. C: **15/15** in 30.8 s (was 16.2 s). D: caught before `nan` **3/3**, Monitor cost **+1.02%** (was −0.69%, limit 2%). E: warp **55.7 s** (was 49.5 s, limit 60), Cd **1.4040**, St **0.1672** — both physics digits exact. **Every figure that moved is wall-clock-derived**; see the session-24 log for the clock each was measured at |
+| **Phase 2 rung status** | **F 🟨** · G ⬜ · H ⬜ · I ⬜ · J ⬜ — **F is green on numpy and not yet attempted on warp**, which is T202 and is why it is 🟨 rather than 🟩. Measured: `cs_smag=0` **bitwise** Phase 1 on both the fused and unfused paths after 1000 steps of Rung 3's case (`array_equal`, worst |diff| 0.000e+00); Rung 3's full case at `Cs = 0.17` printing Cd **1.4143** and St **0.1719**, inside the unwidened published bands; `max(nu_t)/nu` **0.191** on that wake |
+| **Provenance of the rung rows above** | **Session 24's own measurements**, except the warp column of R1–R4, which is still session 22's and is labelled as such above. Rung B could not be run as a single process on this machine (see the session-24 log) and its numpy half was driven section by section through the rung's own `check_accuracy` and `run_case`; all 24 cases completed with 0 failures. **T202 re-runs all nine on both backends** |
+| **Last updated** | 2026-09-02 — session 24 (**T201 done**: the Smagorinsky closure in `lbm/core.py` and the NumPy backend, `lbm/probe.py::eddy_viscosity`, `validate/les.py`. **Rung F green on numpy**; all nine existing rungs re-run with no physics digit moved. **D-085** … **D-087**. `pytest` **800 passed, 1 skipped** (317.1 s), 28 of them new). Previously: 2026-09-01 — session 23 (**Phase 2 planned**: `DOCS/IDEA4.md`, `DOCS/PLAN3.md`, `DOCS/TASKS3.md`, `DOCS/STATE3.md` written; `DOCS/STATE2.md` frozen; **D-080** chooses the phase against XLB and 3D on measured evidence; **D-081** … **D-084** rewrite constraint 1, add constraints 17–20, name the app package and price the document move. No code written. `pytest` **772 passed, 1 skipped**) |
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -41,17 +41,39 @@ Two entries stay in the local issue queue and neither is a blocker:
   bite T205, where a wheel has to contain every `__init__.py` it ships; fix it there or explicitly
   carry it.
 
+A third entry was queued in session 24 and is likewise not a blocker:
+
+- **`d5b27e51fcdc`** — `validate/refusals.py` printed `on battery` in its D-035 conditions line while
+  `Win32_Battery.BatteryStatus` read **2 (mains)** for the whole session and `validate/minute.py`
+  printed `power: mains` for the same machine minutes later. One of the two power probes is wrong,
+  and **D-035** requires the power state beside every absolute timing figure, so a probe that
+  misreports it makes those figures unquotable. The fix is to make the two rungs share one
+  implementation. Rung D passes either way — the discrepancy is in the *label*, not in the check.
+
 One thread carried since session 18 and now scheduled rather than carried: **`Monitor` on `warp` has
 never been timed.** Rung D runs on `numpy` by design, so the divergence probe's device-side cost is
 unmeasured. It is an acceptance criterion of **T208**.
+
+**On this machine, a process that runs longer than roughly ten minutes under the agent's own tooling
+is liable to be killed** (session 24 lost several Rung B attempts that way, one of them after 98
+CPU-minutes, and an orphaned survivor then competed for CPU with its own replacement). This is an
+environment property, not a project defect, and it is recorded here because **Rung B (~23 min) and
+Rung 4 (~36 min) are both past that line** and the next session will hit it. The workaround session
+24 used is in its log.
 
 ## Open questions
 
 - **Q-201** — Does bitwise degeneracy on the Warp backend survive multiplying the closure term by
   zero, or does `cs_smag = 0` need a separately compiled kernel? **D-053** documents that the GPU
   contracts `x * a + b` into one rounding where NumPy does two, so a term that is algebraically zero
-  is not automatically bitwise inert. **T202 answers it by measurement.** The note in `DOCS/TASKS3.md`
-  § T202 is explicit that the branch is the fix and the tolerance is not.
+  is not automatically bitwise inert. **Still open — T202 answers it by measurement.** The note in
+  `DOCS/TASKS3.md` § T202 is explicit that the branch is the fix and the tolerance is not.
+  **What T201 changed about it (session 24):** the NumPy side did not wait to find out. **D-086**
+  makes `cs_smag == 0.0` an explicit early-return branch in `lbm/core.py::collide` and a scalar-vs-field
+  branch in `::collide_stream`, so nothing algebraically zero is ever multiplied in on *either*
+  backend's reference path. T202 inherits a branch to port rather than a tolerance to argue about,
+  and the question narrows to whether Warp needs *two compiled kernels* or one guarded branch
+  suffices.
 - **Q-202** — What is `<nu_t>` on a *resolved* 2D Taylor–Green at `Cs = 0.17`, as a fraction of `nu`?
   Expected small. If the model fires hard on a smooth flow, that is a finding about the
   implementation rather than about turbulence, and it belongs in § Decisions with its measurement.
@@ -66,8 +88,8 @@ unmeasured. It is an acceptance criterion of **T208**.
 
 ## Environment
 
-Project venv: `myenv/` (gitignored). Python 3.11.15. **Unchanged this session — nothing was
-installed into `myenv`.**
+Project venv: `myenv/` (gitignored). Python 3.11.15. **Unchanged in session 24 as well —
+nothing was installed into `myenv` by T201, which was the expectation `PROMPTS/024` set.**
 
 | Package | Version | Added by |
 |---|---|---|
@@ -150,6 +172,9 @@ force.
 | D-082 | 2026-09-01 | **The closure is a stability device, not a fidelity device, and every `Result` says which.** Three bands: **quantitative** (`Re <= 200` and `max(nu_t)/nu < 0.1`), **qualitative** (`max(nu_t)/nu < 1`), **illustrative** (otherwise). The upper boundaries are **measured per run from the eddy viscosity the run generated**, not read off a Reynolds-number table. Outside the quantitative band no unqualified `Cd` is emitted — **constraint 18**, machine-checked by Rung H. | Two physical facts and one project fact. (1) The cylinder wake becomes three-dimensional at **Re ≈ 190** (Williamson 1996, mode-A), which is why Rung 3 sits at Re 100; above it a 2D run is wrong about the flow, not the numerics. (2) Smagorinsky descends from Kolmogorov's forward cascade and 2D turbulence cascades energy the other way (Kraichnan 1967), so a 2D closure is a stabiliser and not a model of what is actually happening; the drag crisis near Re 3e5 cannot appear in 2D at any resolution. (3) Constraint 5 names *"a wrong sim that looks plausible"* as this project's main failure mode, and the closure makes it reachable **on purpose** — so the band is not documentation, it is the safety interlock. `max(nu_t)/nu < 1` is chosen as the outer boundary because it is the point where the model supplies more viscosity than the fluid does, which is a statement about this run that a test can evaluate. |
 | D-083 | 2026-09-01 | **The application is a new top-level package `fengdong/`, built on pygame and nothing else, and the distribution is named `fengdong`.** Import layering: `fengdong/` may import `flow/`, `flow/` may import `lbm/`, and neither may import upward — **constraint 17**, asserted by a test in the shape of the existing constraint-15 test. The widget set is closed at five (`Label`, `TextField`, `Dropdown`, `Button`, `DropTarget`) plus `Panel`. | 风洞 (fēngdòng) is Chinese for *wind tunnel*; the user chose it. `flow` is **taken** on PyPI and `fengdong` is **free** (both checked this session), so the distribution and import names differ by necessity rather than by preference, and `fengdong` is then also the command and the title bar. pygame-only because it is **already a dependency** (2.6.1), already the sink `lbm/render.py` feeds, and `pygame.DROPFILE` was confirmed present this session — so *"drags in a picture"* costs no new dependency and the validated render path is reused rather than duplicated. PySide6 would have meant a ~150 MB dependency, a second event loop to reconcile with the ring buffer, and frames reaching the screen by a path no rung has validated; tkinter would have needed `tkinterdnd2` for the one feature that is not negotiable. The price accepted is a hand-rolled widget layer, and it is bounded by closing the set on day one. |
 | D-084 | 2026-09-01 | **`DOCS/STATE2.md` is frozen in place and Phase 1's documents do not move to `old-Docs/`. Decision numbering continues unbroken at D-080.** The freeze is a header banner plus this rule, not a path change; `DOCS/IDEA3.md`, `DOCS/PLAN2.md` and `DOCS/TASKS2.md` are likewise marked closed where they sit. **Extends D-049 rather than repeating it.** | D-049 moved Phase 0's three session-management documents to `old-Docs/` but **deliberately left `DOCS/IDEA2.md` put**, because ~100 docstrings cited it by path. Priced this session before deciding: `DOCS/IDEA3.md` has **144 citations across 52 files, all 52 in `.py`**; `TASKS2` **120 / 34 files / 37 in `.py`**; `STATE2` **121 / 36 / 16**; `PLAN2` **83 / 30 / 15**. That is ~470 citations and ~120 docstring paths to rewrite for no reader benefit, against D-049's own stated threshold of ~100 for keeping a file put. A second migration would also make `old-Docs/` ambiguous — *which* old? — where a freeze banner is unambiguous and costs nothing. `CLAUDE.md` § Session protocol names the live documents, so there is no question about which file is current. |
+| D-085 | 2026-09-02 | **The closure's normalisation is fixed and written down: filter width `Delta = 1` lattice unit, strain norm `|S| = sqrt(2 S_ab S_ab)`, and `Q_ab = sum_i e_ia e_ib (f_i - feq_i)` with no factor of two folded in — giving `tau_eff = 0.5 (tau + sqrt(tau^2 + 18 sqrt(2) Cs^2 |Q| / rho))`. `lbm.core.smagorinsky_tau_eff` is the primitive and `smagorinsky_omega` is its reciprocal, not the other way round.** `SMAG_Q_COEFF = 18 sqrt(2)` is defined once in `lbm/core.py`. | Two separate reasons. **(1) The coefficient is a convention, not a fact.** Session 23 read XLB's 2D closure as a cross-check and it carries **36** in that position — exactly `sqrt(2)` times ours. The difference is entirely the strain-norm convention, so a docstring that does not state which one it took cannot be checked against any paper, and `DOCS/TASKS3.md` § T201 required the algebra be *pinned by a test*. It is pinned twice: against the quadratic written out independently with an `einsum` `Q`, and against a velocity field built **backwards** from a chosen strain rate, which is the only check that pins the filter width and the strain norm *together*. Derivation and the XLB comparison are in the docstring. **(2) The direction matters in `float32`.** `1 / (1 / tau)` is not `tau`, so deriving `tau_eff` back from `omega` would leave `nu_t = cs2 (tau_eff - tau)` a few ulps from zero with the closure off, breaking T201's "`nu_t == 0` exactly" criterion and, with it, constraint 18's ability to say a run generated no eddy viscosity. Computing `tau_eff` first and reciprocating once makes the zero exact. |
+| D-086 | 2026-09-02 | **Constraint 19 is implemented as an explicit `cs_smag == 0.0` branch, not as a term that multiplies to zero.** `lbm.core.collide` returns early through Phase 1's three operations verbatim; `collide_stream` selects a `float32` *scalar* factor when off and an `(ny, nx)` *field* when on. | The cheap, absolute version of the guarantee. Even on NumPy the two are not the same: a scalar `float32(1 - 1/tau)` is not required to equal `1 - float32(1/tau)` evaluated elementwise, so a "closure term that happens to be zero" would have been bitwise-*close* rather than bitwise-*equal*, and constraint 19 says equal. **Q-201** then makes the same point far more sharply for the GPU (**D-053**: the device contracts `x * a + b` into one rounding where NumPy does two). `DOCS/TASKS3.md` § T202 already ruled that *the branch is the fix, not the tolerance*; writing the branch on the reference backend first means T202 ports a shape that is known to work rather than discovering it under a failing rung. Measured: `array_equal` after 1000 steps of Rung 3's case, worst |diff| **0.000e+00**, on both the fused and the unfused path. |
+| D-087 | 2026-09-02 | **Rung F runs Rung 3's own harness rather than a copy of it, and the frozen Phase 1 collision lives in exactly one place.** `validate/cylinder.py::make_config` and `::run_cylinder` gain a `cs_smag: float = 0.0` parameter that every caller inside that module leaves at zero; `validate/les.py` holds verbatim transcriptions of Phase 1's `collide` / `collide_stream` plus a `Phase1Backend` shim, and `tests/test_smagorinsky.py` **imports** them rather than transcribing them again. | "Bitwise what Phase 1 shipped" needs a Phase 1 to compare against, and after T201 edited `lbm/core.py` there is not one in the tree. A frozen transcription is the only oracle available — so it is marked *do not edit*, and there is **one** of it, because two copies that drift make the rung and the unit tests disagree about what Phase 1 was. Reusing Rung 3's own harness for clause 3 is the same argument in the other direction: a second copy of Rung 3's setup would be a case whose agreement with the real Rung 3 nobody checks, and `cs_smag` threaded through the existing one costs a defaulted parameter. The AST-based test `test_the_closure_is_off_everywhere_it_is_not_being_tested` is what keeps that parameter honest — it checks *syntax*, not text, so no docstring can pass or fail it, and it asserts `flow/` does not mention the closure at all. |
 
 ### Constraint fate table (D-081, D-083)
 
@@ -291,3 +316,88 @@ citation counts **468 total, 120 in `.py`**.
 **Next:** **T201** — the Smagorinsky closure in `lbm/core.py` and the NumPy backend, with Rung F's
 bitwise degeneracy clause written *before* the model does anything. Prompt written to
 `PROMPTS/024-t201-smagorinsky-closure.md`.
+
+
+### 2026-09-02 — Session 24: T201 — the Smagorinsky closure, `lbm/core.py` + the NumPy backend
+
+**Task:** **T201**. **Status: done — every acceptance criterion in `DOCS/TASKS3.md` § T201 was run and
+passed.** Phase 2 has its first code and **Rung F is green on numpy**.
+
+**Read, in the protocol's order:** `PROMPTS/024-t201-smagorinsky-closure.md`; `CLAUDE.md`;
+`DOCS/STATE3.md` in full; `DOCS/TASKS3.md` § T201 and § T202; `DOCS/IDEA4.md` § The five things
+Phase 2 must get right (1) and (2) and § Validation ladder; `DOCS/PLAN3.md` § Why this order,
+§ Session map, § Risks; `lbm/core.py`, `lbm/backends/__init__.py`, `lbm/backends/numpy_backend.py`,
+`lbm/backends/warp_backend.py`, `lbm/runner.py`, `lbm/probe.py`, `validate/cylinder.py`.
+
+**Done**
+
+- **`lbm/core.py`** — `smagorinsky_tau_eff` and `smagorinsky_omega` (the T201 contract's named entry
+  point), `CS_SMAG_LITERATURE = 0.17` and `SMAG_Q_COEFF = 18 sqrt(2)`. `collide` and `collide_stream`
+  gained keyword-only `cs_smag: float = 0.0`, `smag_out=` and `smag_work=`. The full derivation, the
+  three normalisation choices and the XLB comparison are in the docstring (**D-085**).
+- **`lbm/probe.py`** — `eddy_viscosity(f, feq, tau, cs_smag) -> (ny, nx)`: `nu_t = cs2 (tau_eff - tau)`,
+  derived through `tau` and never assigned (constraint 2). This is the field **D-082**'s bands and
+  Rung G both read.
+- **`lbm/runner.py`** — `SimConfig.cs_smag: float = 0.0`; `Sim` allocates `smag_out` `(ny, nx)` and
+  `smag_work` `(4, ny, nx)` **only when the closure is on**, and refuses a negative `cs_smag`.
+- **The seam** — `Backend.collide` / `collide_stream` carry the keyword; `numpy_backend` delegates to
+  `lbm.core` as it always has; `warp_backend` accepts the keyword and **raises
+  `NotImplementedError` naming T202** for a non-zero value rather than silently computing plain BGK.
+- **`validate/les.py`** — Rung F, three clauses, printing PASS/FAIL, with the frozen Phase 1
+  collision and a `Phase1Backend` shim as the oracle (**D-087**).
+- **`tests/test_smagorinsky.py`** — 28 tests, one per acceptance criterion plus the invariants.
+- **`validate/cylinder.py`** — `make_config` and `run_cylinder` gained `cs_smag: float = 0.0`, left at
+  zero by every caller in that module, so Rung F runs Rung 3's own harness (**D-087**).
+
+**Measured**
+
+- **Rung F, full: PASS.** `cs_smag = 0` is `numpy.array_equal` to the frozen Phase 1 kernels after
+  **1000 steps of Rung 3's case**, worst |diff| **0.000e+00**, on the fused *and* the unfused path;
+  fused and unfused agree bitwise with each other (**D-055** survives). Rung 3's full case at
+  `Cs = 0.17` printed **Cd 1.4143**, **St 0.1719** — inside the unwidened published bands — with
+  `tau_eff` 0.5378 … 0.5450 and `max(nu_t)/nu` **0.191**.
+- **`pytest`: 800 passed, 1 skipped** in 317.1 s (session 23: 772 passed, 1 skipped; +28 new).
+- **All nine existing rungs re-run, and no physics digit moved.** R1 L2 **0.3650%** · R2 **0.75%** /
+  **0.21 cells** · R3 St **0.1731** Cd **1.4031** · R4 **1.5279** / **1.4276** · A worst kernel
+  **5.960e-08**, whole step **9.611e-06**, checkpoint **8.196e-06**, restart bit-identical ·
+  B sweep **24/24 on both backends** · C **15/15** · D **3/3** caught before `nan` · E Cd **1.4040**,
+  St **0.1672**.
+- **Every figure that did move is wall-clock-derived, and the clock it was measured at explains it.**
+  The machine sat at `CurrentClockSpeed` **1990 of 3201 MHz on mains** for most of the session and
+  recovered to **3201 of 3201** before Rung E. Measured while throttled: Rung C **30.8 s** (was
+  16.2 s), Rung D's Monitor cost **+1.02%** (was −0.69%, limit 2%), Rung B accuracy warp **4.3%**
+  (was 3.5%) and numpy **17.5%** (was 15.2%), both against a 25% limit. Measured after recovery:
+  **Rung E 55.7 s** against its 60 s limit (was 49.5 s), at **3201 of 3201 MHz, on mains**, NVIDIA
+  RTX 3050 Laptop GPU, driver **592.82** (**D-035**).
+
+**Decisions made**
+
+- **D-085** — the closure's normalisation, fixed and written down; `tau_eff` is the primitive and
+  `omega` its reciprocal, because the other direction cannot make `nu_t` exactly zero in `float32`.
+- **D-086** — constraint 19 is an explicit `cs_smag == 0.0` branch, not a zero-valued term. Narrows
+  **Q-201** for T202.
+- **D-087** — Rung F reuses Rung 3's harness; one frozen Phase 1 transcription, imported by the tests.
+
+**Not done / deferred**
+
+- **`validate/les.py` has no `--backend` flag**, deliberately: `DOCS/TASKS3.md` § T202 names adding it
+  as one of that task's acceptance criteria, and the Warp kernels do not exist yet. Rung F is
+  therefore **🟨 — green on numpy, unattempted on warp** — and the script says so in its own output.
+- **The warp column of R1–R4 was not re-measured.** Those four were re-run on numpy only. T202's
+  contract already requires all nine on **both** backends, so it is scheduled rather than skipped.
+- **Rung B could not be run as a single process on this machine.** Several attempts were killed
+  mid-run by the environment; one survived as an orphan for 98 CPU-minutes and competed for CPU with
+  its own replacement until it was found and killed, which is what made the earlier attempts look
+  stalled. The warp half then completed normally in one 3m41s foreground run. The **numpy** half was
+  driven section by section through the rung's *own* `check_accuracy` and `run_case`, over the same
+  24-case list in the same order, accumulating into `outputs/ladder/B_numpy.json`: accuracy
+  **17.5%**, then all **24 of 24** cases, **0 failures**, with every `tau`, `domain`, `peak|u|` and
+  `Re err` identical to the warp table. Recorded plainly because it is a *deviation in how the rung
+  was invoked*, not in what it checked. The driver is scratch and is not committed.
+
+**Blockers:** none.
+
+**Next:** **T202** — the closure on the Warp backend: bitwise degeneracy there too (**Q-201**),
+cross-backend agreement with the closure on against **D-053**'s 1e-6 and **D-056**'s 1e-4, the LES
+performance floors, and all nine rungs on both backends. Prompt written to
+`PROMPTS/025-t202-closure-on-warp.md`.

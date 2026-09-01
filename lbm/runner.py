@@ -181,6 +181,17 @@ class SimConfig:
             raises :class:`ValueError` at :class:`Sim` construction, listing
             what is available. It is a plain string so the config still pickles
             cheaply and a checkpoint carries it verbatim (**D-050**).
+        cs_smag: the Smagorinsky constant ``Cs`` of the T201 closure
+            (``DOCS/IDEA4.md`` § The five things Phase 2 must get right, (1)
+            and (2)). **``0.0`` is the default and means the closure is off**,
+            which is constraint 19: with it off the collision is bitwise what
+            Phase 1 shipped, and the nine rungs below this phase are therefore
+            untouched by the closure's existence. The literature value is
+            :data:`lbm.core.CS_SMAG_LITERATURE` and Phase 2 does not tune it.
+            A plain float, so the config still pickles cheaply and a checkpoint
+            carries it verbatim; it adds no *state* — ``tau_eff`` is derived
+            every step and ``f``, ``solid`` and ``step_count`` remain the whole
+            checkpoint (constraint 11, **D-022**, **D-050**).
     """
 
     ny: int
@@ -206,6 +217,7 @@ class SimConfig:
     checkpoint_path: str | None = None
     fused: bool = True
     backend: str = "numpy"
+    cs_smag: float = 0.0
 
     def replace(self, **changes: Any) -> "SimConfig":
         """A copy with fields overridden (``dataclasses.replace``)."""
@@ -577,6 +589,23 @@ class Sim:
         # empty domain the reflection is a no-op and the mask need not be read.
         self._has_solid: bool = bool(self.solid.any())
 
+        # The Smagorinsky closure (T201). Its two buffers are allocated **only
+        # when it is on**, so a run with ``cs_smag = 0`` — every rung below
+        # Phase 2, and every default — allocates exactly the arrays Phase 1
+        # allocated and no others. ``tests/test_runner.py`` counts them.
+        self._cs_smag: float = float(cfg.cs_smag)
+        if self._cs_smag < 0.0:
+            raise ValueError(
+                f"cs_smag must be non-negative (got {cfg.cs_smag!r}): the "
+                f"closure adds eddy viscosity and never removes it "
+                f"(CLAUDE.md constraint 2)."
+            )
+        self.smag_out: Any = None
+        self.smag_work: Any = None
+        if self._cs_smag != 0.0:
+            self.smag_out = be.empty((ny, nx))
+            self.smag_work = be.empty((4, ny, nx))
+
         if f is None:
             self._init_equilibrium()
         else:
@@ -712,6 +741,11 @@ class Sim:
                 f_pre=f if self._has_solid else None,
                 solid=self._solid_dev if self._has_solid else None,
                 f_bb=self.f_bb,
+                # Off unless the config turned it on, and off is a branch inside
+                # the kernel rather than a zero-valued term (constraint 19).
+                cs_smag=self._cs_smag,
+                smag_out=self.smag_out,
+                smag_work=self.smag_work,
             )
         else:
             backend.copy(self.f_pre, f)  # pre-collision copy (D-011)
@@ -721,7 +755,14 @@ class Sim:
                 backend.force_velocity_shift(self.rho, self.u, self._g, self.work)
 
             backend.equilibrium(self.rho, self.u, self.feq, self.work)
-            backend.collide(f, self.feq, cfg.tau)
+            backend.collide(
+                f,
+                self.feq,
+                cfg.tau,
+                cs_smag=self._cs_smag,
+                smag_out=self.smag_out,
+                smag_work=self.smag_work,
+            )
 
             if self._forced:
                 backend.apply_body_force(

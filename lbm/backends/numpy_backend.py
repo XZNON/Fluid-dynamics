@@ -95,7 +95,14 @@ class NumpyBackend:
         return _equilibrium(rho, u, feq, work)
 
     def collide(
-        self, f: NDArray[np.float32], feq: NDArray[np.float32], tau: float
+        self,
+        f: NDArray[np.float32],
+        feq: NDArray[np.float32],
+        tau: float,
+        *,
+        cs_smag: float = 0.0,
+        smag_out: NDArray[np.float32] | None = None,
+        smag_work: NDArray[np.float32] | None = None,
     ) -> None:
         """See :meth:`lbm.backends.Backend.collide`.
 
@@ -103,8 +110,13 @@ class NumpyBackend:
             f: ``(9, ny, nx)`` ``float32``, modified in place.
             feq: ``(9, ny, nx)`` ``float32``.
             tau: relaxation time, greater than 0.5.
+            cs_smag: Smagorinsky constant (T201); ``0.0`` is plain BGK, bitwise.
+            smag_out: optional ``(ny, nx)`` ``float32`` scratch.
+            smag_work: optional ``(4, ny, nx)`` ``float32`` scratch.
         """
-        _collide(f, feq, tau)
+        _collide(
+            f, feq, tau, cs_smag=cs_smag, smag_out=smag_out, smag_work=smag_work
+        )
 
     def bounce_back(
         self,
@@ -145,6 +157,9 @@ class NumpyBackend:
         f_pre: NDArray[np.float32] | None = None,
         solid: NDArray[np.bool_] | None = None,
         f_bb: NDArray[np.float32] | None = None,
+        cs_smag: float = 0.0,
+        smag_out: NDArray[np.float32] | None = None,
+        smag_work: NDArray[np.float32] | None = None,
     ) -> NDArray[np.float32]:
         """See :meth:`lbm.backends.Backend.collide_stream` (**D-033**).
 
@@ -156,12 +171,24 @@ class NumpyBackend:
             f_pre: pre-collision copy (**D-011**), ``(9, ny, nx)`` ``float32``.
             solid: ``(ny, nx)`` ``bool``, or ``None`` to skip the reflection.
             f_bb: ``(9, ny, nx)`` ``float32`` pre-stream snapshot (**D-020**).
+            cs_smag: Smagorinsky constant (T201); ``0.0`` is plain BGK, bitwise.
+            smag_out: optional ``(ny, nx)`` ``float32`` scratch.
+            smag_work: optional ``(4, ny, nx)`` ``float32`` scratch.
 
         Returns:
             ``f`` — the same object passed in.
         """
         return _collide_stream(
-            f, feq, tau, buf, f_pre=f_pre, solid=solid, f_bb=f_bb
+            f,
+            feq,
+            tau,
+            buf,
+            f_pre=f_pre,
+            solid=solid,
+            f_bb=f_bb,
+            cs_smag=cs_smag,
+            smag_out=smag_out,
+            smag_work=smag_work,
         )
 
     # -- allocation and transfer (T103) -----------------------------------

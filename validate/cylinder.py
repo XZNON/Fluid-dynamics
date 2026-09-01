@@ -344,12 +344,20 @@ def make_config(
     verbose_mask: bool,
     inlet_uy: float = 0.0,
     backend: str = "numpy",
+    cs_smag: float = 0.0,
 ) -> SimConfig:
     """The :class:`lbm.runner.SimConfig` for an open-channel cylinder run.
 
     ``backend`` is the T101 seam's registry name (T103 added the flag): the rung
     is the same physics on either backend and its published band is the same
     band, which is exactly what Rung A claims and this rung checks.
+
+    ``cs_smag`` is the T201 Smagorinsky constant and is **0.0 here and in every
+    caller inside this module** — Rung 3 is a BGK rung and stays one. The
+    parameter exists so that ``validate/les.py`` (Rung F) can run *this* case,
+    through *this* harness, with the closure on, instead of maintaining a second
+    copy of Rung 3 whose agreement with the first nobody checks. See
+    ``DOCS/IDEA4.md`` § Validation ladder, Rung F.
     """
     return SimConfig(
         ny=ny,
@@ -366,6 +374,7 @@ def make_config(
         check_geometry=True,
         verbose_mask=verbose_mask,
         backend=backend,
+        cs_smag=cs_smag,
     )
 
 
@@ -471,6 +480,7 @@ def run_cylinder(
     verbose_mask: bool = True,
     physical: bool = False,
     backend: str = "numpy",
+    cs_smag: float = 0.0,
 ) -> CylinderResult:
     """Set up, benchmark the window, run the wake, and measure.
 
@@ -521,6 +531,9 @@ def run_cylinder(
     else:
         print("  lattice numbers derived by lbm.units.LatticeUnits.from_physical:")
         print(units.summary())
+    if cs_smag != 0.0:
+        print(f"  Smagorinsky closure ON: Cs = {cs_smag}, filter width 1 lattice "
+              f"unit (T201) — this is Rung F's case, not Rung 3's")
     print(f"  inlet: Zou-He uniform U = {u}   "
           f"outlet: convective, lam = "
           f"{'sqrt(cs2)' if outlet_lam is None else f'{outlet_lam}'} (D-021)")
@@ -529,6 +542,7 @@ def run_cylinder(
     cfg = make_config(
         ny=ny, nx=nx, tau=tau, u=u, outlet_lam=outlet_lam,
         verbose_mask=verbose_mask, inlet_uy=KICK_FACTOR * u, backend=backend,
+        cs_smag=cs_smag,
     )
 
     # check_mask runs inside Sim.__init__; building the sim here is what
