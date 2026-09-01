@@ -1,4 +1,8 @@
-# PLAN2.md — Phase 1 implementation plan
+# PLAN2.md — Phase 1 implementation plan — **CLOSED**
+
+> **CLOSED 2026-08-27 at M8; frozen 2026-09-01, session 23 (D-084).** Read for history; never
+> edited. Phase 2's plan is **`DOCS/PLAN3.md`**.
+
 
 Implementation plan for `DOCS/IDEA3.md`: the product layer above the Phase 0 solver, on a GPU
 kernel.

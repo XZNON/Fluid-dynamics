@@ -1,4 +1,8 @@
-# TASKS2.md — Phase 1 task contracts
+# TASKS2.md — Phase 1 task contracts — **CLOSED**
+
+> **CLOSED 2026-08-27: T101 … T110 all `done`. Frozen 2026-09-01, session 23 (D-084).** Read for
+> history; never edited. Phase 2's backlog is **`DOCS/TASKS3.md`** (T201 … T209).
+
 
 One task per session. Plan and ordering rationale: `DOCS/PLAN2.md`. Live status: `DOCS/STATE2.md`.
 Phase 0's closed backlog is `old-Docs/TASKS1.md` (T001 → T011) — read it, never edit it.

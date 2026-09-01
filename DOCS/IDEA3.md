@@ -1,4 +1,9 @@
-# IDEA3.md — Phase 1: the product layer
+# IDEA3.md — Phase 1: the product layer — **CLOSED**
+
+> **CLOSED 2026-08-27 at M8; frozen 2026-09-01, session 23 (D-084).** Read for history; never
+> edited. Phase 2's spec is **`DOCS/IDEA4.md`**. This file is cited by path from ~52 modules and
+> stays where it is.
+
 
 **Phase 1 in one line:** the boxes in `idea.md`'s pipeline diagram that are not the solver —
 geometry repair, physical-unit configuration, stability guardrails, results that render

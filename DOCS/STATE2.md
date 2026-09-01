@@ -1,4 +1,12 @@
-# STATE2.md — live project state, Phase 1
+# STATE2.md — project state, Phase 1 — **FROZEN**
+
+> **FROZEN 2026-09-01, session 23 (D-084). Read for history; never edited, never condensed.**
+> Phase 1 is complete (**M8**). The live state file is **`DOCS/STATE3.md`** and decision
+> numbering continues there at **D-080**. This file's § Decisions (**D-041 … D-079**) remain in
+> force and are cited by number. Phase 1's documents stay at these paths rather than moving to
+> `old-Docs/` — D-084 priced the move at ~470 citations, ~120 of them docstring paths, and
+> rejected it on D-049's own threshold.
+
 
 **Read this first, every session, in full.** Updated by `/checkpoint` at the end of every session.
 Never rewrite or condense the session log — append only.

@@ -1,14 +1,18 @@
-# CLAUDE.md — Fluid Mech / Phase 0
+# CLAUDE.md — Fluid Mech / Phase 2 — FengDong
 
-**Project, one line:** A validated, continuously-running 2D fluid simulator in pure NumPy —
-D2Q9 lattice Boltzmann, any shape from a boolean mask, live streaming visual plus recordable video.
+**Project, one line:** A validated 2D fluid simulator — D2Q9 lattice Boltzmann on NumPy and Warp —
+under a product layer that takes a picture and three physical numbers, and, from Phase 2, under a
+window you drop the picture onto.
 
-**Phase 0 is not the product.** It exists so we understand LBM well enough to design the layer
-above it (see root `idea.md` and `README.md` for that product). Ship Phase 0, validate it, move on.
+**The solver is not the product.** Phase 0 built and validated it so we understood LBM well enough to
+design the layers above it; Phase 1 built those layers; Phase 2 ships them to a person. See root
+`idea.md` and `README.md`, and `idea.md` § Risks — *"The trap"*, which names the standing temptation
+to go back to polishing the solver because that part is fun.
 
-**Full Phase 0 spec is `DOCS/IDEA2.md`; Phase 1's is `DOCS/IDEA3.md`.** Don't re-derive decisions
-already made there — cite them. If anything here conflicts with the spec of the live phase, **the
-spec wins**; log the conflict in `DOCS/STATE2.md` § Decisions rather than silently picking one.
+**Specs by phase: Phase 0 `DOCS/IDEA2.md` · Phase 1 `DOCS/IDEA3.md` · Phase 2 `DOCS/IDEA4.md` (live).**
+Don't re-derive decisions already made there — cite them. If anything here conflicts with the spec of
+the live phase, **the spec wins**; log the conflict in `DOCS/STATE3.md` § Decisions rather than
+silently picking one.
 
 The existing `Navier-Fluid-Equation/` directory is **prior work** — potential-flow / panel-method
 scripts. It is not part of the LBM solver. Reuse its polygon-vertex code (`polygonsDemo.py`,
@@ -20,17 +24,23 @@ scripts. It is not part of the LBM solver. Reuse its polygon-vertex code (`polyg
 
 Load-bearing decisions, not optimizations. A design that drifts from these is wrong even if it runs.
 
-**These are the Phase 1 constraints.** D-046 decided the fate of each of Phase 0's twelve — nine kept
-verbatim, three rewritten, one retired, four added — and T101 folded that table in here, which is why
-`DOCS/STATE2.md` **D-046** is no longer the authority: this list is. D-046 remains the record of *why*
-each one reads the way it does, and the retired one is kept below, struck, rather than deleted.
+**These are the Phase 2 constraints.** Phase 1's sixteen are all carried forward: **D-081** rewrote
+constraint 1 (one turbulence closure, named and switchable), **D-082** and **D-083** added **17–20**,
+and every other constraint is kept verbatim. The fate of all sixteen is decided and recorded in
+`DOCS/STATE3.md` § Constraint fate table — the same exercise D-046 did for Phase 0's twelve. **This
+list is the authority**; D-046 and D-081 / D-082 / D-083 are the record of *why* each one reads the
+way it does, and the retired one is kept below, struck, rather than deleted.
 
-1. **The physics is D2Q9, BGK single relaxation time, bounce-back walls, and it does not change in
-   Phase 1.** No MRT, no cumulant, no curved/interpolated boundaries, no turbulence model. The
-   *implementation* may move to a GPU backend; the arithmetic it transcribes may not change. Deferred
-   is not the same as forgotten. *(Rewritten by D-046.)*
+1. **The physics is D2Q9, BGK single relaxation time, bounce-back walls, plus exactly one turbulence
+   closure — Smagorinsky, and it is named.** No MRT, no cumulant, no KBC, no curved or interpolated
+   boundaries, no wall model, no dynamic `Cs`. The *implementation* may move to another backend; the
+   **base** arithmetic it transcribes may not change, and with the closure **off** it must be bitwise
+   what Phase 1 shipped (constraint 19). Deferred is not the same as forgotten. *(Rewritten by
+   **D-081**, superseding D-046's rewrite.)*
 2. **Viscosity is not a free parameter.** `nu = cs2 * (tau - 0.5) = (tau - 0.5) / 3`. Never expose a
-   `nu` setter that doesn't go through `tau`. `tau -> 0.5` means `nu -> 0` means the sim blows up.
+   `nu` setter that doesn't go through `tau` — and that governs the closure's `tau_eff` exactly as it
+   governs `tau`: Smagorinsky modifies the relaxation time, never a viscosity directly.
+   `tau -> 0.5` means `nu -> 0` means the sim blows up.
 3. **Lattice velocity stays under 0.1.** Compressibility error scales as Mach squared. Any config
    path that can produce `|u| >= 0.1` must warn at setup, not at `nan` time — and `flow/autoconfig.py`
    enforces it for users who never see `u`.
@@ -41,7 +51,9 @@ each one reads the way it does, and the retired one is kept below, struck, rathe
    backend. *(Rewritten by D-046.)*
 5. **The validation ladder is non-negotiable and ordered.** Phase 0: Rung 1 Poiseuille, Rung 2 cavity
    vs Ghia, Rung 3 cylinder Re 100, Rung 4 square cylinder — all four stay a gate for every Phase 1
-   task. Phase 1 adds Rung A parity, B auto-config, C shapes, D refusals, E the minute (**D-047**).
+   task. Phase 1 adds Rung A parity, B auto-config, C shapes, D refusals, E the minute (**D-047**). Phase 2
+   adds F LES degeneracy, G Taylor–Green, H the fidelity bands, I the install, J the drop — fourteen
+   in all, and every earlier rung stays a gate for every later task.
    Each rung is a script in `validate/` that prints pass/fail. **A wrong sim that looks plausible is
    the main failure mode of this project.** Do not start rung N+1 while rung N fails.
 6. ~~**Do not optimise before Rung 3 passes.**~~ **Retired** — spent in session 7 when Rung 3 went
@@ -54,7 +66,8 @@ each one reads the way it does, and the retired one is kept below, struck, rathe
 9. **Draw vorticity, not speed.** Diverging colormap, symmetric **fixed** limits. Speed magnitude is
    a grey smear; per-frame autoscaled limits flicker.
 10. **One `render()`, three sinks** (live / record / headless). Do not write three renderers, and
-    `flow/` colours nothing.
+    `flow/` colours nothing — nor does `fengdong/`, whose live view is a **fourth sink on the existing
+    ring buffer**, never a new path to the screen.
 11. **Restart must be bit-identical within a backend.** `f`, `mask`, and step count are the entire
     state. Pickle every N steps; resume produces a bit-identical continuation, and that is a tested
     claim. **Across** backends it is a printed tolerance (T103), because float ordering differs on a
@@ -62,22 +75,38 @@ each one reads the way it does, and the retired one is kept below, struck, rathe
 12. **Geometry is one boolean array**, `solid`, shape `(ny, nx)`. Solid at least 3 cells thick
     (detect and warn — thinner leaks through bounce-back), object ≥8 diameters from the outlet,
     blockage ratio under ~10%. Phase 1 *repairs* where it can rather than only warning (T107).
-13. **No lattice quantity in any public `flow/` signature.** No `tau`, no lattice `U`, no
-    `steps_per_frame`, no cell counts. The inputs are a picture, a fluid, a speed, a size. Everything
+13. **No lattice quantity in any public `flow/` signature, and none in a `fengdong/` widget.** No
+    `tau`, no lattice `U`, no `steps_per_frame`, no cell counts, and `Cs` is not a user knob — it is
+    planned and printed, and the fidelity band is what surfaces instead. The inputs are a picture, a fluid, a speed, a size. Everything
     else is derived and **printed**. *(New in Phase 1.)*
 14. **Every refusal names a fix, and the fix is machine-checked.** A refusal carries `reason`,
     `quantity`, `value`, `limit`, `suggestions`; Rung D feeds the tool's own top suggestion back
     through the planner and runs it. A suggestion that does not fix its case is a failing test.
     *(New in Phase 1.)*
 15. **`flow/` may import `lbm/`; `lbm/` may never import `flow/`,** and a test asserts it. That
-    one-directional import is what makes the Phase 3 XLB swap a substitution rather than a rewrite.
+    one-directional import is what keeps an eventual XLB swap a substitution rather than a rewrite
+    (deferred past Phase 2 by **D-080**, and the seam is why deferring it costs nothing).
     *(New in Phase 1.)*
 16. **No silent substitution.** A run that differs from what was asked says so in every artifact it
     produces — the printed summary, the report, and the video metadata — via `substituted=True`.
-    *(New in Phase 1.)*
+    *(New in Phase 1.)* A run that engaged the closure is such a run, and carries its band with it.
+17. **`fengdong/` may import `flow/`; `flow/` may never import `fengdong/`,** and a test asserts it.
+    Same shape as constraint 15 and for the same reason: **the app is a view, not a second brain.**
+    Every solver parameter it displays comes from `flow.autoconfig.plan`. *(New in Phase 2, D-083.)*
+18. **No unqualified quantitative claim outside the validated band.** Every `Result` carries a
+    `fidelity` band — `quantitative` / `qualitative` / `illustrative`, decided from the eddy viscosity
+    the run actually generated — and outside `quantitative` there is no bare `Cd`. Rung H asserts it
+    by inspecting the object, not by reading the prose. *(New in Phase 2, D-082.)*
+19. **The closure defaults off, and `Cs = 0` is bitwise identical to Phase 1 on every backend.**
+    A closure you cannot switch off is a closure you cannot validate against, and nine green rungs are
+    what this phase puts at risk. *(New in Phase 2, D-081.)*
+20. **One `pip install`, one command.** The distribution is `fengdong`; Rung I installs a built wheel
+    into a fresh venv with no repository on the path. A package that only installs from the
+    developer's tree is not distributed. *(New in Phase 2, D-083.)*
 
-Constraints 13–16 are enforced by tests that land with the code they govern (`flow/`, T104 onward);
-until then they are the design rule that code has to be written to satisfy, not a dead letter.
+Constraints 13–16 are enforced by tests that live with the code they govern (`flow/`). Constraints
+17–20 land with the code *they* govern (T201 onward); until then they are the design rule code has to
+be written to satisfy, not a dead letter.
 
 ---
 
@@ -85,35 +114,40 @@ until then they are the design rule that code has to be written to satisfy, not 
 
 **Follow this every session. No exceptions.**
 
-**Phase 1 is live. The live documents are `DOCS/STATE2.md` and `DOCS/TASKS2.md`** — Phase 0's
-`old-Docs/STATE1.md` / `old-Docs/TASKS1.md` / `old-Docs/PLAN1.md` are **frozen**: read for history, never edited
-(**D-041**). Everywhere below that names a Phase 0 file, read the Phase 1 one instead.
+**Phase 2 is live. The live documents are `DOCS/STATE3.md` and `DOCS/TASKS3.md`** — Phase 1's
+`DOCS/STATE2.md` / `DOCS/TASKS2.md` / `DOCS/PLAN2.md` / `DOCS/IDEA3.md` and Phase 0's
+`old-Docs/STATE1.md` / `old-Docs/TASKS1.md` / `old-Docs/PLAN1.md` are **frozen**: read for history,
+never edited (**D-041**, **D-084**). Phase 1's stay at their `DOCS/` paths rather than moving to
+`old-Docs/` — D-084 priced the move at ~470 citations and rejected it. Everywhere below that names a
+Phase 0 or Phase 1 file, read the Phase 2 one instead.
 
-1. **At session start** — read `DOCS/STATE2.md` (all of it) and `DOCS/TASKS2.md` (the row for the
+1. **At session start** — read `DOCS/STATE3.md` (all of it) and `DOCS/TASKS3.md` (the row for the
    live task) **before touching any code**. They say what task is live, what's blocked, what the
-   previous session actually left behind. `old-Docs/STATE1.md` § Decisions (D-005 … D-040) is still in
-   force and is cited by number; read the entry a task names, not the whole file.
-2. **Before working a task** — run `/start-task T1XX`. It reads the task contract and the
-   `DOCS/IDEA3.md` section it cites, then restates goal + acceptance criteria for confirmation.
-3. **One task per session.** `DOCS/PLAN2.md` maps one task to one session deliberately — context
+   previous session actually left behind. `old-Docs/STATE1.md` § Decisions (D-005 … D-040) and
+   `DOCS/STATE2.md` § Decisions (D-041 … D-079) are still in force and are cited by number; read the
+   entry a task names, not the whole file.
+2. **Before working a task** — run `/start-task T2XX`. It reads the task contract and the
+   `DOCS/IDEA4.md` section it cites, then restates goal + acceptance criteria for confirmation.
+3. **One task per session.** `DOCS/PLAN3.md` maps one task to one session deliberately — context
    stays small and each session ends at a validated boundary. Work that turns up mid-stream gets
    `/new-task`, not scope creep.
 4. **At session end** — run `/checkpoint`. Never end a session without it. It updates
-   `DOCS/STATE2.md`, syncs `DOCS/TASKS2.md`, and writes the next paste-ready prompt into
+   `DOCS/STATE3.md`, syncs `DOCS/TASKS3.md`, and writes the next paste-ready prompt into
    `PROMPTS/`.
 
 ## Coding conventions
 
 - **Type hints everywhere.** Arrays annotated with intent: `NDArray[np.float32]`, and document
   shape in the docstring (`(9, ny, nx)`).
-- **Docstrings cite the spec** — name the `DOCS/IDEA2.md` section so the reasoning is one hop away.
+- **Docstrings cite the spec** — name the section of the spec that owns the task (`DOCS/IDEA2.md`,
+  `DOCS/IDEA3.md` or `DOCS/IDEA4.md`) so the reasoning is one hop away.
 - **Preallocate. Never allocate inside the step loop.** Buffers are created once by the runner and
   passed in, or held on the sim object.
 - **`float32` throughout.** Halves the bandwidth; accuracy is fine for this.
 - **No physics constant twice.** `e`, `w`, `opp`, `cs2` from `lbm/core.py` only.
 - **Physical units never reach the solver.** `lbm/units.py` converts at the boundary; everything
   inside `lbm/` is lattice units.
-- Stubs raise `NotImplementedError("see DOCS/TASKS2.md T0XX")` until their task lands.
+- Stubs raise `NotImplementedError("see DOCS/TASKS3.md T2XX")` until their task lands.
 - `pytest` for unit tests; `validate/` scripts are the integration tests and print pass/fail.
 
 ## Commands
@@ -128,8 +162,19 @@ myenv/Scripts/python.exe -m validate.parity --backend warp  # Rung A
 myenv/Scripts/python.exe -m validate.autoconfig           # Rung B (~23 min)
 myenv/Scripts/python.exe -m validate.shapes               # Rung C (~10 s)
 myenv/Scripts/python.exe -m validate.refusals             # Rung D
-myenv/Scripts/python.exe -m validate.minute --backend warp  # Rung E (~47 s), the M8 gate
+myenv/Scripts/python.exe -m validate.minute --backend warp  # Rung E (~50 s), the M8 gate
 myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
+
+# Phase 2 rungs — each lands with the task that needs it (DOCS/TASKS3.md)
+myenv/Scripts/python.exe -m validate.les                  # Rung F — closure off is bitwise (T201)
+myenv/Scripts/python.exe -m validate.taylorgreen          # Rung G — analytic decay (T203)
+myenv/Scripts/python.exe -m validate.fidelity             # Rung H — the bands (T204)
+myenv/Scripts/python.exe -m validate.install              # Rung I — fresh-venv wheel (T205)
+myenv/Scripts/python.exe -m validate.drop                 # Rung J — the drop, timed (T209)
+
+# the Phase 2 product command (T207+). `python -m flow` and `python -m lbm.runner`
+# both survive underneath it, with the knobs it deliberately has not got (D-072).
+fengdong                                                  # the window; pip install fengdong
 
 # the product command (T109). python -m lbm.runner is kept for the solver-level
 # knobs this one deliberately does not have (D-072).
@@ -161,12 +206,12 @@ myenv/Scripts/python.exe -m tools.issues capture --source validate -- myenv/Scri
 - `sync` is the only thing that talks to GitHub. It needs the `gh` CLI authenticated
   (`winget install --id GitHub.cli -e && gh auth login`); without it, entries stay queued.
 - Slash commands: `/file-issue <description>` to queue, `/sync-issues` to review then push.
-- **A failing rung that blocks the live task is a `DOCS/STATE2.md` § Blockers entry, not a queued
+- **A failing rung that blocks the live task is a `DOCS/STATE3.md` § Blockers entry, not a queued
   issue.** The queue is for things the work continues without.
 
 `myenv/` is the project venv (Python 3.11, numpy 2.4, matplotlib 3.11, pillow). It is gitignored.
 Adding a dependency (pygame, imageio, pytest) means `myenv/Scripts/pip.exe install <pkg>` **and** a
-line in `DOCS/STATE2.md` § Environment.
+line in `DOCS/STATE3.md` § Environment — and, from T205, a matching entry in `pyproject.toml`.
 
 ## Module map
 
@@ -189,8 +234,16 @@ line in `DOCS/STATE2.md` § Environment.
 | `flow/case.py` | the front door: `Case.from_image` / `from_array`, `explain()`, `plan`, `run()` | T108 |
 | `flow/report.py` | `Result` — Cd/Cl/St/convergence, the printed summary, the plot, `save()` | T108 |
 | `flow/cli.py` | `python -m flow` — the flags, the exit codes; `flow/__main__.py` is the entry point | T109 |
+| `flow/fidelity.py` | the three bands, decided from the eddy viscosity a run generated | T204 |
+| `fengdong/widgets.py` | the closed widget set: label, text field, dropdown, button, drop target, panel | T206 |
+| `fengdong/app.py` | the window, the event loop, the panels; `fengdong/__main__.py` is the entry point | T207, T208 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 | `validate/minute.py` | Rung E — the whole product path, timed from process start | T110 |
+| `validate/les.py` | Rung F — `Cs = 0` is bitwise BGK; Rung 3 survives the closure | T201, T202 |
+| `validate/taylorgreen.py` | Rung G — the closure adds the viscosity it claims, against an exact solution | T203 |
+| `validate/fidelity.py` | Rung H — every band's claim, machine-checked | T204 |
+| `validate/install.py` | Rung I — a built wheel into a fresh venv, no repo on the path | T205 |
+| `validate/drop.py` | Rung J — a dropped picture to Rung 3's bands, timed | T209 |
 
 ### Everything else at the root
 
@@ -199,7 +252,8 @@ the map and not the dumping ground. Nothing here is imported by `lbm/` or `flow/
 
 | Path | What belongs there |
 |---|---|
-| `bench.py` | the steps/s table; stays at the root, cited above |
+| `bench.py` | the steps/s table; stays at the root, cited above. Gains `--les` in T202 |
+| `pyproject.toml` | the `fengdong` distribution (T205): packages `lbm`, `flow`, `fengdong`; console entry point `fengdong`. Its runtime dependencies must match `DOCS/STATE3.md` § Environment exactly, and a test asserts it |
 | `scripts/` | visualisation drivers on top of `flow` — `slowmo`, `streamlines`, `windtunnel`. They change how a run is **drawn or paced**, never what it computes; every solver parameter still comes from `flow.autoconfig.plan`. Each puts the repo root on `sys.path` itself, so cwd does not matter. See `scripts/README.md` |
 | `examples/shapes/` | ad-hoc geometry for demos and issue repros. **Not** `tests/data/shapes/` — `validate/shapes.py` (Rung C) iterates every image in that one and `tests/test_prepare.py` cross-checks it against its `generate.py`, so a picture added there changes what a rung measures |
 | `outputs/` | rendered videos, GIFs and frame dumps. Gitignored; nothing reads from it |
@@ -235,10 +289,31 @@ therefore *slower per case and correct*, where before it was fast and 14% high o
 measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 160k / 400k anchors
 (**D-077**) and Rung D's cost check gained rounds (**D-078**).
 
-**Next is Phase 2** — the XLB swap (`idea.md`'s Phase 3), which the T101 backend seam exists to
-make a substitution rather than a rewrite. It gets its own spec, plan and state file; nothing in
-`DOCS/STATE2.md` is live any more except as history.
+**Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 is next** and no
+Phase 2 code exists yet. Three deliverables: a **Smagorinsky closure** on the existing BGK collision
+(both backends, defaulting off), the **fidelity bands** that make it safe to ship, and a
+**pygame desktop application** shipped as `pip install fengdong`. Rungs **F ⬜ · G ⬜ · H ⬜ · I ⬜ ·
+J ⬜**, milestones **M9**–**M12**. Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog
+`DOCS/TASKS3.md` · **live status `DOCS/STATE3.md`**.
 
-**The 16 hard constraints above are the Phase 1 list**, folded in from `DOCS/STATE2.md` **D-046** by
-T101 — the constraints section is now the authority, and D-046 is the record of why each one reads
-the way it does.
+**What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
+picture"* and D-044 deferred that; everything beneath it is now validated by nine rungs, so this
+phase spends them. The closure exists because **D-038** and **D-074** — the first case any plausible
+user asks for — are refused, and the refusal is correct but is the wall every real user hits.
+
+**The thing this phase can most easily get wrong**, stated so a future session cannot claim it was
+not warned: the closure buys **stability, not fidelity**. The cylinder wake is three-dimensional above
+Re ≈ 190, so a 2D answer beyond that is wrong about the flow and no 2D closure repairs it
+(**D-082**). Constraint 18 and Rung H are the interlock. Widening a band to make a number reportable
+is the one move that is out of bounds.
+
+**Why not XLB and why not 3D**, both decided in session 23 by measurement rather than by inheriting
+`idea.md`'s roadmap (**D-080**): XLB 0.3.1 installs and runs on this box but does not import against
+warp-lang ≥ 1.14 (ours is 1.16), its monolithic stepper is the wrong shape for D-054's per-kernel
+seam, and its 2D-relevant gift is ~20 lines of our own `collide`. 3D at our own quality floor is
+28.4 GB per buffer on a 4 GB card. Both stay deferred; both keep their reasons on file.
+
+**The 20 hard constraints above are the Phase 2 list.** Phase 1's sixteen all carry: constraint 1 was
+rewritten by **D-081**, constraints **17–20** were added by **D-082** and **D-083**, and the fate of
+all sixteen is recorded in `DOCS/STATE3.md` § Constraint fate table. The constraints section is the
+authority; the decisions are the record of why each reads the way it does.
