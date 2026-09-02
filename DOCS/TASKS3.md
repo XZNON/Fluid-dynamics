@@ -16,7 +16,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | ID | Title | Status | Depends on | Gate |
 |---|---|---|---|---|
 | T201 | Smagorinsky closure: `lbm/core.py` + NumPy backend | `done` | — | **Rung F** (numpy) 🟩 |
-| T202 | The closure on the Warp backend | `not_started` | T201 | **Rung F** (full) + Rung A |
+| T202 | The closure on the Warp backend | `done` | T201 | **Rung F** (full) 🟩 + Rung A 🟩 |
 | T203 | Taylor–Green harness | `not_started` | T202 | **Rung G** → **M9** |
 | T204 | `flow/fidelity.py` — the bands, wired through | `not_started` | T203 | **Rung H** → **M10** |
 | T205 | Packaging: `pyproject.toml`, the `fengdong` distribution | `not_started` | — | **Rung I** → **M11** |
@@ -92,7 +92,7 @@ value, that is a decision with a measurement, recorded — not an edit.
 
 ## T202 — The closure on the Warp backend
 
-**Status:** `not_started`
+**Status:** `done` (session 25, 2026-09-02)
 
 ### Goal
 
@@ -114,14 +114,14 @@ established, and costing less than 25% of the BGK step rate.
 
 ### Acceptance criteria
 
-- [ ] **Bitwise degeneracy on warp too:** `cs_smag=0.0` gives `f` bitwise identical to the Phase 1 warp kernel after 1000 steps. Not "within tolerance" — identical. The closure must compile out or multiply by zero without touching the result.
-- [ ] Cross-backend agreement with the closure **on** meets the existing contract: per-kernel worst under **1e-6** in `f` units (**D-053**'s bar), whole step under **1e-4** in `max|Δu|/U` at 1000 steps (**D-056**'s bar). The measured numbers are printed and recorded, not just compared.
-- [ ] Any `float64`-then-rounded scalar the closure needs is computed **host-side in NumPy's own expression order** and uploaded (**D-057**). No per-thread `float32` recomputation of a constant.
-- [ ] `myenv/Scripts/python.exe -m validate.les --backend warp` prints **PASS**.
-- [ ] `myenv/Scripts/python.exe -m validate.parity --backend warp` re-run and prints **PASS** with the closure off; its published numbers unmoved.
-- [ ] `bench.py --backend warp --les` clears **≥3116 / ≥568 / ≥331** steps/s at 40k / 1M / 2M cells, quoted with the CPU clock, power state and GPU name (**D-035**), by alternating rounds. The NumPy column takes the same 25% rule against its own measured baseline.
-- [ ] **All nine existing rungs re-run on both backends** and print their published digits.
-- [ ] `pytest` green.
+- [x] **Bitwise degeneracy on warp too:** `cs_smag=0.0` gives `f` bitwise identical to the Phase 1 warp kernel after 1000 steps. Not "within tolerance" — identical. The closure must compile out or multiply by zero without touching the result.
+- [x] Cross-backend agreement with the closure **on** meets the existing contract: per-kernel worst under **1e-6** in `f` units (**D-053**'s bar), whole step under **1e-4** in `max|Δu|/U` at 1000 steps (**D-056**'s bar). The measured numbers are printed and recorded, not just compared.
+- [x] Any `float64`-then-rounded scalar the closure needs is computed **host-side in NumPy's own expression order** and uploaded (**D-057**). No per-thread `float32` recomputation of a constant.
+- [x] `myenv/Scripts/python.exe -m validate.les --backend warp` prints **PASS**.
+- [x] `myenv/Scripts/python.exe -m validate.parity --backend warp` re-run and prints **PASS** with the closure off; its published numbers unmoved.
+- [x] `bench.py --backend warp --les` clears **≥3116 / ≥568 / ≥331** steps/s at 40k / 1M / 2M cells, quoted with the CPU clock, power state and GPU name (**D-035**), by alternating rounds. The NumPy column takes the same 25% rule against its own measured baseline.
+- [x] **All nine existing rungs re-run on both backends** and print their published digits.
+- [x] `pytest` green.
 
 ### Constraints that bite here
 
@@ -136,6 +136,17 @@ differently in the `cs_smag=0` branch is the plausible way that happens — **th
 the tolerance**. Compile two kernels, or guard the whole term. **D-053** already documents that
 `collide` and `equilibrium` differ from NumPy by an FMA contraction; that is accepted *between*
 backends and is not acceptable *within* one against its own previous self.
+
+**What session 25 did (D-088, D-089).** Two compiled kernels, as the paragraph above anticipated:
+`cs_smag = 0` launches `_collide_kernel` / `_collide_bb_kernel` **unedited**, so bitwise degeneracy is
+by construction and **Q-201** never gets asked. The closure's own kernels are separate —
+`_smag_scale_kernel` (the reduction) plus `_collide_smag_kernel` on the unfused path, and a single
+`_collide_bb_smag_kernel` that folds the reduction into the fused pass, because a separate scale
+kernel is a second full pass over `f` and `feq` on a memory-bound step (27.7% of the BGK rate at 2M
+cells as two kernels, 8.8% as one). `validate/les.py` gained `--backend`, a frozen Phase 1 **warp**
+oracle under D-087's one-copy rule, and a fourth clause measuring cross-backend agreement with the
+closure **on** against Rung A's own bars; `validate/parity.py::step_case` and `::whole_step` gained a
+defaulted `cs_smag` so that clause runs Rung A's case rather than a copy of it.
 
 ---
 

@@ -54,6 +54,7 @@ from typing import Any
 import numpy as np
 
 from lbm.backends import BackendUnavailableError, get_backend
+from lbm.core import CS_SMAG_LITERATURE
 from lbm.geometry import circle
 from lbm.runner import Sim, SimConfig
 
@@ -87,6 +88,25 @@ STEPS: dict[int, int] = {40_000: 400, 160_000: 150, 1_000_000: 30}
 
 #: The same idea at GPU speed: a couple of seconds per case against the floors.
 GPU_STEPS: dict[int, int] = {40_000: 4000, 1_000_000: 600, 2_000_000: 400}
+
+#: LES floors, ``DOCS/IDEA4.md`` § Performance budget: the Warp BGK column
+#: measured by T103 / **D-077** times 0.75. The closure may cost up to 25% of
+#: the step rate and no more. Recomputed there, not here — these are the
+#: arithmetic's answer written down, and T202 measures against them.
+LES_FLOORS: dict[int, float] = {40_000: 3116.0, 1_000_000: 568.0, 2_000_000: 331.0}
+
+#: The 25% rule itself, which is what the **NumPy** column is held to: it has no
+#: published LES floor, so it is measured against its own BGK column in the same
+#: alternating rounds (``DOCS/TASKS3.md`` § T202).
+LES_MIN_RATIO: float = 0.75
+
+#: Steps per grid for the LES A/B, per backend. NumPy at 2M cells is ~8 steps/s
+#: (``DOCS/STATE2.md`` § Performance baseline), so it gets far fewer; the *rate*
+#: is what is compared and the **alternation** is what matters (**D-035**).
+LES_STEPS: dict[str, dict[int, int]] = {
+    "warp": GPU_STEPS,
+    "numpy": {40_000: 150, 1_000_000: 15, 2_000_000: 8},
+}
 
 WARMUP: int = 10
 
@@ -372,6 +392,78 @@ def compare_backends(
     return results
 
 
+def print_les_table(
+    backend: str, results: dict[str, dict[int, float]]
+) -> bool:
+    """``DOCS/IDEA4.md`` § Performance budget, measured (T202).
+
+    *"One extra second-moment reduction over nine directions per cell, then a
+    square root. Bandwidth is unchanged — it reads ``f`` and ``feq``, both
+    already resident — so the cost is arithmetic on a memory-bound kernel and
+    should be small."* The pass condition is the same on both backends: the
+    closure keeps at least :data:`LES_MIN_RATIO` of that backend's own BGK step
+    rate, measured in the same alternating rounds. Warp is additionally held to
+    the published absolute floors in :data:`LES_FLOORS`, which are the T103
+    column times 0.75 and are the numbers the spec wrote down in advance.
+
+    Args:
+        backend: the backend both columns were measured on.
+        results: what :func:`compare` returned, keyed ``"BGK"`` and ``"LES"``.
+
+    Returns:
+        ``True`` when every condition is cleared.
+    """
+    floors = LES_FLOORS_BY_BACKEND.get(backend, {})
+    absolute = bool(floors)
+
+    print()
+    print(
+        f"{'grid':>11}  {'cells':>9}  {'BGK':>9}  {'LES':>9}  {'LES/BGK':>8}  "
+        f"{'floor':>8}  result"
+    )
+    print("-" * 74)
+    all_pass = True
+    for ny, nx in GPU_GRIDS:
+        cells = ny * nx
+        bgk = results["BGK"][cells]
+        les = results["LES"][cells]
+        ratio = les / bgk
+        floor = floors.get(cells)
+        # The condition is the **published** floor where there is one, and the
+        # ratio against this run's own BGK column where there is not
+        # (``DOCS/TASKS3.md`` § T202). They are the same rule read two ways --
+        # the floors *are* T103's measured column times 0.75 -- and the
+        # published one is the harder of the two, because it does not move when
+        # a round is unlucky. Both are printed either way.
+        ok = les >= floor if floor is not None else ratio >= LES_MIN_RATIO
+        all_pass &= ok
+        print(
+            f"{nx}x{ny:<6} {cells:>9,}  {bgk:>9.1f}  {les:>9.1f}  "
+            f"{ratio:>7.1%}  {_fmt(floor):>8}  {'PASS' if ok else 'FAIL'}"
+        )
+    print("-" * 74)
+    if absolute:
+        rule = "LES >= the published floor (DOCS/IDEA4.md § Performance budget)"
+    else:
+        rule = (
+            f"LES/BGK >= {LES_MIN_RATIO:.0%} against this backend's own "
+            f"measured BGK column"
+        )
+    print(f"budget: {'PASS' if all_pass else 'FAIL'}  ({rule})")
+    print(
+        "  the closure adds one second-moment reduction and a square root per "
+        "cell to a\n  memory-bound step, and reads nothing that was not already "
+        "resident."
+    )
+    return all_pass
+
+
+#: Absolute LES floors, by backend. Only Warp has published ones — they are the
+#: numbers ``DOCS/IDEA4.md`` § Performance budget wrote down before the closure
+#: existed. NumPy is held to the ratio alone, against its own measured column.
+LES_FLOORS_BY_BACKEND: dict[str, dict[int, float]] = {"warp": LES_FLOORS}
+
+
 def measure_footprint(backend: str, ny: int, nx: int) -> dict[str, Any]:
     """Device memory a :class:`lbm.runner.Sim` of this size occupies.
 
@@ -620,11 +712,44 @@ def main(argv: list[str] | None = None) -> int:
         "alternating rounds against numpy (D-035). Omit for the Phase 0 table.",
     )
     p.add_argument(
+        "--les",
+        action="store_true",
+        help="measure the Smagorinsky closure's cost against plain BGK on "
+        "--backend, in alternating rounds (D-035). Pass condition: the LES "
+        "column keeps >=75%% of the BGK column, and on warp also clears the "
+        "published floors in DOCS/IDEA4.md § Performance budget.",
+    )
+    p.add_argument(
         "--rounds", type=int, default=5, help="rounds per grid (D-035)"
     )
     args = p.parse_args(argv)
 
     state = machine_state()
+
+    if args.les:
+        backend = args.backend or "numpy"
+        try:
+            get_backend(backend)
+        except BackendUnavailableError as exc:
+            print(f"SKIP - {exc}")
+            return 2
+        print_machine_state(state, backend)
+        print("measuring the Smagorinsky closure's cost (T202)")
+        print(
+            f"  BGK (cs_smag = 0) against LES (cs_smag = "
+            f"{CS_SMAG_LITERATURE}), alternating rounds, best round per "
+            f"variant, one Sim resident (D-035); {args.rounds} rounds"
+        )
+        results = compare(
+            [
+                ("BGK", {"backend": backend, "cs_smag": 0.0}),
+                ("LES", {"backend": backend, "cs_smag": CS_SMAG_LITERATURE}),
+            ],
+            rounds=args.rounds,
+            grids=GPU_GRIDS,
+            steps_by_cells=LES_STEPS[backend],
+        )
+        return 0 if print_les_table(backend, results) else 1
 
     if args.backend:
         try:

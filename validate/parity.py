@@ -452,7 +452,10 @@ def spike_directions(backend_name: str, ny: int = 9, nx: int = 11) -> list[bool]
 
 
 def step_case(
-    backend: str, ny: int = STEP_GRID[0], nx: int = STEP_GRID[1]
+    backend: str,
+    ny: int = STEP_GRID[0],
+    nx: int = STEP_GRID[1],
+    cs_smag: float = 0.0,
 ) -> tuple[SimConfig, NDArray[np.bool_]]:
     """The config and mask the whole-step comparison runs.
 
@@ -465,6 +468,13 @@ def step_case(
         backend: registry name for :attr:`lbm.runner.SimConfig.backend`.
         ny: rows.
         nx: columns.
+        cs_smag: Smagorinsky constant (T202). **Rung A leaves this at zero** —
+            every caller in this module does — and it exists so that Rung F can
+            measure cross-backend agreement with the closure *on* against this
+            rung's own case and this rung's own bars, rather than against a
+            second copy of them whose agreement with the original nobody checks.
+            The same argument, and the same defaulted parameter, that **D-087**
+            applied to :mod:`validate.cylinder`.
 
     Returns:
         ``(config, solid)`` — ``solid`` is ``(ny, nx)`` ``bool``.
@@ -480,12 +490,15 @@ def step_case(
         convective_outlet=True,
         check_geometry=False,
         backend=backend,
+        cs_smag=cs_smag,
     )
     return cfg, solid
 
 
 def whole_step(
-    backend_name: str, ladder: tuple[int, ...] = STEP_LADDER
+    backend_name: str,
+    ladder: tuple[int, ...] = STEP_LADDER,
+    cs_smag: float = 0.0,
 ) -> list[StepPoint]:
     """Run both backends in lockstep and print how the disagreement grows.
 
@@ -503,12 +516,15 @@ def whole_step(
     Args:
         backend_name: the backend to check against NumPy.
         ladder: step counts at which to record the disagreement, ascending.
+        cs_smag: Smagorinsky constant, threaded to :func:`step_case`. Zero for
+            Rung A; Rung F passes the literature value to measure the same two
+            bars with the closure engaged (T202).
 
     Returns:
         One :class:`StepPoint` per entry in ``ladder``.
     """
-    cfg_ref, solid = step_case("numpy")
-    cfg_dut, _ = step_case(backend_name)
+    cfg_ref, solid = step_case("numpy", cs_smag=cs_smag)
+    cfg_dut, _ = step_case(backend_name, cs_smag=cs_smag)
 
     sim_ref = Sim(cfg_ref, solid)
     f0 = sim_ref.host_f().copy()

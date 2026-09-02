@@ -166,11 +166,13 @@ myenv/Scripts/python.exe -m validate.minute --backend warp  # Rung E (~50 s), th
 myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
 
 # Phase 2 rungs — each lands with the task that needs it (DOCS/TASKS3.md)
-myenv/Scripts/python.exe -m validate.les                  # Rung F — closure off is bitwise (T201)
+myenv/Scripts/python.exe -m validate.les                  # Rung F on numpy (T201)
+myenv/Scripts/python.exe -m validate.les --backend warp   # Rung F on warp (T202) — both are the rung
 myenv/Scripts/python.exe -m validate.taylorgreen          # Rung G — analytic decay (T203)
 myenv/Scripts/python.exe -m validate.fidelity             # Rung H — the bands (T204)
 myenv/Scripts/python.exe -m validate.install              # Rung I — fresh-venv wheel (T205)
 myenv/Scripts/python.exe -m validate.drop                 # Rung J — the drop, timed (T209)
+myenv/Scripts/python.exe bench.py --backend warp --les    # the closure's cost against BGK (T202)
 
 # the Phase 2 product command (T207+). `python -m flow` and `python -m lbm.runner`
 # both survive underneath it, with the knobs it deliberately has not got (D-072).
@@ -252,7 +254,7 @@ the map and not the dumping ground. Nothing here is imported by `lbm/` or `flow/
 
 | Path | What belongs there |
 |---|---|
-| `bench.py` | the steps/s table; stays at the root, cited above. Gains `--les` in T202 |
+| `bench.py` | the steps/s table; stays at the root, cited above. `--les` (T202) A/Bs the closure against plain BGK on `--backend`, in alternating rounds |
 | `pyproject.toml` | the `fengdong` distribution (T205): packages `lbm`, `flow`, `fengdong`; console entry point `fengdong`. Its runtime dependencies must match `DOCS/STATE3.md` § Environment exactly, and a test asserts it |
 | `scripts/` | visualisation drivers on top of `flow` — `slowmo`, `streamlines`, `windtunnel`. They change how a run is **drawn or paced**, never what it computes; every solver parameter still comes from `flow.autoconfig.plan`. Each puts the repo root on `sys.path` itself, so cwd does not matter. See `scripts/README.md` |
 | `examples/shapes/` | ad-hoc geometry for demos and issue repros. **Not** `tests/data/shapes/` — `validate/shapes.py` (Rung C) iterates every image in that one and `tests/test_prepare.py` cross-checks it against its `generate.py`, so a picture added there changes what a rung measures |
@@ -290,23 +292,29 @@ measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 1
 (**D-077**) and Rung D's cost check gained rounds (**D-078**).
 
 **Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 landed in
-session 24** and **T202 is next**. Three deliverables: a **Smagorinsky closure** on the existing BGK
+session 24, T202 in session 25**, and **T203 is next**. Three deliverables: a **Smagorinsky closure** on the existing BGK
 collision (both backends, defaulting off), the **fidelity bands** that make it safe to ship, and a
-**pygame desktop application** shipped as `pip install fengdong`. Rungs **F 🟨 · G ⬜ · H ⬜ · I ⬜ ·
+**pygame desktop application** shipped as `pip install fengdong`. Rungs **F 🟩 · G ⬜ · H ⬜ · I ⬜ ·
 J ⬜**, milestones **M9**–**M12**. Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog
 `DOCS/TASKS3.md` · **live status `DOCS/STATE3.md`**.
 
 **T201, done (session 24):** the closure is in `lbm/core.py` — `smagorinsky_tau_eff` (the primitive)
 and `smagorinsky_omega` (its reciprocal), `CS_SMAG_LITERATURE = 0.17`, `SMAG_Q_COEFF = 18 sqrt(2)` —
 with keyword-only `cs_smag` on `collide` / `collide_stream`, `lbm.probe.eddy_viscosity`,
-`SimConfig.cs_smag`, and the NumPy backend implementing it. **Rung F is green on numpy and 🟨 overall
-because warp is T202**: `cs_smag = 0` is bitwise Phase 1 on both the fused and unfused paths after
-1000 steps of Rung 3's case, and Rung 3 at `Cs = 0.17` prints Cd **1.4143**, St **0.1719** inside the
-unwidened bands. All nine existing rungs were re-run with **no physics digit moved**. The warp
-backend accepts `cs_smag` and **raises `NotImplementedError` naming T202** for a non-zero value
-rather than quietly computing plain BGK. **D-085** fixes the normalisation, **D-086** makes
-constraint 19 an explicit branch rather than a zero-valued term, **D-087** keeps one frozen Phase 1
-oracle.
+`SimConfig.cs_smag`, and the NumPy backend implementing it. **D-085** fixes the normalisation,
+**D-086** makes constraint 19 an explicit branch rather than a zero-valued term, **D-087** keeps one
+frozen Phase 1 oracle.
+
+**T202, done (session 25): Rung F is green on both backends and the closure is on the GPU.** The
+Warp backend has `_smag_scale_kernel`, `_collide_smag_kernel` and a `_collide_bb_smag_kernel` that
+folds the reduction into the fused pass; `validate/les.py` takes `--backend` and gained a
+cross-backend clause; `bench.py` takes `--les`. **Q-201's answer, by measurement: two compiled
+kernels, not one guarded branch** — `cs_smag = 0` launches the untouched Phase 1 kernel, so bitwise
+degeneracy is by construction (**D-088**), and the fold is **D-089**. Measured: `cs_smag = 0` bitwise
+on both paths after 1000 steps of Rung 3's case (worst |diff| **0.000e+00**); Rung 3 at `Cs = 0.17`
+prints Cd **1.4143**, St **0.1719** on *both* backends; cross-backend with the closure **on**, worst
+kernel **2.980e-08** against 1e-6 and whole step **9.611e-06** against 1e-4 — Rung A's own bars,
+unwidened. The closure costs **1.6% / 9.3% / 9.8%** of the BGK step rate at 40k / 1M / 2M cells.
 
 **What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
 picture"* and D-044 deferred that; everything beneath it is now validated by nine rungs, so this

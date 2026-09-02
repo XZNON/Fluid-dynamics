@@ -68,7 +68,7 @@ from numpy.typing import NDArray
 
 import warp as wp
 
-from lbm.core import CS2, E, E_F32, OPP, Q, W
+from lbm.core import CS2, E, E_F32, OPP, Q, SMAG_Q_COEFF, W
 
 __all__ = ["WarpBackend"]
 
@@ -207,6 +207,130 @@ def _collide_kernel(
     v = f[i, y, x]
     v -= feq[i, y, x]
     v *= one_minus_omega
+    v += feq[i, y, x]
+    f[i, y, x] = v
+
+
+@wp.kernel
+def _smag_scale_kernel(
+    f: wp.array3d(dtype=wp.float32),
+    feq: wp.array3d(dtype=wp.float32),
+    e: wp.array2d(dtype=wp.float32),
+    smag_coeff: wp.float32,
+    tau32: wp.float32,
+    tau_sq: wp.float32,
+    scale: wp.array2d(dtype=wp.float32),
+) -> None:
+    """``1 - 1/tau_eff`` per cell — the Smagorinsky closure (T202).
+
+    A term-for-term transcription of :func:`lbm.core.smagorinsky_tau_eff`
+    followed by :func:`lbm.core.smagorinsky_omega`'s single reciprocal and the
+    ``1 - omega`` the collision multiplies by, all in one thread per cell.
+    ``DOCS/IDEA4.md`` § The five things Phase 2 must get right, (1) and (2);
+    the normalisation and the derivation are **D-085**, written out once in
+    core's docstring and deliberately not repeated here.
+
+    Where NumPy walks the nine directions with whole-array temporaries
+    (``qxx``, ``qxy``, ``qyy``, ``tmp``), a thread has registers and needs no
+    scratch — the difference the module docstring allows, since the operation
+    *order* is unchanged: ``Q_ab`` accumulates over ``i`` in index order, then
+    ``|Q| = sqrt(Qxx^2 + 2 Qxy^2 + Qyy^2)``, then ``|Q| / rho``, then the
+    coefficient, then ``tau^2``, then the root. ``rho`` is summed over ``i`` in
+    index order exactly as :func:`_macroscopic_kernel` sums it.
+
+    The three ``float64``-then-rounded scalars — ``18 sqrt(2) Cs^2``, ``tau``
+    and ``tau^2`` — are computed **on the host** in NumPy's own expression order
+    by :meth:`WarpBackend._smag_scalars` and passed in (**D-057**). Nothing here
+    re-derives a constant, and :data:`lbm.core.SMAG_Q_COEFF` never appears in a
+    kernel (constraint 4).
+
+    Args:
+        f: pre-collision distribution, ``(9, ny, nx)`` ``float32``, device.
+        feq: equilibrium, ``(9, ny, nx)`` ``float32``, device.
+        e: ``E_F32`` from :mod:`lbm.core`, ``(9, 2)`` ``float32``, device.
+        smag_coeff: ``float32(SMAG_Q_COEFF * cs_smag * cs_smag)``, host-side.
+        tau32: ``float32(tau)``, host-side.
+        tau_sq: ``float32(tau32 * tau32)``, host-side.
+        scale: output, ``(ny, nx)`` ``float32``, device. Receives
+            ``1 - omega_eff``, which is what NumPy's ``smag_out`` also holds on
+            return from :func:`lbm.core.collide`.
+    """
+    y, x = wp.tid()
+
+    # Q_ab = sum_i e_ia e_ib (f_i - feq_i), and rho = sum_i f_i. Every ``e``
+    # component on D2Q9 is in {-1, 0, +1}, so each coefficient is exactly 0 or
+    # +-1 and the branches below *are* the multiplication, as they are in core.
+    qxx = float(0.0)
+    qxy = float(0.0)
+    qyy = float(0.0)
+    rho = float(0.0)
+
+    for i in range(9):
+        fi = f[i, y, x]
+        rho += fi
+
+        ex = e[i, 0]
+        ey = e[i, 1]
+        if ex != 0.0 or ey != 0.0:  # the rest population carries no flux
+            neq = fi - feq[i, y, x]
+            if ex != 0.0:
+                qxx += neq
+            if ey != 0.0:
+                qyy += neq
+            if ex * ey > 0.0:
+                qxy += neq
+            elif ex * ey < 0.0:
+                qxy -= neq
+
+    # |Q| = sqrt(Qxx^2 + 2 Qxy^2 + Qyy^2), in core's order.
+    qxx = qxx * qxx
+    qxy = qxy * qxy
+    qxy = qxy * 2.0
+    qyy = qyy * qyy
+    qxx = qxx + qxy
+    qxx = qxx + qyy
+    qmag = wp.sqrt(qxx)
+
+    # tau_eff = 0.5 (tau + sqrt(tau^2 + 18 sqrt(2) Cs^2 |Q| / rho)).
+    t = qmag / rho
+    t = t * smag_coeff
+    t = t + tau_sq
+    t = wp.sqrt(t)
+    t = t + tau32
+    t = t * 0.5
+
+    # omega_eff = 1 / tau_eff, reciprocated once and never inverted back
+    # (**D-085**), then the 1 - omega the collision actually multiplies by.
+    scale[y, x] = 1.0 - 1.0 / t
+
+
+@wp.kernel
+def _collide_smag_kernel(
+    f: wp.array3d(dtype=wp.float32),
+    feq: wp.array3d(dtype=wp.float32),
+    scale: wp.array2d(dtype=wp.float32),
+) -> None:
+    """:func:`_collide_kernel` with a per-cell ``1 - omega`` (T202).
+
+    The same three operations in the same order as :func:`lbm.core.collide`
+    with the closure on: the only difference from :func:`_collide_kernel` is
+    that the factor is read from an ``(ny, nx)`` field instead of a scalar,
+    which is exactly what NumPy's broadcast does. Kept as a **separate kernel**
+    rather than a flag on the first one so that ``cs_smag = 0`` launches the
+    Phase 1 kernel with not one instruction changed — constraint 19, and the
+    answer this task records for **Q-201**.
+
+    Args:
+        f: distribution, ``(9, ny, nx)`` ``float32``, device, modified in place.
+        feq: equilibrium, ``(9, ny, nx)`` ``float32``, device.
+        scale: ``1 - omega_eff``, ``(ny, nx)`` ``float32``, device, from
+            :func:`_smag_scale_kernel`.
+    """
+    i, y, x = wp.tid()
+
+    v = f[i, y, x]
+    v -= feq[i, y, x]
+    v *= scale[y, x]
     v += feq[i, y, x]
     f[i, y, x] = v
 
@@ -626,6 +750,122 @@ def _collide_bb_kernel(
             s[i, y, x] = v
 
 
+@wp.kernel
+def _collide_bb_smag_kernel(
+    f: wp.array3d(dtype=wp.float32),
+    feq: wp.array3d(dtype=wp.float32),
+    f_pre: wp.array3d(dtype=wp.float32),
+    solid: wp.array2d(dtype=wp.uint8),
+    opp: wp.array(dtype=wp.int32),
+    e: wp.array2d(dtype=wp.float32),
+    smag_coeff: wp.float32,
+    tau32: wp.float32,
+    tau_sq: wp.float32,
+    has_solid: wp.int32,
+    s: wp.array3d(dtype=wp.float32),
+    scale: wp.array2d(dtype=wp.float32),
+) -> None:
+    """:func:`_collide_bb_kernel` with the closure, factor and all (T202).
+
+    Two loops over the nine directions in one thread: the first is
+    :func:`_smag_scale_kernel`'s reduction, the second is
+    :func:`_collide_bb_kernel` unchanged but for reading ``1 - omega_eff`` from
+    a register instead of a kernel argument. The reflection is untouched —
+    bounce-back is an assignment and no closure reaches it (constraint 1's
+    "bounce-back walls", unchanged).
+
+    **Why the reduction is folded in here and not on the unfused path.** The
+    step is memory-bound, and a separate scale kernel is a second full pass over
+    ``f`` and ``feq`` — 18 planes of read traffic added to a kernel that already
+    reads 18 and writes 9. Folded in, the second loop re-reads what the first
+    loop just pulled into cache for the same cells. Measured on an RTX 3050 at
+    2M cells (``bench.py --backend warp --les``): the closure cost **27.7%** of
+    the BGK step rate as two kernels and **9.8%** as one. :meth:`WarpBackend.collide`
+    keeps the two-kernel form because *its* threads are one per
+    ``(direction, cell)``, so folding there would make every thread redo the
+    whole nine-direction reduction.
+
+    The arithmetic is unchanged either way — same operations, same order, same
+    ``float32`` — and ``scale`` is still written so the buffer holds what NumPy's
+    ``smag_out`` holds on return.
+
+    Args:
+        f: pre-collision distribution, ``(9, ny, nx)`` ``float32``, device.
+        feq: equilibrium, ``(9, ny, nx)`` ``float32``, device.
+        f_pre: pre-collision copy for the reflection (**D-011**), device.
+        solid: solid mask, ``(ny, nx)`` ``uint8``, nonzero is wall.
+        opp: ``OPP`` from :mod:`lbm.core`, ``(9,)`` ``int32``, device.
+        e: ``E_F32`` from :mod:`lbm.core`, ``(9, 2)`` ``float32``, device.
+        smag_coeff: ``float32(SMAG_Q_COEFF * cs_smag * cs_smag)``, host-side.
+        tau32: ``float32(tau)``, host-side.
+        tau_sq: ``float32(tau32 * tau32)``, host-side.
+        has_solid: zero skips the reflection entirely.
+        s: output, ``(9, ny, nx)`` ``float32``, device. May be ``f``.
+        scale: output, ``(ny, nx)`` ``float32``, device. Receives
+            ``1 - omega_eff``, as NumPy's ``smag_out`` does.
+    """
+    y, x = wp.tid()
+
+    # --- the closure, exactly :func:`_smag_scale_kernel`'s arithmetic --------
+    qxx = float(0.0)
+    qxy = float(0.0)
+    qyy = float(0.0)
+    rho = float(0.0)
+
+    for i in range(9):
+        fi = f[i, y, x]
+        rho += fi
+
+        ex = e[i, 0]
+        ey = e[i, 1]
+        if ex != 0.0 or ey != 0.0:
+            neq = fi - feq[i, y, x]
+            if ex != 0.0:
+                qxx += neq
+            if ey != 0.0:
+                qyy += neq
+            if ex * ey > 0.0:
+                qxy += neq
+            elif ex * ey < 0.0:
+                qxy -= neq
+
+    qxx = qxx * qxx
+    qxy = qxy * qxy
+    qxy = qxy * 2.0
+    qyy = qyy * qyy
+    qxx = qxx + qxy
+    qxx = qxx + qyy
+    qmag = wp.sqrt(qxx)
+
+    t = qmag / rho
+    t = t * smag_coeff
+    t = t + tau_sq
+    t = wp.sqrt(t)
+    t = t + tau32
+    t = t * 0.5
+
+    one_minus_omega = 1.0 - 1.0 / t
+    scale[y, x] = one_minus_omega
+
+    # --- the collision, exactly :func:`_collide_bb_kernel`'s ----------------
+    wall = int(0)
+    if has_solid != 0:
+        if solid[y, x] != wp.uint8(0):
+            wall = 1
+
+    for i in range(9):
+        if wall != 0:
+            # bounce back: solid cells emit what arrived at them, reversed.
+            s[i, y, x] = f_pre[opp[i], y, x]
+        else:
+            # collide: s = feq[i] + (f[i] - feq[i]) (1 - omega_eff)
+            v = f[i, y, x]
+            v -= feq[i, y, x]
+            v *= one_minus_omega
+            v += feq[i, y, x]
+            s[i, y, x] = v
+
+
 # --- the backend ------------------------------------------------------------
 
 #: Host dtype -> Warp dtype. ``bool`` becomes ``uint8`` because Warp has no
@@ -923,40 +1163,71 @@ class WarpBackend:
     ) -> None:
         """See :meth:`lbm.backends.Backend.collide`.
 
-        The closure's **signature** lands here in T201 so the seam is one shape
-        on both backends; its **kernels** are T202. ``cs_smag = 0.0``, the
-        default and what every rung runs, is the path this backend has always
-        had, untouched and therefore still bitwise its own previous self
-        (constraint 19).
+        The closure's **signature** landed here in T201 and its **kernels** in
+        T202. ``cs_smag = 0.0`` — the default, and what every rung but Rung F
+        runs — launches :func:`_collide_kernel`, the Phase 1 kernel with not one
+        instruction changed, so it is bitwise its own previous self by
+        construction rather than by tolerance (constraint 19; the answer this
+        task records for **Q-201** is two compiled kernels, not one guarded
+        branch).
+
+        With the closure on, one extra launch precedes the collision:
+        :func:`_smag_scale_kernel` reduces the second moment of ``f - feq`` into
+        the ``(ny, nx)`` factor :func:`_collide_smag_kernel` then multiplies by.
+        It reads the **pre-collision** ``f``, which is why it is a separate
+        launch and not folded in — exactly as :func:`lbm.core.collide` computes
+        the field before touching ``f``.
 
         Args:
             f: ``(9, ny, nx)`` ``float32`` device array, modified in place.
             feq: ``(9, ny, nx)`` ``float32`` device array.
             tau: relaxation time, greater than 0.5.
-            cs_smag: Smagorinsky constant. Anything but ``0.0`` raises until
-                T202.
-            smag_out: unused until T202.
-            smag_work: unused until T202.
+            cs_smag: Smagorinsky constant. ``0.0`` is plain BGK, bitwise.
+            smag_out: optional preallocated ``(ny, nx)`` ``float32`` **device**
+                array for the closure's per-cell factor. **Used as scratch**: on
+                return it holds ``1 - omega_eff``, matching what NumPy leaves
+                there. Ignored when ``cs_smag`` is 0; allocated here when the
+                closure is on and the caller supplied none, which
+                :class:`lbm.runner.Sim` never does — it preallocates.
+            smag_work: accepted and unused. NumPy needs ``(4, ny, nx)`` of
+                whole-array scratch for the reduction; a GPU thread has
+                registers, so there is nothing to stage.
 
         Raises:
             ValueError: if ``tau <= 0.5`` — the check and the message are
-                :func:`lbm.core.collide`'s (``CLAUDE.md`` constraint 2).
-            NotImplementedError: if ``cs_smag != 0.0`` (see DOCS/TASKS3.md T202).
+                :func:`lbm.core.collide`'s (``CLAUDE.md`` constraint 2) — or if
+                ``cs_smag < 0``.
         """
-        if cs_smag != 0.0:
-            raise NotImplementedError(
-                "the Smagorinsky closure is not on the warp backend yet "
-                "(see DOCS/TASKS3.md T202). T201 landed it in lbm/core.py and "
-                "the numpy backend; T202 ports the kernels and answers Q-201 "
-                "-- whether cs_smag = 0 stays bitwise through a fused "
-                "multiply-add (D-053) or needs a separately compiled kernel."
-            )
-        one_minus_omega = self._one_minus_omega(tau)
+        del smag_work  # see the docstring: registers, not scratch
         _, ny, nx = f.shape
+
+        if cs_smag == 0.0:
+            # Phase 1's kernel, reached by a branch rather than by a term that
+            # multiplies to zero. **D-053** records that the device contracts
+            # ``x * a + b`` into one rounding where NumPy does two, so an
+            # algebraically-zero closure term is not automatically bitwise
+            # inert; a separate launch of the unmodified kernel is.
+            one_minus_omega = self._one_minus_omega(tau)
+            wp.launch(
+                _collide_kernel,
+                dim=(Q, ny, nx),
+                inputs=[f, feq, one_minus_omega],
+                device=self.device,
+            )
+            return
+
+        smag_coeff, tau32, tau_sq = self._smag_scalars(tau, cs_smag)
+        scale = self.empty((ny, nx)) if smag_out is None else smag_out
         wp.launch(
-            _collide_kernel,
+            _smag_scale_kernel,
+            dim=(ny, nx),
+            inputs=[f, feq, self._e_f32, smag_coeff, tau32, tau_sq, scale],
+            device=self.device,
+        )
+        wp.launch(
+            _collide_smag_kernel,
             dim=(Q, ny, nx),
-            inputs=[f, feq, one_minus_omega],
+            inputs=[f, feq, scale],
             device=self.device,
         )
 
@@ -1035,35 +1306,61 @@ class WarpBackend:
                 "collide_stream needs f_pre (the pre-collision copy, D-011) to "
                 "bounce back off solid: f_pre[OPP[i]] is the reflection."
             )
-        if cs_smag != 0.0:
-            raise NotImplementedError(
-                "the Smagorinsky closure is not on the warp backend yet "
-                "(see DOCS/TASKS3.md T202). T201 landed it in lbm/core.py and "
-                "the numpy backend; T202 ports the kernels and answers Q-201 "
-                "-- whether cs_smag = 0 stays bitwise through a fused "
-                "multiply-add (D-053) or needs a separately compiled kernel."
-            )
-        one_minus_omega = self._one_minus_omega(tau)
+        del smag_work  # registers, not scratch — see :meth:`collide`
 
         _, ny, nx = f.shape
         s = f if f_bb is None else f_bb
         has_solid = 0 if solid is None else 1
 
-        wp.launch(
-            _collide_bb_kernel,
-            dim=(ny, nx),
-            inputs=[
-                f,
-                feq,
-                f if f_pre is None else f_pre,
-                self._no_mask2d if solid is None else solid,
-                self._opp,
-                one_minus_omega,
-                has_solid,
-                s,
-            ],
-            device=self.device,
-        )
+        if cs_smag == 0.0:
+            # Constraint 19 on the fused path: Phase 1's kernel, launched
+            # unchanged. See :meth:`collide` for why this is a branch and not a
+            # zero-valued term.
+            one_minus_omega = self._one_minus_omega(tau)
+            wp.launch(
+                _collide_bb_kernel,
+                dim=(ny, nx),
+                inputs=[
+                    f,
+                    feq,
+                    f if f_pre is None else f_pre,
+                    self._no_mask2d if solid is None else solid,
+                    self._opp,
+                    one_minus_omega,
+                    has_solid,
+                    s,
+                ],
+                device=self.device,
+            )
+        else:
+            # One launch, and it has to be: the factor is computed from the
+            # **pre-collision** ``f``, and this kernel writes ``s``, which may
+            # *be* ``f``. Each thread therefore reduces its own cell's nine
+            # directions before it writes any of them — the per-thread form of
+            # "there is exactly one moment at which the whole pre-collision
+            # state exists", which is what :func:`lbm.core.collide_stream`
+            # relies on when it computes the field before the direction loop.
+            smag_coeff, tau32, tau_sq = self._smag_scalars(tau, cs_smag)
+            scale = self.empty((ny, nx)) if smag_out is None else smag_out
+            wp.launch(
+                _collide_bb_smag_kernel,
+                dim=(ny, nx),
+                inputs=[
+                    f,
+                    feq,
+                    f if f_pre is None else f_pre,
+                    self._no_mask2d if solid is None else solid,
+                    self._opp,
+                    self._e_f32,
+                    smag_coeff,
+                    tau32,
+                    tau_sq,
+                    has_solid,
+                    s,
+                    scale,
+                ],
+                device=self.device,
+            )
 
         if s is f:
             # The snapshot staged in ``f``; the gather cannot read and write the
@@ -1387,6 +1684,54 @@ class WarpBackend:
                 "collision with tau <= 0.5 gives non-positive viscosity and diverges."
             )
         return float(np.float32(1.0 - 1.0 / tau))
+
+    @staticmethod
+    def _smag_scalars(tau: float, cs_smag: float) -> tuple[float, float, float]:
+        """The closure's three host-side scalars, in NumPy's expression order.
+
+        **D-057**, applied to T202: a ``float64`` quantity that NumPy rounds to
+        ``float32`` **once** is computed on the host and uploaded, never
+        re-derived per thread. :func:`lbm.core.smagorinsky_tau_eff` folds
+        exactly these three, and the expressions below are transcribed from it
+        character for character —
+        ``np.float32(SMAG_Q_COEFF * cs_smag * cs_smag)``, ``np.float32(tau)``
+        and ``np.float32(tau32 * tau32)`` — because a different association
+        order would round differently. :data:`lbm.core.SMAG_Q_COEFF` is kept in
+        ``float64`` for this reason and is imported, never restated
+        (constraint 4).
+
+        ``tau32 * tau32`` in particular is why ``tau_eff -> tau`` exactly in the
+        ``cs_smag -> 0`` limit: IEEE ``sqrt(x * x) == |x|``, which a ``float64``
+        ``tau**2`` rounded afterwards would not guarantee (**D-085**).
+
+        Args:
+            tau: BGK relaxation time, greater than 0.5.
+            cs_smag: the Smagorinsky constant, non-negative.
+
+        Returns:
+            ``(smag_coeff, tau32, tau_sq)`` as Python floats holding
+            ``float32`` values, ready to pass to :func:`_smag_scale_kernel`.
+
+        Raises:
+            ValueError: if ``tau <= 0.5`` or ``cs_smag < 0`` — the checks and
+                the messages are :func:`lbm.core.smagorinsky_tau_eff`'s.
+        """
+        if tau <= 0.5:
+            raise ValueError(
+                f"tau must be greater than 0.5 (got tau={tau!r}): "
+                "nu = (tau - 0.5) / 3, so tau <= 0.5 gives non-positive viscosity."
+            )
+        if cs_smag < 0.0:
+            raise ValueError(
+                f"cs_smag must be non-negative (got {cs_smag!r}): the closure adds "
+                "eddy viscosity and never removes it (CLAUDE.md constraint 2)."
+            )
+        tau32 = np.float32(tau)
+        return (
+            float(np.float32(SMAG_Q_COEFF * cs_smag * cs_smag)),
+            float(tau32),
+            float(np.float32(tau32 * tau32)),
+        )
 
     @staticmethod
     def _check_host(arr: NDArray[np.float32]) -> None:

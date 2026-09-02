@@ -7,10 +7,12 @@
     on f after 1000 steps); and Rung 3 with the closure **on** still prints
     Cd 1.25-1.45, St 0.155-0.175.
 
-This is the gate for **T201** on numpy and, with T202's ``--backend``, for the
-whole of **M9**. Run it from the repo root::
+This is the gate for **T201** on numpy and, with T202's ``--backend``, on warp
+too — the pair of them being half of **M9** (Rung G is the other half). Run it
+from the repo root::
 
     myenv/Scripts/python.exe -m validate.les
+    myenv/Scripts/python.exe -m validate.les --backend warp
     myenv/Scripts/python.exe -m validate.les --steps 200   # a faster smoke
 
 Why the bitwise clause is first, and why it is written this way
@@ -29,6 +31,14 @@ before T201). They are the oracle, they are deliberately duplicated code, and
 that deletes the rung. If a future task genuinely changes the base arithmetic,
 that is a constraint 1 violation and the answer is a decision in
 ``DOCS/STATE3.md``, not a change here.
+
+T202 adds the **second** oracle the same rule governs: the Warp backend's own
+Phase 1 kernels, frozen here as :func:`_phase1_collide_kernel` and
+:func:`_phase1_collide_bb_kernel` (**D-087**, extended). One copy, in this file,
+never edited. A GPU oracle is needed for the same reason the host one is —
+comparing the backend against itself proves nothing — and it is a *transcription*
+rather than an import so that a later edit to ``lbm/backends/warp_backend.py``
+cannot silently move both sides of the comparison at once.
 
 The comparison runs the real :class:`lbm.runner.Sim` on **Rung 3's own case**,
 swapping only the two collision kernels through the backend seam (**D-054**),
@@ -52,13 +62,17 @@ What the three clauses check
    through :func:`validate.cylinder.run_cylinder` itself, still landing in the
    published bands ``Cd`` 1.25-1.45 and ``St`` 0.155-0.175.
 
-Not here, deliberately
-----------------------
-``--backend`` is **T202**'s (``DOCS/TASKS3.md`` § T202): the Warp kernels do not
-exist yet, and :class:`lbm.backends.warp_backend.WarpBackend` raises
-``NotImplementedError`` for a non-zero ``cs_smag`` rather than pretending. The
-whole-of-Rung-F claim is therefore *numpy only* until that task lands, and this
-module says so in its output.
+Clause 4, and why it lives here rather than in Rung A
+-----------------------------------------------------
+``--backend warp`` adds a fourth clause: **cross-backend agreement with the
+closure on**, held to the two numbers Rung A already publishes — per-kernel
+worst under ``1e-6`` in ``f`` units (**D-053**) and whole-step
+``max|Delta u| / U`` under ``1e-4`` at 1000 steps (**D-056**). It runs
+:func:`validate.parity.whole_step` itself, with ``cs_smag`` threaded through
+:func:`validate.parity.step_case`, so the case and the bars are Rung A's own and
+not a second copy of them. Rung A keeps the closure **off**, which is what
+constraint 19 says it should measure; the closure-on version of the same
+question belongs to the rung that owns the closure.
 """
 
 from __future__ import annotations
@@ -82,6 +96,7 @@ from lbm.core import (
     macroscopic,
     smagorinsky_tau_eff,
 )
+from lbm.backends import BackendUnavailableError, get_backend
 from lbm.probe import eddy_viscosity
 from lbm.runner import Sim
 from validate.cylinder import (
@@ -255,6 +270,203 @@ class Phase1Backend:
         )
 
 
+# --- the frozen Phase 1 **warp** oracle (T202). DO NOT EDIT. -----------------
+#
+# Verbatim transcriptions of lbm.backends.warp_backend._collide_kernel and
+# ._collide_bb_kernel as they stood at the end of Phase 1 (M8, session 22),
+# before T202 gave the backend a closure. Same rule as the NumPy oracle above:
+# one copy, in this file, never edited.
+#
+# `_stream_kernel` is imported rather than transcribed, for the reason
+# `_shift_blocks` is on the host side: streaming moves values and does no
+# arithmetic, T202 did not touch it, and copying it here would make this file
+# claim to freeze something it does not test.
+#
+# Guarded because warp-lang is an optional dependency: `python -m validate.les`
+# on a machine without it must still run the numpy half.
+
+try:  # pragma: no cover - exercised only where warp-lang is installed
+    import warp as wp
+except ImportError:  # pragma: no cover
+    wp = None  # type: ignore[assignment]
+
+if wp is not None:
+    # Streaming has no arithmetic in it (see the comment above), so the
+    # live kernel is the frozen one.
+    from lbm.backends.warp_backend import _stream_kernel as _warp_stream_kernel
+
+    @wp.kernel
+    def _phase1_collide_kernel(
+        f: wp.array3d(dtype=wp.float32),
+        feq: wp.array3d(dtype=wp.float32),
+        one_minus_omega: wp.float32,
+    ) -> None:
+        """FROZEN Phase 1 warp ``_collide_kernel``. Do not edit."""
+        i, y, x = wp.tid()
+
+        v = f[i, y, x]
+        v -= feq[i, y, x]
+        v *= one_minus_omega
+        v += feq[i, y, x]
+        f[i, y, x] = v
+
+    @wp.kernel
+    def _phase1_collide_bb_kernel(
+        f: wp.array3d(dtype=wp.float32),
+        feq: wp.array3d(dtype=wp.float32),
+        f_pre: wp.array3d(dtype=wp.float32),
+        solid: wp.array2d(dtype=wp.uint8),
+        opp: wp.array(dtype=wp.int32),
+        one_minus_omega: wp.float32,
+        has_solid: wp.int32,
+        s: wp.array3d(dtype=wp.float32),
+    ) -> None:
+        """FROZEN Phase 1 warp ``_collide_bb_kernel``. Do not edit."""
+        y, x = wp.tid()
+
+        wall = int(0)
+        if has_solid != 0:
+            if solid[y, x] != wp.uint8(0):
+                wall = 1
+
+        for i in range(9):
+            if wall != 0:
+                s[i, y, x] = f_pre[opp[i], y, x]
+            else:
+                v = f[i, y, x]
+                v -= feq[i, y, x]
+                v *= one_minus_omega
+                v += feq[i, y, x]
+                s[i, y, x] = v
+
+
+class Phase1WarpBackend:
+    """The Warp backend with its two collision kernels frozen at Phase 1.
+
+    :class:`Phase1Backend`'s argument, on the GPU: everything but
+    :meth:`collide` and :meth:`collide_stream` forwards to the real backend, so
+    both runs share every device allocation, every boundary launch and the whole
+    D-020 ordering, and what differs is exactly the arithmetic under test.
+
+    The two methods below transcribe the **method bodies** of
+    :meth:`lbm.backends.warp_backend.WarpBackend.collide` and
+    ``.collide_stream`` as Phase 1 shipped them — the launch shapes and argument
+    order included, because those are part of what "the same kernel" means — and
+    launch the frozen kernels above.
+
+    Attributes:
+        name: ``"phase1-warp"`` — never registered; a test double, reached by
+            assigning to :attr:`lbm.runner.Sim.backend` after construction.
+    """
+
+    name: str = "phase1-warp"
+
+    def __init__(self, inner: object) -> None:
+        self.inner = inner
+        # Compile now rather than inside the comparison, exactly as the real
+        # backend's constructor does.
+        wp.load_module(module=__name__, device=inner.device)  # type: ignore[attr-defined]
+
+    def __getattr__(self, item: str) -> object:
+        return getattr(self.inner, item)
+
+    def collide(
+        self,
+        f: object,
+        feq: object,
+        tau: float,
+        *,
+        cs_smag: float = 0.0,
+        smag_out: object = None,
+        smag_work: object = None,
+    ) -> None:
+        """Phase 1's collision. A non-zero ``cs_smag`` is a bug in the caller."""
+        if cs_smag != 0.0:
+            raise AssertionError(
+                "the frozen Phase 1 oracle has no closure; it is what "
+                "cs_smag = 0 is compared against."
+            )
+        one_minus_omega = self.inner._one_minus_omega(tau)  # type: ignore[attr-defined]
+        _, ny, nx = f.shape  # type: ignore[attr-defined]
+        wp.launch(
+            _phase1_collide_kernel,
+            dim=(Q, ny, nx),
+            inputs=[f, feq, one_minus_omega],
+            device=self.inner.device,  # type: ignore[attr-defined]
+        )
+
+    def collide_stream(
+        self,
+        f: object,
+        feq: object,
+        tau: float,
+        buf: object,
+        *,
+        f_pre: object = None,
+        solid: object = None,
+        f_bb: object = None,
+        cs_smag: float = 0.0,
+        smag_out: object = None,
+        smag_work: object = None,
+    ) -> object:
+        """Phase 1's fused pass. A non-zero ``cs_smag`` is a bug in the caller."""
+        if cs_smag != 0.0:
+            raise AssertionError(
+                "the frozen Phase 1 oracle has no closure; it is what "
+                "cs_smag = 0 is compared against."
+            )
+        if solid is not None and f_pre is None:
+            raise ValueError(
+                "collide_stream needs f_pre (the pre-collision copy, D-011) to "
+                "bounce back off solid: f_pre[OPP[i]] is the reflection."
+            )
+        inner = self.inner
+        one_minus_omega = inner._one_minus_omega(tau)  # type: ignore[attr-defined]
+
+        _, ny, nx = f.shape  # type: ignore[attr-defined]
+        s = f if f_bb is None else f_bb
+        has_solid = 0 if solid is None else 1
+
+        wp.launch(
+            _phase1_collide_bb_kernel,
+            dim=(ny, nx),
+            inputs=[
+                f,
+                feq,
+                f if f_pre is None else f_pre,
+                inner._no_mask2d if solid is None else solid,  # type: ignore[attr-defined]
+                inner._opp,  # type: ignore[attr-defined]
+                one_minus_omega,
+                has_solid,
+                s,
+            ],
+            device=inner.device,  # type: ignore[attr-defined]
+        )
+
+        if s is f:
+            wp.launch(
+                _warp_stream_kernel,
+                dim=(Q, ny, nx),
+                inputs=[f, inner._e_i32, buf],  # type: ignore[attr-defined]
+                device=inner.device,  # type: ignore[attr-defined]
+            )
+            wp.copy(f, buf)
+        else:
+            wp.launch(
+                _warp_stream_kernel,
+                dim=(Q, ny, nx),
+                inputs=[s, inner._e_i32, f],  # type: ignore[attr-defined]
+                device=inner.device,  # type: ignore[attr-defined]
+            )
+        return f
+
+
+#: One oracle per backend, keyed by the registry name the case runs on.
+PHASE1_ORACLES: dict[str, object] = {"numpy": Phase1Backend}
+if wp is not None:
+    PHASE1_ORACLES["warp"] = Phase1WarpBackend
+
+
 # --- the case ----------------------------------------------------------------
 
 
@@ -285,8 +497,8 @@ def build_case(backend: str = "numpy") -> tuple[Case, object]:
     3's case" means the case Rung 3 actually runs.
 
     Args:
-        backend: the T101 registry name. Only ``"numpy"`` is meaningful until
-            T202.
+        backend: the T101 registry name — ``"numpy"`` or, since T202,
+            ``"warp"``.
 
     Returns:
         ``(case, make)`` where ``make(fused, cs_smag)`` builds the config.
@@ -322,11 +534,21 @@ def _run(cfg: object, solid: NDArray[np.bool_], steps: int, *, phase1: bool) -> 
     """``steps`` timesteps of ``cfg``, optionally on the frozen Phase 1 kernels.
 
     The oracle is installed **after** construction, so both runs allocate their
-    state through the same backend and start from a byte-identical ``f``.
+    state through the same backend and start from a byte-identical ``f``. Which
+    oracle depends on the backend the case is running on — :data:`PHASE1_ORACLES`
+    holds one per backend, and there is exactly one copy of each.
     """
     sim = Sim(cfg, solid)  # type: ignore[arg-type]
     if phase1:
-        sim.backend = Phase1Backend(sim.backend)  # type: ignore[assignment]
+        name = sim.backend.name
+        oracle = PHASE1_ORACLES.get(name)
+        if oracle is None:
+            raise RuntimeError(
+                f"no frozen Phase 1 oracle for backend {name!r}: constraint 19 "
+                "is a claim about every backend, and it cannot be measured "
+                "against a backend compared with itself."
+            )
+        sim.backend = oracle(sim.backend)  # type: ignore[assignment,operator]
     sim.run_steps(steps)
     return sim
 
@@ -453,6 +675,137 @@ def check_closure(case: Case, make, steps: int, cs: float = CS) -> ClosureResult
     )
 
 
+# --- clause 4: cross-backend agreement with the closure ON -------------------
+
+
+@dataclass
+class CrossResult:
+    """What clause 4 measured — only runs when ``--backend`` is not numpy.
+
+    Attributes:
+        backend: the backend compared against numpy.
+        cs: the Smagorinsky constant both sides ran.
+        kernel_worst: worst absolute difference over every grid and both
+            collision kernels, ``f`` units. Held to **D-053**'s 1e-6.
+        kernel_where: which kernel and grid produced ``kernel_worst``.
+        step_du: ``max|Delta u| / U`` at the last rung of
+            :data:`validate.parity.STEP_LADDER`. Held to **D-056**'s 1e-4.
+        step_points: ``(steps, du, df)`` at every rung, so the growth rate is
+            visible and not merely bounded.
+        step_nu_t_ratio: ``max(nu_t) / nu`` on the whole-step case's own final
+            state. Printed because the whole-step number alone cannot say
+            whether the closure was *engaged* in the case that produced it.
+            It is: ~9% of ``nu`` on Rung A's own case. The whole-step figure
+            nevertheless lands on the same digits Rung A publishes with the
+            closure **off**, because the disagreement is dominated by the FMA
+            contractions **D-053** already documents and the closure perturbs
+            both backends coherently. A reader comparing the two numbers is
+            owed that sentence rather than left to assume the clause was inert.
+        finite: both sides stayed finite the whole way.
+        seconds: wall clock.
+    """
+
+    backend: str
+    cs: float
+    kernel_worst: float
+    kernel_where: str
+    step_du: float
+    step_points: list[tuple[int, float, float]]
+    step_nu_t_ratio: float
+    finite: bool
+    seconds: float
+
+
+def check_cross_backend(backend: str, cs: float = CS) -> CrossResult:
+    """The closure agrees across backends to the bars Rung A already publishes.
+
+    ``DOCS/TASKS3.md`` § T202, second acceptance criterion: *per-kernel worst
+    under 1e-6 in ``f`` units (**D-053**'s bar), whole step under 1e-4 in
+    ``max|Delta u|/U`` at 1000 steps (**D-056**'s bar). The measured numbers are
+    printed and recorded, not just compared.*
+
+    Both halves run **Rung A's own harness** — :func:`validate.parity.random_state`
+    and its grids for the kernels, :func:`validate.parity.whole_step` with
+    ``cs_smag`` threaded through for the step — so the bars are measured on the
+    case they were set on. ``feq`` is uploaded from NumPy to both sides, exactly
+    as :func:`validate.parity.compare_kernels` does, because this measures the
+    **collision** and not the equilibrium error fed through it.
+
+    Args:
+        backend: the backend to compare against numpy.
+        cs: the Smagorinsky constant, non-zero — with the closure off this
+            clause would be measuring Rung A over again.
+
+    Returns:
+        A :class:`CrossResult`.
+    """
+    from lbm.backends import get_backend
+    from validate.parity import (
+        GRIDS,
+        STEP_LADDER,
+        TAU,
+        random_state,
+        step_case,
+        whole_step,
+    )
+
+    start = time.perf_counter()
+    ref = get_backend("numpy")
+    dut = get_backend(backend)
+
+    worst = 0.0
+    where = "-"
+    for ny, nx in GRIDS:
+        rho, u, f = random_state(ny, nx)
+        feq_host = ref.download(ref.equilibrium(ref.upload(rho), ref.upload(u)))
+
+        # collide, in place, from the same f and the same feq.
+        a = ref.upload(f)
+        b = dut.upload(f)
+        ref.collide(a, ref.upload(feq_host), TAU, cs_smag=cs)
+        dut.collide(b, dut.upload(feq_host), TAU, cs_smag=cs)
+        d = float(np.max(np.abs(ref.download(a) - dut.download(b))))
+        if d > worst:
+            worst, where = d, f"collide at {nx}x{ny}"
+
+        # collide_stream, the fused path, unmasked — the reflection is an
+        # assignment and Rung A already compares it on its own.
+        a = ref.upload(f)
+        b = dut.upload(f)
+        ref.collide_stream(
+            a, ref.upload(feq_host), TAU, ref.empty((Q, ny, nx)), cs_smag=cs
+        )
+        dut.collide_stream(
+            b, dut.upload(feq_host), TAU, dut.empty((Q, ny, nx)), cs_smag=cs
+        )
+        d = float(np.max(np.abs(ref.download(a) - dut.download(b))))
+        if d > worst:
+            worst, where = d, f"collide_stream at {nx}x{ny}"
+
+    points = whole_step(backend, STEP_LADDER, cs_smag=cs)
+
+    # How hard the closure was biting in the case that produced those numbers.
+    cfg, solid = step_case("numpy", cs_smag=cs)
+    sim = Sim(cfg, solid)
+    sim.run_steps(STEP_LADDER[-1])
+    fs = sim.host_f()
+    rho_s, u_s = macroscopic(fs.copy())
+    nu_t = eddy_viscosity(fs, equilibrium(rho_s, u_s), cfg.tau, cs)
+    ratio = float(nu_t.max()) / ((cfg.tau - 0.5) / 3.0)
+
+    return CrossResult(
+        backend=backend,
+        cs=cs,
+        kernel_worst=worst,
+        kernel_where=where,
+        step_du=points[-1].du_over_u,
+        step_points=[(p.steps, p.du_over_u, p.df) for p in points],
+        step_nu_t_ratio=ratio,
+        finite=all(p.finite for p in points),
+        seconds=time.perf_counter() - start,
+    )
+
+
 # --- reporting ---------------------------------------------------------------
 
 
@@ -461,6 +814,7 @@ def report(
     clo: ClosureResult,
     cyl_passed: bool | None,
     backend: str,
+    cross: CrossResult | None = None,
 ) -> bool:
     """Print every check and return whether Rung F passed."""
     print()
@@ -475,6 +829,19 @@ def report(
           f"mean {clo.nu_t_mean:.3e}")
     print(f"    max(nu_t) / nu   {clo.nu_t_max / clo.nu:.4f}   "
           f"(the quantity D-082's fidelity bands are read off; T204 consumes it)")
+    if cross is not None:
+        print(f"    cross-backend    numpy vs {cross.backend} at Cs = {cross.cs} "
+              f"in {cross.seconds:.1f} s")
+        print(f"      per-kernel     {cross.kernel_worst:.3e} f units "
+              f"({cross.kernel_where}), bar 1e-6 (D-053)")
+        growth = "   ".join(
+            f"{n}: {du:.3e}" for n, du, _ in cross.step_points
+        )
+        print(f"      whole step     max|du|/U   {growth}   bar 1e-4 (D-056)")
+        print(f"      on that case   max(nu_t)/nu {cross.step_nu_t_ratio:.3e} "
+              f"-- the closure is engaged; the whole-step figure still")
+        print("                     matches Rung A's closure-off digits "
+              "because D-053's FMA contractions dominate it")
 
     checks: list[tuple[str, bool, str]] = [
         (
@@ -516,6 +883,28 @@ def report(
         ),
     ]
 
+    if cross is not None:
+        from validate.parity import STEP_TOL, TOL
+
+        checks.extend(
+            [
+                (
+                    f"numpy vs {cross.backend} per-kernel with the closure on "
+                    f"< {TOL:.0e} f units (D-053)",
+                    cross.kernel_worst < TOL,
+                    f"worst {cross.kernel_worst:.3e} ({cross.kernel_where})",
+                ),
+                (
+                    f"numpy vs {cross.backend} whole step with the closure on "
+                    f"< {STEP_TOL:.0e} max|du|/U at "
+                    f"{cross.step_points[-1][0]} steps (D-056)",
+                    cross.finite and cross.step_du < STEP_TOL,
+                    f"{cross.step_du:.3e}"
+                    + ("" if cross.finite else "  (NON-FINITE)"),
+                ),
+            ]
+        )
+
     if cyl_passed is not None:
         cd_lo, cd_hi = CD_BAND
         st_lo, st_hi = ST_BAND
@@ -535,9 +924,9 @@ def report(
 
     passed = all(ok for _, ok, _ in checks)
     print()
-    if backend == "numpy":
-        print("  scope: numpy only. The Warp half of Rung F is T202, which is")
-        print("         also what answers Q-201 (DOCS/STATE3.md).")
+    print(f"  scope: {backend}. Rung F is a claim about **every** backend "
+          f"(constraint 19),")
+    print("         so it is green only when it has been run on each of them.")
     print("PASS" if passed else "FAIL")
     return passed
 
@@ -562,6 +951,20 @@ def main(argv: list[str] | None = None) -> int:
         f"literature value; Phase 2 does not tune it)",
     )
     parser.add_argument(
+        "--backend",
+        default="numpy",
+        help="the T101 backend to run every clause on (default numpy). "
+        "Constraint 19 is a claim about every backend, so Rung F is green "
+        "only once it has been run on each; --backend warp additionally "
+        "measures cross-backend agreement with the closure on (T202).",
+    )
+    parser.add_argument(
+        "--skip-cross",
+        action="store_true",
+        help="skip clause 4, the cross-backend comparison. Only meaningful "
+        "with a non-numpy --backend, and a skipped clause is reported.",
+    )
+    parser.add_argument(
         "--skip-cylinder",
         action="store_true",
         help="skip clause 3, the full Rung 3 case with the closure on. It is "
@@ -574,7 +977,12 @@ def main(argv: list[str] | None = None) -> int:
     # Nothing here draws, and this makes that true even for a stray SDL init.
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
-    backend = "numpy"
+    backend = args.backend
+    try:
+        get_backend(backend)
+    except BackendUnavailableError as exc:
+        print(f"SKIP - {exc}")
+        return 2
 
     print("Rung F — the Smagorinsky closure, switchable "
           "(DOCS/IDEA4.md § Validation ladder)")
@@ -615,10 +1023,22 @@ def main(argv: list[str] | None = None) -> int:
         print("  clause 3 SKIPPED by --skip-cylinder: Rung 3 with the closure "
               "on was not run.")
 
-    passed = report(bit, clo, cyl_passed, backend)
+    cross: CrossResult | None = None
+    if backend != "numpy" and not args.skip_cross:
+        print()
+        print(f"  clause 4 — numpy vs {backend} with the closure on, against "
+              f"Rung A's own bars ...", flush=True)
+        cross = check_cross_backend(backend, args.cs)
+    elif backend != "numpy":
+        print()
+        print("  clause 4 SKIPPED by --skip-cross: cross-backend agreement "
+              "with the closure on was not measured.")
+
+    passed = report(bit, clo, cyl_passed, backend, cross)
     if args.skip_cylinder:
         print("  NOTE: clause 3 was skipped, so this is not a full Rung F pass.")
-        return 0 if passed else 1
+    if backend != "numpy" and args.skip_cross:
+        print("  NOTE: clause 4 was skipped, so this is not a full Rung F pass.")
     return 0 if passed else 1
 
 

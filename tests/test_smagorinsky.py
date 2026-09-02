@@ -483,21 +483,166 @@ def test_the_numpy_backend_delegates_the_closure_to_core():
     assert np.array_equal(f_be, f_core)
 
 
-@pytest.mark.skipif(
+# ---------------------------------------------------------------------------
+# T202 — the closure on the Warp backend
+# ---------------------------------------------------------------------------
+
+warp_only = pytest.mark.skipif(
     "warp" not in available_backends(), reason="warp-lang is not installed"
 )
-def test_warp_refuses_the_closure_until_t202_rather_than_ignoring_it():
-    """A backend that silently dropped ``cs_smag`` would be the worst outcome.
 
-    T202 is where the Warp kernels land (and where **Q-201** is answered by
-    measurement). Until then the honest answer is a refusal that names the task,
-    not a run that quietly computes plain BGK and reports a closure.
+#: Rung A's own per-kernel bar (**D-053**), in ``f`` units. The closure is held
+#: to the same number, not a widened one — ``DOCS/TASKS3.md`` § T202.
+PARITY_TOL = 1e-6
+
+
+@warp_only
+def test_warp_agrees_with_numpy_on_the_closure_to_rung_as_own_bar():
+    """T202: the same arithmetic on the GPU, to **D-053**'s 1e-6 in ``f`` units.
+
+    NumPy is the oracle (**D-043**); a GPU that disagrees with it is a broken
+    backend and not a new answer. Both collision entry points are checked,
+    because :meth:`WarpBackend.collide` and ``.collide_stream`` reach the
+    closure by different launches.
     """
     be = get_backend("warp")
-    f = be.from_host(random_state(10))
-    feq = be.from_host(feq_of(random_state(10)))
-    with pytest.raises(NotImplementedError, match="T202"):
-        be.collide(f, feq, TAU, cs_smag=CS)
+    f = random_state(21)
+    feq = feq_of(f)
+
+    ref = f.copy()
+    collide(ref, feq, TAU, cs_smag=CS)
+    dev = be.from_host(f.copy())
+    be.collide(dev, be.from_host(feq), TAU, cs_smag=CS)
+    assert np.abs(be.to_host(dev) - ref).max() < PARITY_TOL
+
+    ref = f.copy()
+    collide_stream(ref, feq, TAU, np.empty_like(f), cs_smag=CS)
+    dev = be.from_host(f.copy())
+    be.collide_stream(
+        dev, be.from_host(feq), TAU, be.empty((Q, NY, NX)), cs_smag=CS
+    )
+    assert np.abs(be.to_host(dev) - ref).max() < PARITY_TOL
+
+
+@warp_only
+def test_warp_with_the_closure_off_is_bitwise_its_own_bgk_kernel():
+    """Constraint 19 on the GPU, at the kernel level.
+
+    **Q-201** asked whether a term that is algebraically zero stays bitwise
+    inert on a device that contracts ``x * a + b`` into one rounding
+    (**D-053**). The recorded answer is that the question is never asked: with
+    ``cs_smag = 0`` the backend launches the *Phase 1 kernel*, unmodified, so
+    equality is by construction. Rung F measures the same claim over 1000 steps
+    of Rung 3's case against the frozen oracle in :mod:`validate.les`; this is
+    its cheap unit-level form.
+    """
+    be = get_backend("warp")
+    f = random_state(22)
+    feq = feq_of(f)
+
+    a = be.from_host(f.copy())
+    b = be.from_host(f.copy())
+    be.collide(a, be.from_host(feq), TAU)
+    be.collide(b, be.from_host(feq), TAU, cs_smag=0.0)
+    assert np.array_equal(be.to_host(a), be.to_host(b))
+
+    a = be.from_host(f.copy())
+    b = be.from_host(f.copy())
+    be.collide_stream(a, be.from_host(feq), TAU, be.empty((Q, NY, NX)))
+    be.collide_stream(
+        b, be.from_host(feq), TAU, be.empty((Q, NY, NX)), cs_smag=0.0
+    )
+    assert np.array_equal(be.to_host(a), be.to_host(b))
+
+
+@warp_only
+def test_warp_folds_the_closures_scalars_host_side_in_numpys_order():
+    """**D-057**: a ``float64``-then-rounded scalar is rounded once, on the host.
+
+    The three the closure needs are ``18 sqrt(2) Cs^2``, ``tau`` and ``tau^2``,
+    and :meth:`WarpBackend._smag_scalars` must produce exactly what
+    :func:`lbm.core.smagorinsky_tau_eff` folds — not a value a kernel could have
+    recomputed in ``float32``, which would be a second rounding.
+    """
+    be = get_backend("warp")
+    coeff, tau32, tau_sq = be._smag_scalars(TAU, CS)
+
+    assert coeff == float(np.float32(SMAG_Q_COEFF * CS * CS))
+    assert tau32 == float(np.float32(TAU))
+    assert tau_sq == float(np.float32(np.float32(TAU) * np.float32(TAU)))
+    # tau^2 rounded once from float64 is a *different* number in general; the
+    # point of the expression above is that it is not this one.
+    assert tau_sq == float(np.float32(np.float32(TAU) ** 2))
+
+    with pytest.raises(ValueError):
+        be._smag_scalars(0.5, CS)
+    with pytest.raises(ValueError):
+        be._smag_scalars(TAU, -1e-9)
+
+
+@warp_only
+def test_warp_never_restates_a_lattice_constant_for_the_closure():
+    """Constraint 4, extended to :data:`lbm.core.SMAG_Q_COEFF` by T202.
+
+    The coefficient is imported and folded host-side; no kernel may carry it,
+    and ``18``, ``sqrt(2)`` and ``25.45...`` must not appear as literals in the
+    module. The check is over the source of ``lbm/backends/warp_backend.py``
+    itself, in the shape ``tests/test_backends.py`` already uses for ``E``,
+    ``W`` and ``OPP``.
+    """
+    src = (REPO / "lbm" / "backends" / "warp_backend.py").read_text(
+        encoding="utf-8"
+    )
+    body = "\n".join(
+        line for line in src.splitlines() if not line.strip().startswith("#")
+    )
+    assert "from lbm.core import" in body and "SMAG_Q_COEFF" in body
+    for literal in ("25.45", "18.0 * np", "np.sqrt(2"):
+        assert literal not in body, f"{literal!r} restated in the warp backend"
+
+
+@warp_only
+def test_the_closure_adds_nothing_to_the_checkpoint_on_warp(tmp_path):
+    """Constraint 11 with the closure on: ``tau_eff`` is derived, not state.
+
+    ``DOCS/TASKS3.md`` § T202 asks for this to be asserted rather than assumed.
+    ``f``, ``solid`` and ``step_count`` are still the entire checkpoint
+    (**D-022**, **D-050**), and a restart is still bit-identical *within* the
+    backend — which is the whole claim, since a closure that carried hidden
+    state would resume onto a different ``tau_eff`` and diverge on step one.
+    """
+    import pickle
+
+    from lbm.runner import load_checkpoint, save_checkpoint
+
+    solid = channel_walls(NY, NX) | circle(NY, NX, NX / 4.0, NY / 2.0, 3.0)
+    cfg = SimConfig(
+        ny=NY,
+        nx=NX,
+        tau=TAU,
+        inlet_U=0.05,
+        use_inlet=True,
+        use_outlet=True,
+        convective_outlet=True,
+        check_geometry=False,
+        backend="warp",
+        cs_smag=CS,
+    )
+
+    sim = Sim(cfg, solid)
+    sim.run_steps(60)
+    path = save_checkpoint(sim, tmp_path / "les.pkl")
+    sim.run_steps(60)
+    reference = sim.host_f()
+
+    with open(path, "rb") as fh:
+        state = pickle.load(fh)
+    assert set(state) == {"f", "solid", "step_count", "config", "format"}
+
+    resumed = load_checkpoint(path)
+    assert resumed.config.cs_smag == CS
+    resumed.run_steps(60)
+    assert np.array_equal(resumed.host_f(), reference)
 
 
 def test_the_closure_is_off_everywhere_it_is_not_being_tested():
