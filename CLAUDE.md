@@ -169,6 +169,7 @@ myenv/Scripts/python.exe -m lbm.runner --demo cylinder    # live window (T007+)
 myenv/Scripts/python.exe -m validate.les                  # Rung F on numpy (T201)
 myenv/Scripts/python.exe -m validate.les --backend warp   # Rung F on warp (T202) — both are the rung
 myenv/Scripts/python.exe -m validate.taylorgreen          # Rung G — analytic decay (T203)
+myenv/Scripts/python.exe -m validate.taylorgreen --backend warp   # Rung G on warp — both are the rung
 myenv/Scripts/python.exe -m validate.fidelity             # Rung H — the bands (T204)
 myenv/Scripts/python.exe -m validate.install              # Rung I — fresh-venv wheel (T205)
 myenv/Scripts/python.exe -m validate.drop                 # Rung J — the drop, timed (T209)
@@ -292,11 +293,12 @@ measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 1
 (**D-077**) and Rung D's cost check gained rounds (**D-078**).
 
 **Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 landed in
-session 24, T202 in session 25**, and **T203 is next**. Three deliverables: a **Smagorinsky closure** on the existing BGK
-collision (both backends, defaulting off), the **fidelity bands** that make it safe to ship, and a
-**pygame desktop application** shipped as `pip install fengdong`. Rungs **F 🟩 · G ⬜ · H ⬜ · I ⬜ ·
-J ⬜**, milestones **M9**–**M12**. Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog
-`DOCS/TASKS3.md` · **live status `DOCS/STATE3.md`**.
+session 24, T202 in session 25, T203 in session 26 — and with it M9**. **T204 is next.** Three
+deliverables: a **Smagorinsky closure** on the existing BGK collision (both backends, defaulting
+off), the **fidelity bands** that make it safe to ship, and a **pygame desktop application** shipped
+as `pip install fengdong`. Rungs **F 🟩 · G 🟩 · H ⬜ · I ⬜ · J ⬜**, milestones **M9 🟩** – **M12**.
+Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog `DOCS/TASKS3.md` · **live status
+`DOCS/STATE3.md`**.
 
 **T201, done (session 24):** the closure is in `lbm/core.py` — `smagorinsky_tau_eff` (the primitive)
 and `smagorinsky_omega` (its reciprocal), `CS_SMAG_LITERATURE = 0.17`, `SMAG_Q_COEFF = 18 sqrt(2)` —
@@ -315,6 +317,21 @@ on both paths after 1000 steps of Rung 3's case (worst |diff| **0.000e+00**); Ru
 prints Cd **1.4143**, St **0.1719** on *both* backends; cross-backend with the closure **on**, worst
 kernel **2.980e-08** against 1e-6 and whole step **9.611e-06** against 1e-4 — Rung A's own bars,
 unwidened. The closure costs **1.6% / 9.3% / 9.8%** of the BGK step rate at 40k / 1M / 2M cells.
+
+**T203, done (session 26): Rung G is green on both backends, and F + G is M9.**
+`validate/taylorgreen.py` decays an exact 2D Taylor–Green vortex on a doubly periodic domain with no
+bodies and fits `ln E` against `t`. Measured on 64x64 at `tau = 0.52`, `u0 = 0.08`: at `Cs = 0` the
+decay returns `(tau - 0.5)/3` to **0.2303%** against Rung 1's own 1% bar, with `<nu_t>` exactly zero;
+at `Cs = 0.17` it returns `nu + <nu_t>` to **1.1547%** against 2%, and **bare `nu` misses by
+3.0178%** — so deleting the closure term breaks the clause instead of passing it (**D-091**).
+**Q-202's answer: `<nu_t>/nu` = 1.8418%** on a resolved flow, an order of magnitude below Rung 3's
+wake. The trap D-091 records: that ratio is a *design output* — it scales as `u0 / (L nu)`, and on a
+more resolved case the closure is more inert, not less, so the case had to be **sized** for the bar
+to have teeth. Taylor–Green has `S_xy = 0`, so the decay responds to the **dissipation-weighted**
+`<nu_t^3>/<nu_t^2>`, which is **1.7780x** the domain mean; against *that* the measured excess is
+**0.9972**. The M9 gate was run in full — all nine existing rungs re-run on both backends with every
+published digit unmoved, and `bench.py --backend warp --les` reading **3504.0 / 661.6 / 403.7** against
+floors **3116 / 568 / 331**.
 
 **What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
 picture"* and D-044 deferred that; everything beneath it is now validated by nine rungs, so this

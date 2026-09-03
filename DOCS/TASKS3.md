@@ -17,7 +17,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 |---|---|---|---|---|
 | T201 | Smagorinsky closure: `lbm/core.py` + NumPy backend | `done` | — | **Rung F** (numpy) 🟩 |
 | T202 | The closure on the Warp backend | `done` | T201 | **Rung F** (full) 🟩 + Rung A 🟩 |
-| T203 | Taylor–Green harness | `not_started` | T202 | **Rung G** → **M9** |
+| T203 | Taylor–Green harness | `done` | T202 | **Rung G** 🟩 → **M9** 🟩 |
 | T204 | `flow/fidelity.py` — the bands, wired through | `not_started` | T203 | **Rung H** → **M10** |
 | T205 | Packaging: `pyproject.toml`, the `fengdong` distribution | `not_started` | — | **Rung I** → **M11** |
 | T206 | `fengdong/widgets.py` — the closed widget set | `not_started` | T205 | unit tests, headless |
@@ -152,7 +152,7 @@ defaulted `cs_smag` so that clause runs Rung A's case rather than a copy of it.
 
 ## T203 — Taylor–Green harness → Rung G → M9
 
-**Status:** `not_started`
+**Status:** `done` (session 26, 2026-09-03)
 
 ### Goal
 
@@ -172,14 +172,15 @@ rather than against a benchmark table.
 
 ### Acceptance criteria
 
-- [ ] The harness initialises the exact 2D Taylor–Green vortex, `u = u0 cos(kx) sin(ky)`, `v = -u0 sin(kx) cos(ky)`, on a periodic domain, and measures the decay rate of the kinetic energy against `exp(-2 nu k^2 t)`.
-- [ ] With `--cs 0`: the measured viscosity returns `nu = (tau - 0.5)/3` to **under 1%**, the bar Rung 1 already meets. This is a fourth independent check on the base solver and it must pass before any LES number is believed.
-- [ ] With `--cs 0.17`: the measured viscosity returns `nu + <nu_t>` to **under 2%**, where `<nu_t>` is the domain average of `lbm.probe.eddy_viscosity` **computed from the model during the run**, not fitted to the decay curve afterwards. A fitted `nu_t` proves nothing and the test says so.
-- [ ] The peak lattice velocity stays under 0.1 throughout (constraint 3) and the harness prints it.
-- [ ] Both backends pass, and the printed digits agree to the **D-056** whole-step tolerance.
-- [ ] `myenv/Scripts/python.exe -m validate.taylorgreen` and `--backend warp` both print **PASS**.
-- [ ] **M9 gate run in full** — Rungs F and G on both backends, all nine existing rungs re-run, and `bench.py --backend warp --les` clearing its floors. Milestone claimed only on printed output.
-- [ ] `pytest` green.
+- [x] The harness initialises the exact 2D Taylor–Green vortex, `u = u0 cos(kx) sin(ky)`, `v = -u0 sin(kx) cos(ky)`, on a periodic domain, and measures the decay rate of the kinetic energy against `exp(-2 nu k^2 t)`.
+- [x] With `--cs 0`: the measured viscosity returns `nu = (tau - 0.5)/3` to **under 1%**, the bar Rung 1 already meets. This is a fourth independent check on the base solver and it must pass before any LES number is believed. — **0.2303%**, `ln E` fit `R^2` 1.000000
+- [x] With `--cs 0.17`: the measured viscosity returns `nu + <nu_t>` to **under 2%**, where `<nu_t>` is the domain average of `lbm.probe.eddy_viscosity` **computed from the model during the run**, not fitted to the decay curve afterwards. A fitted `nu_t` proves nothing and the test says so. — **1.1547%**; the "not fitted" half is asserted by an **AST** test as well as by value
+- [x] The peak lattice velocity stays under 0.1 throughout (constraint 3) and the harness prints it. — **0.08000**, sampled through the warm-up too, so "throughout" is measured
+- [x] Both backends pass, and the printed digits agree to the **D-056** whole-step tolerance. — `max|du|/u0` **1.150e-05** against 1e-4; the measured `nu` agrees to **1.434e-06**
+- [x] `myenv/Scripts/python.exe -m validate.taylorgreen` and `--backend warp` both print **PASS**.
+- [x] **M9 gate run in full** — Rungs F and G on both backends, all nine existing rungs re-run, and `bench.py --backend warp --les` clearing its floors. Milestone claimed only on printed output. — 18 ladder runs + Rung E + bench; every published digit unmoved; bench **3504.0 / 661.6 / 403.7** against **3116 / 568 / 331**
+- [x] `pytest` green. — **827 passed, 2 skipped**
+- [x] *(added in session 26, **D-091**)* The `Cs = 0.17` clause cannot pass with the `<nu_t>` term deleted: bare `nu` must **fail** the same 2% bar, and the measured excess must equal the **dissipation-weighted** `<nu_t> = <nu_t^3>/<nu_t^2>` to 5%. — **3.0178%** and **0.9972**
 
 ### Constraints that bite here
 
@@ -197,6 +198,24 @@ adds a known, small, computable amount of viscosity to a flow that is fully reso
 Expect `<nu_t>` at `Cs = 0.17` on a resolved Taylor–Green to be a small fraction of `nu`. If it is
 not — if the model fires hard on a smooth flow — that is a finding about the implementation, and it
 belongs in `DOCS/STATE3.md` § Decisions with its measurement.
+
+**What session 26 did (D-091), and the trap it found.** `<nu_t>/nu` came out at **1.8418%** and the
+model does not fire hard on a smooth flow — but that number is a **design output, not a fact about
+Taylor–Green**. It scales as `0.147 u0 / (L nu)`, and at a comfortable resolved point (L = 64,
+`tau = 0.55`, `u0 = 0.05`) it is **0.14%**, at which the 2% bar above passes *with the `<nu_t>` term
+deleted*. A green rung that proves nothing is exactly the failure mode constraint 5 names, so the
+case is **sized** (64x64, `tau = 0.52`, `u0 = 0.08`) and a **discriminator** clause was added: bare
+`nu` must miss the same 2% bar, and it misses by **3.0178%**.
+
+Two further facts worth carrying. Taylor–Green has `S_xy = 0` identically, so `nu_t` is non-uniform
+and the energy decay responds to the **dissipation-weighted** mean, which is **1.7780x** the domain
+average analytically and **1.69–1.79x** across every case measured — the contract's domain-average
+comparison is therefore systematically high by `0.78 <nu_t>`, which is why its 2% bar and the
+discriminator's 2% bar together admit only `<nu_t>/nu` in roughly **1.1%–2.6%**. That window is
+narrow but *deterministic*: it is a property of the case, not of the run, and both backends land in
+it to seven digits. And the bias vanishes entirely if the model's own field is re-weighted as
+`<nu_t^3>/<nu_t^2>` — no analytic input, no fitting, since `S_ab S_ab` is proportional to `nu_t^2`
+with every constant cancelling — against which the measured excess is **0.9972**.
 
 ---
 
