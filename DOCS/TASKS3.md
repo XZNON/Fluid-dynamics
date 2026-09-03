@@ -18,7 +18,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T201 | Smagorinsky closure: `lbm/core.py` + NumPy backend | `done` | — | **Rung F** (numpy) 🟩 |
 | T202 | The closure on the Warp backend | `done` | T201 | **Rung F** (full) 🟩 + Rung A 🟩 |
 | T203 | Taylor–Green harness | `done` | T202 | **Rung G** 🟩 → **M9** 🟩 |
-| T204 | `flow/fidelity.py` — the bands, wired through | `not_started` | T203 | **Rung H** → **M10** |
+| T204 | `flow/fidelity.py` — the bands, wired through | `done` | T203 | **Rung H** 🟩 → **M10** 🟩 |
 | T205 | Packaging: `pyproject.toml`, the `fengdong` distribution | `not_started` | — | **Rung I** → **M11** |
 | T206 | `fengdong/widgets.py` — the closed widget set | `not_started` | T205 | unit tests, headless |
 | T207 | `fengdong/app.py` — window, drop target, setup panel | `not_started` | T206 | manual gate + tests |
@@ -221,7 +221,7 @@ with every constant cancelling — against which the measured excess is **0.9972
 
 ## T204 — `flow/fidelity.py` — the bands, wired through → Rung H → M10
 
-**Status:** `not_started`
+**Status:** `done`
 
 ### Goal
 
@@ -246,17 +246,17 @@ was of Phase 1.
 
 ### Acceptance criteria
 
-- [ ] `band_for` implements `DOCS/IDEA4.md`'s table exactly: **quantitative** iff `Re <= 200` and `max(nu_t)/nu < 0.1`; **qualitative** iff `max(nu_t)/nu < 1`; **illustrative** otherwise. The `Re <= 200` gate cites Williamson (1996) in the docstring.
-- [ ] Before a run, `band_for` returns the band the plan **expects**, from `Re` alone; after a run it returns the band the run **earned**, from the measured `nu_t`. When they differ, the earned band wins and `Result.warnings` says so. A plan that expected `quantitative` and earned `qualitative` is a finding, not a footnote.
-- [ ] **Constraint 18, machine-checked:** for every case outside the quantitative band, `Result` emits **no unqualified `Cd`** — asserted by inspecting the object and the rendered summary, not by reading the prose. A test tries to obtain a bare `Cd` from an `illustrative` result and fails if it succeeds.
-- [ ] `flow/autoconfig.py` turns the closure **on** only when the plan needs it to satisfy the `TAU_FLOOR` (**D-059**), and the plan records `cs_smag` and *why* — printed by `--explain`. A case that fits under BGK is still run under BGK, bitwise as Phase 1 ran it.
-- [ ] **Constraint 13 holds:** `cs_smag` never appears in a public `flow/` signature. It is a planned, printed quantity like `tau`, not an input.
-- [ ] **Constraint 16 holds:** a run that engaged the closure says so in the printed summary, the report and the video metadata, alongside its band.
-- [ ] **D-038's own case runs.** `--fluid air --speed "20 m/s" --size "1.5 m"` completes, reports `illustrative`, prints no `Cd`, and says in the user's units what it is and is not showing. The Phase 1 refusal is superseded for this case and the supersession is recorded as a decision.
-- [ ] Refusals that remain refusals still name a working fix (**constraint 14**); `myenv/Scripts/python.exe -m validate.refusals` re-run and prints **PASS**.
-- [ ] `myenv/Scripts/python.exe -m validate.fidelity` prints **PASS** over a Re sweep spanning all three bands.
-- [ ] `myenv/Scripts/python.exe -m validate.autoconfig` and `-m validate.minute --backend warp` re-run and print **PASS** with their published digits.
-- [ ] `pytest` green.
+- [x] `band_for` implements `DOCS/IDEA4.md`'s table exactly: **quantitative** iff `Re <= 200` and `max(nu_t)/nu < 0.1`; **qualitative** iff `max(nu_t)/nu < 1`; **illustrative** otherwise. The `Re <= 200` gate cites Williamson (1996) in the docstring. — Rung H clause 1, **14 points straddling both boundaries from both sides**, plus the D-091 discriminator: deleting *either* gate changes a verdict.
+- [x] Before a run, `band_for` returns the band the plan **expects**, from `Re` alone; after a run it returns the band the run **earned**, from the measured `nu_t`. When they differ, the earned band wins and `Result.warnings` says so. A plan that expected `quantitative` and earned `qualitative` is a finding, not a footnote. — measured on D-038's own case: expected `qualitative`, **earned `illustrative`** at `max(nu_t)/nu` 3.797e4, and the warning naming both is printed.
+- [x] **Constraint 18, machine-checked:** for every case outside the quantitative band, `Result` emits **no unqualified `Cd`** — asserted by inspecting the object and the rendered summary, not by reading the prose. A test tries to obtain a bare `Cd` from an `illustrative` result and fails if it succeeds. — `flow.report.Result.__post_init__` is the single gate; `validate/fidelity.py::check_constraint_18` checks six routes out of the object and `tests/test_fidelity.py` holds the bare-`Cd` test.
+- [x] `flow/autoconfig.py` turns the closure **on** only when the plan needs it to satisfy the `TAU_FLOOR` (**D-059**), and the plan records `cs_smag` and *why* — printed by `--explain`. A case that fits under BGK is still run under BGK, bitwise as Phase 1 ran it. — **D-093**; Rung F re-run green on both backends, worst |diff| **0.000e+00**.
+- [x] **Constraint 13 holds:** `cs_smag` never appears in a public `flow/` signature. It is a planned, printed quantity like `tau`, not an input. — an AST scan in `tests/test_smagorinsky.py` asserts no function in `flow/` takes it, and `cs_smag` / `cs` are now in `tests/test_flow_package.py`'s `LATTICE_NAMES`.
+- [x] **Constraint 16 holds:** a run that engaged the closure says so in the printed summary, the report and the video metadata, alongside its band. — `substituted=True` with its own sentence, a `closure ON` line, `as_dict()`, and `fidelity=…; closure=on` in the container.
+- [x] **D-038's own case runs.** `--fluid air --speed "20 m/s" --size "1.5 m"` completes, reports `illustrative`, prints no `Cd`, and says in the user's units what it is and is not showing. The Phase 1 refusal is superseded for this case and the supersession is recorded as a decision. — Rung H clause 4 runs the literal command: **exit 0**, `illustrative`, no `Cd`. Supersession is **D-093**.
+- [x] Refusals that remain refusals still name a working fix (**constraint 14**); `myenv/Scripts/python.exe -m validate.refusals` re-run and prints **PASS**. — Rung D **PASS**, all eleven physics checks `[ok]`, `Monitor` cost **1.96%** (limit 2%) at 3201/3201 MHz on mains.
+- [x] `myenv/Scripts/python.exe -m validate.fidelity` prints **PASS** over a Re sweep spanning all three bands. — **PASS on both backends**: quantitative Re 99.6 `Cd` **1.4030**, qualitative Re 159.4 `max(nu_t)/nu` **0.6906**/**0.6886**, illustrative Re 1.979e6 `max(nu_t)/nu` **3.4e4**.
+- [x] `myenv/Scripts/python.exe -m validate.autoconfig` and `-m validate.minute --backend warp` re-run and print **PASS** with their published digits. — B (warp) **24/24, 0 failures**, worst Re error **0.0000%**, accuracy **1.0%**; E **48.2 s** (limit 60), `Cd` **1.4040**, `St` **0.1672**.
+- [x] `pytest` green. — **894 passed, 2 skipped**; +67 over session 26's 827.
 
 ### Constraints that bite here
 

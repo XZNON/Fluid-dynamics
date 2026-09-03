@@ -51,25 +51,34 @@ __all__ = ["build_parser", "main"]
 
 
 #: What ``--help`` says about the case ``old-Docs/STATE1.md`` **D-038** made
-#: this project's worked example of a refusal. The point of putting the
-#: arithmetic in the help text is that the next person meets it *before* the
-#: run rather than after it: air at 20 m/s past a 1.5 m body is ``Re = 2e6``,
-#: and ``tau = 0.5 + 3 U N / Re`` reads 0.5000 at any resolution this project
-#: will run, so BGK with bounce-back and no turbulence model (constraint 1)
-#: cannot represent it. Phase 0's CLI answered that with ``--re 100``; this one
-#: has no ``--re`` (it is not a quantity a user measures) and answers it with
-#: ``--nearest`` instead, which runs the tool's own top suggestion and labels
-#: the result as a substitution (constraint 16, **D-045**).
+#: this project's worked example of a refusal — and which **T204 turned into
+#: this project's worked example of a fidelity band** (**D-093**). The point of
+#: putting the arithmetic in the help text is that the next person meets it
+#: *before* the run rather than after it: air at 20 m/s past a 1.5 m body is
+#: ``Re = 2e6``, and ``tau = 0.5 + 3 U N / Re`` reads 0.5000 at any resolution
+#: this project will run. Phase 1 refused it. Phase 2 has a Smagorinsky closure,
+#: so it **runs** — and reports ``illustrative``, which means a moving picture
+#: and no number at all (constraint 18). Rewritten from the Phase 1 text, which
+#: said the case was refused and would now be telling the user something untrue.
 RE_LIMIT_NOTE: str = (
     "the Reynolds number is not a knob here -- it is speed x size / viscosity,\n"
-    "and it is what decides whether a case can be simulated at all. This\n"
-    "solver is D2Q9 / BGK / bounce-back with no turbulence model, so it tops\n"
-    "out somewhere in the low thousands: --fluid air --speed '20 m/s'\n"
-    "--size '1.5 m' is Re 2e6, tau reads 0.5000 at every resolution this\n"
-    "project will run, and the case is REFUSED rather than run badly\n"
-    "(exit 2). That is correct and it stays. What to do about it is printed\n"
-    "with the refusal: slow it down, shrink it, change the fluid, or pass\n"
-    "--nearest to run the tool's own top suggestion, clearly labelled as a\n"
+    "and it is what decides how much a case's answer is worth. This solver is\n"
+    "D2Q9 / BGK / bounce-back plus one turbulence closure (Smagorinsky), and\n"
+    "the closure is switched on automatically when a case needs it -- you\n"
+    "never type it. What you get told instead is the FIDELITY BAND every run\n"
+    "carries:\n"
+    "  quantitative  the numbers are this tool's validated output\n"
+    "  qualitative   the picture is right, the numbers are indicative and are\n"
+    "                printed with that attached to them\n"
+    "  illustrative  a moving picture and NO numbers, because any number here\n"
+    "                would be a convincing-looking guess\n"
+    "So --fluid air --speed '20 m/s' --size '1.5 m' is Re 2e6: it runs, it\n"
+    "exits 0, and it reports 'illustrative' with no Cd. That is the honest\n"
+    "answer, not a degraded one -- the wake behind a 1.5 m body at 20 m/s is\n"
+    "three-dimensional, and nothing computed on a flat grid can show it to\n"
+    "you. A case can still be refused outright (a picture with nothing in it,\n"
+    "a shape too thin to hold on to); every refusal prints what would fix it,\n"
+    "and --nearest runs the tool's own top suggestion, clearly labelled as a\n"
     "different flow from the one you asked for."
 )
 

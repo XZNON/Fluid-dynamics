@@ -62,16 +62,24 @@ from flow.autoconfig import (
     plan as _plan,
 )
 from flow.diagnose import Monitor, apply_suggestion, explain as _explain, suggest
+from flow.fidelity import Band, band_for, sentence as _band_sentence
 from flow.fluids import Fluid, fluid as _fluid
 from flow.prepare import Fix, Prepared, apply_fix, prepare as _prepare
 from flow.quantity import LENGTH, SPEED, TIME, Quantity, parse
 from flow.report import Result, _analyse, _ffmpeg_metadata_args, metadata_entries
-from lbm.core import Q, W
+from lbm.core import Q, W, equilibrium, macroscopic
+from lbm.probe import eddy_viscosity
 from lbm.record import HeadlessSink, TeeSink
 from lbm.render import LiveSink, render
 from lbm.runner import NullSink, Sim, SimConfig, Sink, run as _run
 
-__all__ = ["Case", "KICK_FACTOR", "KICK_TIMES", "FORCE_SAMPLES_PER_TIME"]
+__all__ = [
+    "Case",
+    "KICK_FACTOR",
+    "KICK_TIMES",
+    "FORCE_SAMPLES_PER_TIME",
+    "FIDELITY_SAMPLES_PER_RUN",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +144,31 @@ FORCE_SAMPLES_PER_TIME: float = 10.0
 #: kick stops at 3, which is ~2.5 flow-through times; one is the floor this
 #: sets, not a rival to that choice.
 SETTLE_FLOW_THROUGHS: float = 1.0
+
+#: How many times a run samples the eddy-viscosity field to decide its fidelity
+#: band (T204). ``DOCS/IDEA4.md`` § 1 wants the band decided from *"the eddy
+#: viscosity the run actually generated"*, and this is how often that is looked
+#: at. **Twelve, and only when the closure is on.**
+#:
+#: Two properties make the cost negligible and neither is an approximation:
+#:
+#: * With the closure **off**, ``nu_t`` is identically zero — T201 asserts it
+#:   exactly, Rung G measured it at every sample — so a BGK run needs **no
+#:   samples at all** and takes none. That is what keeps Rungs 3, B and E
+#:   costing what they cost, to the wall-clock digit.
+#: * With the closure on, one sample is one ``host_f()`` plus a ``macroscopic``
+#:   and an ``equilibrium`` over the grid. At twelve per run, against
+#:   :data:`FORCE_SAMPLES_PER_TIME`'s ~800 force samples, it is under 2% of the
+#:   probing a run already does — and, like every probe here, it runs on a
+#:   **cadence and never per step** (constraint 8, and ``lbm.probe`` has no
+#:   device-side eddy viscosity by design).
+#:
+#: The samples that count are the ones **after the startup kick has washed out**
+#: — the same window ``Cd`` is measured over (**D-069**) — because the band is a
+#: statement about the flow and not about its startup transient. A final sample
+#: is always taken from the end state as well, so a run too short to have a
+#: window still gets a measured band rather than a defaulted one.
+FIDELITY_SAMPLES_PER_RUN: int = 12
 
 #: Cross-stream displacement of the body from the centre line, in cells. One
 #: cell breaks the grid's mirror symmetry, which is half of why shedding starts
@@ -590,6 +623,9 @@ class Case:
             "vorticity_limit",
             "dx",
             "dt",
+            # T204: Cs is a planned, printed quantity like tau (constraint 13),
+            # so --explain shows it and the reason it is what it is.
+            "cs_smag",
         ):
             value = getattr(plan, name)
             shown = f"{value:.6g}" if isinstance(value, float) else f"{value}"
@@ -597,6 +633,13 @@ class Case:
             why = plan.why.get(name)
             if why:
                 lines.append(f"      why: {why}")
+        lines.append(f"  {'fidelity':<17}{plan.expected_fidelity} (expected)")
+        lines.append(
+            f"      why: {_band_sentence(plan.expected_fidelity)} The band this "
+            "run earns is measured from the eddy viscosity it generates, and is "
+            "printed at the end beside whatever it allows to be reported "
+            "(CLAUDE.md constraint 18)."
+        )
         for warning in plan.warnings:
             lines.append(f"  warning   {warning}")
 
@@ -702,20 +745,37 @@ class Case:
             check_geometry=True,
             verbose_mask=not quiet,
             backend=self.backend,
+            # T204: the closure is a *planned* parameter, chosen by
+            # flow.autoconfig.plan when tau needs it and 0.0 otherwise, so a
+            # case that fits under BGK still runs bitwise as Phase 1 ran it
+            # (constraint 19, D-086, D-088). It is never typed here.
+            cs_smag=plan.cs_smag,
         )
         sim = Sim(cfg, solid)
         self.sim = sim
         _seed_solid_at_rest(sim)
 
+        closure = plan.closure_engaged
+        expected_band = plan.expected_fidelity
+        run_substituted, run_substitution = self._substitution(plan)
+
         sink, members, drop = _resolve_sinks(
             live=live,
             record=record,
             headless=headless,
+            # A video is written *as the run happens*, so the only band it can
+            # carry is the one the plan expected — the earned one does not exist
+            # until the last timestep. `provisional=` makes the container say
+            # that in as many words rather than stamping a verdict it cannot
+            # have; Result.save() writes the earned band (constraint 16).
             metadata=metadata_entries(
-                substituted=self.substituted,
-                substitution=self.substitution,
+                substituted=run_substituted,
+                substitution=run_substitution,
                 reynolds=plan.Re,
                 backend=self.backend,
+                fidelity=expected_band,
+                closure_engaged=closure,
+                provisional=True,
             ),
         )
         frames: list[NDArray[np.uint8]] = []
@@ -726,13 +786,44 @@ class Case:
         residuals = np.zeros(n_samples, dtype=np.float64)
         taken = 0
         peak_u = 0.0
-        watcher = Monitor() if monitor else None
+        nu_t_max = 0.0
+        nu_t_samples = 0
+        watcher = Monitor(closure=closure) if monitor else None
+
+        # Only a closure-on run has an eddy viscosity to sample; with the
+        # closure off it is identically zero and the band is decided without
+        # touching the state (see FIDELITY_SAMPLES_PER_RUN).
+        fidelity_every = 0
+        if closure:
+            span = max(1, total_steps - settle_steps)
+            fidelity_every = max(
+                sample_every,
+                (span // max(1, FIDELITY_SAMPLES_PER_RUN) // sample_every)
+                * sample_every,
+            )
+
+        def measure_nu_t(s: Sim) -> None:
+            """Fold one ``max(nu_t)`` sample into the running maximum.
+
+            ``nu_t`` is **derived** by :func:`lbm.probe.eddy_viscosity` through
+            ``tau_eff`` and never assigned here (constraint 2), and it is read
+            host-side off ``f`` because there is no device-side implementation
+            and nothing needs one at this cadence (constraint 8).
+            """
+            nonlocal nu_t_max, nu_t_samples
+            f_host = s.host_f()
+            rho, velocity = macroscopic(f_host.copy())
+            feq = equilibrium(rho, velocity)
+            nu_t = eddy_viscosity(f_host, feq, plan.tau, plan.cs_smag)
+            nu_t_max = max(nu_t_max, float(nu_t[~s.solid].max()))
+            nu_t_samples += 1
 
         def probe(s: Sim) -> None:
             """Sample forces, residual and peak speed; switch the kick off.
 
             On the physics thread, so it runs on a **cadence**, never per step
-            (constraint 8): two host reads per sample on a device backend.
+            (constraint 8): two host reads per sample on a device backend, plus
+            one more on the far coarser fidelity cadence when the closure is on.
             """
             nonlocal taken, peak_u
             if s.step_count == kick_steps:
@@ -749,6 +840,12 @@ class Case:
                 )
                 peak_u = max(peak_u, float(speed_field.max()))
                 taken += 1
+            if (
+                fidelity_every
+                and s.step_count >= settle_steps
+                and s.step_count % fidelity_every == 0
+            ):
+                measure_nu_t(s)
             if watcher is not None:
                 watcher(s)
 
@@ -811,6 +908,15 @@ class Case:
         residuals = residuals[:taken]
         stable = bool(np.isfinite(sim.host_f()).all())
 
+        # The band the run *earned*, from the eddy viscosity it generated
+        # (D-082). A final sample from the end state is always taken when the
+        # closure was on, so even a run too short to open a measurement window
+        # is banded from a measurement rather than from a default.
+        if closure and stable:
+            measure_nu_t(sim)
+        earned_band = band_for(plan, nu_t_max if closure else 0.0)
+        nu_t_ratio = nu_t_max / ((plan.tau - 0.5) / 3.0)
+
         notes = list(plan.warnings)
         if total_steps <= settle_steps:
             notes.append(
@@ -827,6 +933,28 @@ class Case:
                 f"{FRAME_MEMORY_BUDGET / 1e6:.0f} MB frame budget ran out. Pass "
                 "record=<path> to write every frame as it runs, which keeps "
                 "none of them in memory."
+            )
+        if watcher is not None and watcher.over_accuracy_drift:
+            notes.append(
+                f"fluid mass drifted past the 1% bound on "
+                f"{watcher.over_accuracy_drift} of {watcher.samples} monitor "
+                f"samples (largest {watcher.drift_seen:.2%}). The run was "
+                f"watched against {watcher.mass_drift:.0%} instead, and it "
+                "stayed finite: at this relaxation time the outlet radiates "
+                "faster than the fluid can damp, which is a slow leak rather "
+                "than a domain filling until it bursts."
+            )
+        if watcher is not None and watcher.over_accuracy_ceiling:
+            # The tripwire that was widened for a closure-on run still counts
+            # every sample the narrow wire would have caught, and says so.
+            notes.append(
+                f"peak lattice velocity crossed the 0.1 compressibility "
+                f"ceiling of CLAUDE.md constraint 3 on "
+                f"{watcher.over_accuracy_ceiling} of {watcher.samples} monitor "
+                f"samples (largest {watcher.peak_seen:.4f}). The run was "
+                f"watched against {watcher.speed_ceiling:.4f} instead, and it "
+                "stayed finite; what that costs is accuracy, which is what "
+                "this run's fidelity band is about."
             )
 
         measured = _analyse(
@@ -849,8 +977,12 @@ class Case:
             convergence=float(residuals[-1]) if residuals.size else float("nan"),
             peak_u=peak_u,
             elapsed=elapsed,
-            substituted=self.substituted,
-            substitution=self.substitution,
+            substituted=run_substituted,
+            substitution=run_substitution,
+            fidelity=earned_band,
+            expected_fidelity=expected_band,
+            nu_t_ratio=nu_t_ratio,
+            closure_engaged=closure,
             backend=self.backend,
             steps=stats.steps,
             stable=stable,
@@ -869,6 +1001,43 @@ class Case:
         return result
 
     # -- internals ---------------------------------------------------------
+
+    def _substitution(self, plan: Plan) -> tuple[bool, str | None]:
+        """``(substituted, sentence)`` for this run — constraint 16, both halves.
+
+        A run is *substituted* when it is not the case that was asked for, and
+        there are now two ways to be that:
+
+        * :meth:`nearest` changed the **case** — a different speed, size, fluid
+          or picture (**D-045**, Phase 1).
+        * :func:`flow.autoconfig.plan` changed the **model**: it engaged the
+          Smagorinsky closure so that a case Phase 1 refused could run.
+          ``CLAUDE.md`` constraint 16 says so in as many words — *"a run that
+          engaged the closure is such a run, and carries its band with it."*
+
+        Both can be true at once, and then both sentences are printed.
+
+        Args:
+            plan: the plan this run is about to execute.
+
+        Returns:
+            ``(substituted, substitution)``; the sentence is ``None`` only when
+            ``substituted`` is ``False``.
+        """
+        parts: list[str] = []
+        if self.substituted and self.substitution:
+            parts.append(self.substitution)
+        if plan.closure_engaged:
+            parts.append(
+                f"a turbulence closure (Smagorinsky, Cs = {plan.cs_smag:g}) is "
+                "carrying part of this flow, because the case as asked cannot "
+                "be resolved on its own; the closure buys stability, not "
+                "fidelity, and this result's fidelity band is what says how "
+                "much its numbers are worth"
+            )
+        if not parts:
+            return bool(self.substituted), self.substitution
+        return True, "; and ".join(parts)
 
     def _raise_if_refused(self) -> None:
         """Raise the refusal this case is carrying, if it is carrying one.

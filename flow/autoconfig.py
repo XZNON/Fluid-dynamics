@@ -54,16 +54,47 @@ measured to put ``Cd`` 14% above Rung 3's band on Rung 3's own case.
 The one guardrail that is not automatic is minimum solid thickness, because
 that depends on the mask's own proportions, so it is measured and checked
 explicitly.
+
+When the closure comes on (T204)
+---------------------------------
+
+Phase 1 **refused** every case whose ``tau`` landed at or below
+:data:`TAU_FLOOR`, which is the wall **D-038** and **D-074** describe and the
+one every real user hits first. Phase 2 has a Smagorinsky closure
+(:func:`lbm.core.smagorinsky_tau_eff`), so that refusal is replaced by a
+*decision that is printed*: below :data:`TAU_FLOOR` the plan engages the closure
+at the literature ``Cs`` and carries on, and the remaining floor is the only one
+constraint 2 leaves — ``nu > 0``, i.e. ``tau > 0.5``
+(:data:`TAU_FLOOR_CLOSURE`).
+
+Three things that decision is **not**:
+
+* It is not a knob. ``Cs`` is fixed at :data:`lbm.core.CS_SMAG_LITERATURE`,
+  planned here and printed by ``--explain``; constraint 13 keeps it out of every
+  public signature and the *fidelity band* is what reaches the user instead.
+* It is not free. The closure buys **stability, not fidelity**
+  (``DOCS/IDEA4.md`` § 1), so a plan that engages it can no longer expect the
+  quantitative band — :func:`flow.fidelity.band_for` says so before the run and
+  the measured ``nu_t`` says so after it.
+* It is not applied where it is not needed. A case that clears
+  :data:`TAU_FLOOR` plans ``cs_smag = 0.0`` and runs **bitwise** what Phase 1
+  ran (constraint 19, **D-086**, **D-088**), which is why Rungs 1-4, A, B and E
+  do not move.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, fields
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from flow.fidelity import Band
+
+from lbm.core import CS_SMAG_LITERATURE
 from lbm.geometry import bounding_box, min_thickness, strip_solid_border
 from lbm.runner import steps_per_frame as _steps_per_frame
 from lbm.units import (
@@ -73,9 +104,13 @@ from lbm.units import (
     LatticeUnits,
 )
 
-from flow.fluids import Fluid
+from flow.fluids import FLUIDS, Fluid
 from flow.quantity import LENGTH, SPEED, Quantity, parse
 
+#: ``TAU_FLOOR`` and ``TAU_FLOOR_CLOSURE`` are deliberately **not** exported:
+#: ``tau_floor`` is one of ``tests/test_flow_package.py``'s ``LATTICE_NAMES``, and
+#: constraint 13 bans a lattice name from ``flow/``'s public surface. Both are
+#: module constants, imported by name where they are needed.
 __all__ = ["Plan", "Suggestion", "Unrepresentable", "plan", "QUALITY_LEVELS"]
 
 # ---------------------------------------------------------------------------
@@ -97,10 +132,33 @@ QUALITY_CELLS: dict[str, int] = {"fast": 30, "balanced": 40, "accurate": 50}
 
 QUALITY_LEVELS: tuple[str, ...] = ("fast", "balanced", "accurate")
 
-#: The floor this module always applies — see the module docstring for why the
-#: strictest of the three project floors (**D-029**) is the only defensible
-#: default for an arbitrary immersed mask.
+#: The floor this module always applies **under plain BGK** — see the module
+#: docstring for why the strictest of the three project floors (**D-029**) is the
+#: only defensible default for an arbitrary immersed mask. Since T204 this is no
+#: longer where a case is refused; it is where the **closure is engaged**.
 TAU_FLOOR: float = 0.54
+
+#: The floor that remains once the closure is on. Constraint 2 is the whole
+#: derivation: ``nu = (tau - 0.5) / 3``, so ``tau > 0.5`` is exactly ``nu > 0``
+#: and there is no viscosity left to give up below it. The closure raises the
+#: **effective** relaxation time where there is strain
+#: (:func:`lbm.core.smagorinsky_tau_eff`); it cannot raise the base one, and
+#: nothing here pretends otherwise.
+#:
+#: A case between :data:`TAU_FLOOR_CLOSURE` and :data:`TAU_FLOOR` therefore
+#: **runs**, and what protects the user is not a refusal any more but
+#: ``CLAUDE.md`` constraint 18: :mod:`flow.fidelity` bands the run from the eddy
+#: viscosity it actually generated, and outside the quantitative band there is no
+#: unqualified ``Cd``. Measured on **D-038**'s own case (air, 20 m/s, 1.5 m,
+#: Re 2e6, ``tau`` 0.5000022) at ``quality="fast"``: 48000 steps finite and
+#: bounded on warp, ``max(nu_t)/nu`` **3.7e4**, band **illustrative**.
+TAU_FLOOR_CLOSURE: float = 0.5
+
+#: The Smagorinsky constant a plan engages when it needs one — the literature
+#: value, imported from :mod:`lbm.core` and never restated (**D-085**;
+#: ``CLAUDE.md`` § Coding conventions: no physics constant twice). Phase 2 does
+#: **not** tune it and a dynamic procedure is forbidden by constraint 1.
+CS_SMAG_PLANNED: float = CS_SMAG_LITERATURE
 
 #: Fluid span, in diameters, wall to wall. **Rung 3's own 24 D** (4.17%
 #: blockage, **D-026**) — **D-075**, superseding **D-059**'s 12 D.
@@ -353,6 +411,11 @@ class Plan:
         dx: metres per cell.
         dt: seconds per lattice timestep.
         Re: Reynolds number of the case.
+        cs_smag: the Smagorinsky constant this plan chose — ``0.0`` for plain
+            BGK, :data:`CS_SMAG_PLANNED` when ``tau`` needed the closure to
+            clear :data:`TAU_FLOOR` (T204). A **planned and printed** quantity
+            like ``tau``, never an input (constraint 13): the thing that
+            surfaces to the user is the :class:`flow.fidelity.Band`.
         warnings: non-fatal notes (e.g. :meth:`~lbm.units.LatticeUnits.stability_note`).
         why: one sentence per field above, keyed by field name.
     """
@@ -367,8 +430,33 @@ class Plan:
     dx: float
     dt: float
     Re: float
+    cs_smag: float
     warnings: list[str]
     why: dict[str, str]
+
+    @property
+    def closure_engaged(self) -> bool:
+        """Whether this plan turned the turbulence closure on.
+
+        The predicate every other module asks rather than comparing
+        ``cs_smag`` to zero in five places — and the thing constraint 16 keys
+        off, because a run that engaged the closure is a run that differs from
+        what was asked and says so in every artifact it produces.
+        """
+        return self.cs_smag > 0.0
+
+    @property
+    def expected_fidelity(self) -> "Band":
+        """The band this plan expects **before** anything is run (T204).
+
+        Straight through to :func:`flow.fidelity.band_for` with no measurement,
+        so there is one implementation of the table. After a run,
+        :attr:`flow.report.Result.fidelity` is the band the run *earned* from
+        its own ``nu_t``, and where the two differ the earned one wins.
+        """
+        from flow.fidelity import band_for
+
+        return band_for(self)
 
     def estimated_seconds(self, backend: str = "numpy") -> float:
         """Predicted wall clock for :attr:`steps`, from the measured rate table.
@@ -442,7 +530,32 @@ def _tau_suggestions(
     the floor, so re-planning at the suggested value does not land back on the
     boundary it just failed (**D-045**: a suggestion is a testable claim, and a
     claim that barely fails a re-check is not one).
+
+    Since T204 the only case that reaches this at all is an **inviscid** one,
+    ``nu <= 0``, and neither a slower speed nor a smaller body fixes that:
+    ``tau`` is 0.5 at every speed and every size when there is no viscosity to
+    scale. So that case gets its own suggestion — a real fluid, named from the
+    library — because a suggestion that does not fix its case is a failing test
+    in Rung D and not a wording preference.
     """
+    if nu_phys <= 0.0:
+        # The least viscous library fluid: the smallest real change that turns
+        # this into a case with a viscosity at all. Rung D applies it and runs
+        # what it produces.
+        thinnest = min(FLUIDS.items(), key=lambda kv: kv[1].nu.si)[0]
+        return [
+            Suggestion(
+                change="fluid",
+                value=thinnest,
+                note=(
+                    f"run the same shape at the same speed and size in "
+                    f"{thinnest}, or in any real fluid: a fluid with no "
+                    "viscosity at all has nothing to resist the motion, and "
+                    "there is no speed and no size that changes that"
+                ),
+            )
+        ]
+
     margin = 0.01
     target = TAU_FLOOR + margin
     # tau = 0.5 + 3 U_lattice N nu_phys / (u_phys l_phys)   (from LatticeUnits)
@@ -529,7 +642,9 @@ def plan(
             refusal.
         Unrepresentable: if the case cannot be planned within every guardrail
             — an empty mask, a body too thin once scaled, or a Reynolds number
-            that pushes ``tau`` at or below :data:`TAU_FLOOR`.
+            that pushes ``tau`` at or below :data:`TAU_FLOOR_CLOSURE`. Note what
+            is **no longer** here: a ``tau`` under :data:`TAU_FLOOR` engages the
+            closure and plans (**D-093**), where Phase 1 refused.
     """
     if quality not in QUALITY_LEVELS:
         raise ValueError(
@@ -602,19 +717,36 @@ def plan(
             suggestions=suggestions,
         )
 
-    reynolds = u_phys * l_phys / nu_phys
+    # A non-positive viscosity is Re = infinity and tau = 0.5 exactly. Before
+    # T204 no caller could reach the division, because every case that got near
+    # it was refused first; now that the closure carries cases down to the 0.5
+    # floor, an inviscid "fluid" is the one request that arrives here, and a
+    # ZeroDivisionError is not a refusal that names a fix (constraint 14).
+    reynolds = u_phys * l_phys / nu_phys if nu_phys > 0.0 else float("inf")
     tau_value = 0.5 + 3.0 * U_LATTICE_DEFAULT * cells_per_length / reynolds
-    if tau_value <= TAU_FLOOR:
+
+    # T204: below the bluff-body floor the closure comes on instead of the case
+    # being refused (**D-093**). `cs_smag` is chosen here, printed by
+    # `--explain`, and never typed; what reaches the user is the fidelity band.
+    # Above the floor it stays exactly 0.0, so the run is bitwise what Phase 1
+    # ran (constraint 19).
+    cs_smag = CS_SMAG_PLANNED if tau_value <= TAU_FLOOR else 0.0
+    tau_floor_applied = TAU_FLOOR_CLOSURE if cs_smag else TAU_FLOOR
+    if tau_value <= tau_floor_applied:
+        # nu <= 0. Nothing — no closure, no resolution, no domain — recovers a
+        # non-positive viscosity, so this is still a refusal and constraint 14
+        # still applies to it.
         raise Unrepresentable(
             reason=(
-                "tau would sit at or below the bluff-body stability floor of "
-                "0.54 -- the strictest of the project's three tau floors "
-                "(D-029; see D-032 for the generic 0.51 floor and D-036 for "
-                "Rung 3's 0.537)"
+                "tau would sit at or below 0.5, which is nu <= 0 (CLAUDE.md "
+                "constraint 2: nu = (tau - 0.5) / 3). The Smagorinsky closure "
+                "raises the effective relaxation time where there is strain "
+                "(D-085) and cannot raise the base one, so there is nothing "
+                "left to give up here"
             ),
             quantity="tau",
             value=tau_value,
-            limit=TAU_FLOOR,
+            limit=tau_floor_applied,
             suggestions=_tau_suggestions(
                 u_phys=u_phys,
                 l_phys=l_phys,
@@ -630,7 +762,7 @@ def plan(
         cells_per_length=cells_per_length,
         u_lattice=U_LATTICE_DEFAULT,
         u_max=U_LATTICE_MAX,
-        tau_floor=TAU_FLOOR,
+        tau_floor=tau_floor_applied,
     )
 
     peak_estimate = units.peak_velocity_estimate(BLUFF_BODY_SPEEDUP)
@@ -688,6 +820,44 @@ def plan(
     vorticity_limit = VORTICITY_FACTOR * U_LATTICE_DEFAULT / cells_per_length
 
     warnings: list[str] = [units.stability_note()]
+    if cs_smag:
+        # `stability_note` is a BGK measurement (D-029) and its last line says
+        # "expect nan". That sentence is exactly what the closure exists to
+        # change, so it is kept -- the measurement is real and hiding it would
+        # be the wrong kind of quiet -- and answered on the spot rather than
+        # left to read as a prediction about *this* run.
+        warnings.append(
+            "that stability note is a plain-BGK measurement (D-029) and this "
+            "run is not plain BGK: the closure raises the effective relaxation "
+            "time where the strain is, which is what carries a case below the "
+            "floor. Measured on D-038's own case (Re 2e6, tau 0.5000023, "
+            "quality=fast, warp): 48000 steps finite and bounded, with the "
+            "model supplying ~37000x the fluid's own viscosity. What is lost "
+            "there is accuracy, not survival, and the fidelity band is where "
+            "that is said."
+        )
+        # Constraint 3, the "warn at setup, not at nan time" half. D-032's 1.8x
+        # BLUFF_BODY_SPEEDUP was measured on a *resolved* bluff body; with the
+        # closure on, nu is near zero and the estimate no longer bounds the run.
+        # Measured on D-038's own case: a steady peak |u| of 0.20 against the
+        # 0.1 ceiling, in ~0.2% of the fluid cells, most of it at the inlet where
+        # the flow is uniform and the closure therefore supplies nothing. The run
+        # stays finite -- it is inaccurate, not diverging, which is precisely
+        # what its band says.
+        warnings.append(
+            f"the turbulence closure is on (Cs = {cs_smag:g}), so no number "
+            "this run produces is a validated one: the closure buys stability, "
+            "not fidelity (DOCS/IDEA4.md section 1), and the fidelity band the "
+            "run earns is what says how much its answer is worth."
+        )
+        warnings.append(
+            "peak lattice velocity: the 1.8x estimate this module checks "
+            "(D-032, measured on a resolved bluff body) does not bound a run "
+            "with the closure on, and the measured peak is expected to cross "
+            "the 0.1 compressibility ceiling of CLAUDE.md constraint 3. The "
+            "result prints the peak it actually saw, and its fidelity band is "
+            "what says the velocities are not a measurement."
+        )
 
     why: dict[str, str] = {
         "cells_per_length": (
@@ -737,6 +907,26 @@ def plan(
         "dx": f"L / cells_per_length = {size_q.si:g} m / {cells_per_length} = {dx:.6g} m/cell.",
         "dt": f"U_lattice * dx / u_phys = {dt:.6g} s/step (D-023's dt).",
         "Re": f"u_phys * L / nu = {reynolds:.4g}, from the fluid, speed and size as given.",
+        "cs_smag": (
+            (
+                f"{cs_smag:g} -- the turbulence closure is ON, because tau = "
+                f"{tau_value:.6f} is at or below the bluff-body floor of "
+                f"{TAU_FLOOR} (D-029) and Phase 1 would have refused this case "
+                "outright (D-038). Cs is the literature value "
+                "(lbm.core.CS_SMAG_LITERATURE, D-085), planned here and never "
+                "typed (constraint 13); the closure raises the effective "
+                "relaxation time where there is strain and leaves it alone "
+                "where there is none. It buys stability, not fidelity, which "
+                "is why this run carries a fidelity band (constraint 18)."
+            )
+            if cs_smag
+            else (
+                f"0 -- the turbulence closure is OFF, because tau = "
+                f"{tau_value:.6f} clears the bluff-body floor of {TAU_FLOOR} "
+                "(D-029) on its own. This run is bitwise what Phase 1 ran "
+                "(constraint 19, D-086, D-088)."
+            )
+        ),
     }
 
     return Plan(
@@ -750,6 +940,7 @@ def plan(
         dx=dx,
         dt=dt,
         Re=reynolds,
+        cs_smag=cs_smag,
         warnings=warnings,
         why=why,
     )

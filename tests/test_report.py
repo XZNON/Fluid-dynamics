@@ -482,14 +482,21 @@ def test_strouhal_is_none_for_a_steady_case_at_re_10():
 def test_a_result_from_a_diagnose_suggestion_is_substituted_everywhere(tmp_path):
     """**D-062**, the half T106 could not run: the flag reaches every artifact.
 
-    The refused case is **D-038**'s — air at 20 m/s past a 1.5 m body, Re 2e6 —
-    and the case that actually runs is the one the tool's own top suggestion
-    produced through :func:`flow.diagnose.apply_suggestion`. It is not the case
-    that was asked for, so the summary says so, the dict says so, and the MP4
-    the run wrote says so in its metadata (constraint 16).
+    Phase 1's refused case here was **D-038**'s — air at 20 m/s past a 1.5 m
+    body — which since **D-093** is not refused at all: the closure engages and
+    it runs, banded ``illustrative``. So the refusal used is the one that
+    survived T204, a fluid with **no viscosity**, and the case that actually
+    runs is the one the tool's own top suggestion produced through
+    :func:`flow.diagnose.apply_suggestion`. It is not the case that was asked
+    for, so the summary says so, the dict says so, and the MP4 the run wrote
+    says so in its metadata (constraint 16).
     """
     refused = Case.from_image(
-        DISC, fluid="air", speed="20 m/s", size="1.5 m", quality="fast"
+        DISC,
+        fluid=flow.Quantity(0.0, default_unit="m^2/s"),
+        speed="1 mm/s",
+        size="1 cm",
+        quality="fast",
     )
     assert refused.runnable is False
 

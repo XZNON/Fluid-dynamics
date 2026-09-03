@@ -58,6 +58,15 @@ LATTICE_NAMES = frozenset(
         "timesteps",
         "n_steps",
         "nsteps",
+        # T204: the Smagorinsky constant. It is planned by
+        # flow.autoconfig.plan and printed by --explain; it is never typed, and
+        # the *fidelity band* is what surfaces to the user instead
+        # (constraint 13, extended by D-082/D-083). Plan.cs_smag is a field on a
+        # frozen output record, which is D-060's own exemption -- exactly where
+        # tau, dx and dt already live.
+        "cs_smag",
+        "cs",
+        "smagorinsky",
     }
 )
 

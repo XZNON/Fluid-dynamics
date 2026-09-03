@@ -15,15 +15,15 @@ numbering continues here at **D-080**.
 | Field | Value |
 |---|---|
 | **Phase** | **Phase 2 — live.** FengDong: the Smagorinsky closure, the fidelity bands, and the desktop application (`DOCS/IDEA4.md`) |
-| **Current task** | **T204** — `flow/fidelity.py`, the three bands wired through (Rung H, and **M10**) |
-| **Task status** | `not_started` — T203 closed in session 26 with every acceptance criterion run and passed |
-| **Completed tasks** | Phase 0: T001 … T011, all eleven. Phase 1: T101 … T110, all ten. Phase 2: **T201**, **T202**, **T203** |
-| **Milestone reached** | **M9** (2026-09-03, session 26) — **Phase 2's first**, and the gate was run in full: Rung F and Rung G both green on both backends, all nine existing rungs re-run and printing their published digits, and `bench.py --backend warp --les` clearing every floor. Previously **M8** (2026-08-27, session 22), the last of Phase 1. **M10** … **M12** remain |
-| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **re-run session 26 on BOTH backends, every published digit unmoved**. R1 L2 **0.3650%** (numpy) / **0.3649%** (warp). R2 **0.75%** deviation and **0.21 cells** vortex centre, *identical on both*. R3 St **0.1731** Cd **1.4031**, *identical on both*. R4 square Cd **1.5279** and polygon Cd **1.4276**, *identical on both* |
-| **Phase 1 rung status** | A 🟩 · B 🟩 · C 🟩 · D 🟩 · E 🟩 — **all re-run session 26**. A: worst kernel **5.960e-08**, whole step **9.611e-06**, checkpoint **8.196e-06**, restart within warp bit-identical — every digit unmoved. B: sweep **24/24 on both backends, 0 failures, worst Re error 0.0000%**, worst peak |u| **0.0656**; accuracy warp **12.8%** (predicted 33.22 s, actual 38.09 s) and numpy **3.2%** (predicted 610.45 s, actual 591.60 s), against a 25% limit. C: **15/15** in **15.9 s**. D: caught before `nan` **3/3**, Monitor cost **−0.55%** (limit 2%) on the second run — see § Provenance. E: warp **55.6 s** (limit 60) at **3201 of 3201 MHz on mains**, Cd **1.4040**, St **0.1672** — both physics digits exact |
-| **Phase 2 rung status** | **F 🟩 · G 🟩** · H ⬜ · I ⬜ · J ⬜ — **both are green on both backends**, and together they are **M9**. F (T202, session 25; re-run session 26 unmoved): `cs_smag=0` **bitwise** the frozen Phase 1 collision after 1000 steps of Rung 3's case (`array_equal`, worst |diff| **0.000e+00**) on the fused and unfused path, against the frozen NumPy oracle on numpy and the frozen **warp** oracle on warp; Rung 3 at `Cs = 0.17` printing Cd **1.4143** and St **0.1719** on *both*; `max(nu_t)/nu` **0.1910** on that wake; cross-backend with the closure on, worst kernel **2.980e-08** against 1e-6 and whole step **9.611e-06** against 1e-4. G (T203, session 26): on a 64x64 doubly periodic Taylor–Green at `tau = 0.52`, `u0 = 0.08`, `Cs = 0` returns `(tau-0.5)/3` to **0.2303%** against Rung 1's own 1% bar; `Cs = 0.17` returns `nu + <nu_t>` to **1.1547%** against 2%, while bare `nu` misses by **3.0178%** — so deleting the `<nu_t>` term *breaks* the clause rather than passing it; the measured excess equals the dissipation-weighted `<nu_t>` to **0.9972** (**D-091**); peak |u| **0.08000** throughout against the 0.1 ceiling; cross-backend `max|du|/u0` **1.150e-05** against **D-056**'s 1e-4 and the measured `nu` agreeing to **1.434e-06** |
-| **Provenance of the rung rows above** | **Session 26's own measurements — all eighteen ladder runs plus Rung E and `bench.py --les`, every rung on both backends where both apply.** No figure above is carried forward. Two runs had to be taken twice and both are recorded rather than quietly re-run: **Rung D** read `Monitor` cost **+2.11%** against its 2% limit on its first run (after an hour of continuous load) and **−0.55%** on its second (after a seven-minute idle, at 3201 of 3201 MHz on mains), with all eleven physics checks `[ok]` both times — the published figure is the second; and **Rung B numpy** ran for 11.9 hours of wall clock for 70 minutes of CPU because the machine slept and then ran on battery at **1882 of 3201 MHz**, which cost wall clock and moved no digit |
-| **Last updated** | 2026-09-03 — session 26 (**T203 done, M9 reached**: `validate/taylorgreen.py` (Rung G) and `tests/test_taylorgreen.py`; `CLAUDE.md` § Commands gained the warp invocation. **Rung G green on both backends**, **Q-202 answered** (`<nu_t>/nu` = **1.8418%**), **D-091**. The M9 gate run in full: F and G on both backends, all nine existing rungs re-run with every published digit unmoved, `bench.py --backend warp --les` clearing **3116 / 568 / 331**. `pytest` **827 passed, 2 skipped** (224.3 s), 24 of them new). Previously: 2026-09-02 — session 25 (**T202 done**: the Smagorinsky closure on the Warp backend — `_smag_scale_kernel`, `_collide_smag_kernel`, `_collide_bb_smag_kernel`, `WarpBackend._smag_scalars`; `validate/les.py` gained `--backend`, a frozen Phase 1 **warp** oracle and a cross-backend clause; `validate/parity.py` gained a defaulted `cs_smag`; `bench.py` gained `--les`. **Rung F green on both backends**, **Q-201 answered** (**D-088**), **D-089** and **D-090**. All nine existing rungs re-run **on both backends** with no physics digit moved. `pytest` **803 passed, 2 skipped** (286.1 s), 5 of them new). Previously: 2026-09-02 — session 24 (**T201 done**: the closure in `lbm/core.py` and the NumPy backend, `lbm/probe.py::eddy_viscosity`, `validate/les.py`. **Rung F green on numpy**; **D-085** … **D-087**. `pytest` **800 passed, 1 skipped**) |
+| **Current task** | **T205** — packaging: `pyproject.toml`, the `fengdong` distribution (Rung I, and **M11**) |
+| **Task status** | `not_started` — T204 closed in session 27 with every acceptance criterion run and passed |
+| **Completed tasks** | Phase 0: T001 … T011, all eleven. Phase 1: T101 … T110, all ten. Phase 2: **T201**, **T202**, **T203**, **T204** |
+| **Milestone reached** | **M10** (2026-09-03, session 27) — `DOCS/PLAN3.md`'s gate command run in full and on **both** backends: `validate.fidelity` prints **PASS**, every case in the sweep gets its band, **no run outside the quantitative band emits an unqualified `Cd`** (asserted by inspecting the object, six routes out of it), and **D-038's own case runs to completion and reports `illustrative`** — through the literal command the contract names, exiting 0 with no `Cd`. Previously **M9** (2026-09-03, session 26) — Phase 2's first — and **M8** (2026-08-27, session 22), the last of Phase 1. **M11** and **M12** remain |
+| **Phase 0 rung status** | R1 🟩 · R2 🟩 · R3 🟩 · R4 🟩 — **re-run session 27 on BOTH backends, every published digit unmoved**. R1 L2 **0.3650%** (numpy) / **0.3649%** (warp). R2 **0.75%** deviation and **0.21 cells** vortex centre, *identical on both*. R3 St **0.1731** Cd **1.4031**, *identical on both*. R4 square Cd **1.5279** and polygon Cd **1.4276**, *identical on both* |
+| **Phase 1 rung status** | A 🟩 · B 🟩 · C 🟩 · D 🟩 · E 🟩 — **all re-run session 27** (Rung B's numpy half was still running at checkpoint; its warp half is green — see § Provenance). A: worst kernel **5.960e-08**, whole step **9.611e-06**, checkpoint **8.196e-06**, restart within warp bit-identical — every digit unmoved. B: sweep **24/24 on warp, 0 failures, worst Re error 0.0000%**, worst peak |u| **0.0656**; accuracy warp **1.0%** (predicted 33.22 s, actual 32.88 s) against a 25% limit — the **numpy half was still running at checkpoint** and its session-26 figures (24/24, 0 failures, accuracy 3.2%) are what stand. C: **15/15** in **15 s**. D: caught before `nan` **3/3**, all eleven checks `[ok]`, Monitor cost **+1.96%** (limit 2%) on its first run after a seven-minute idle — see § Provenance. E: warp **48.2 s** (limit 60, and the fastest of the six readings on file) at **3201 of 3201 MHz on mains**, Cd **1.4040**, St **0.1672** — both physics digits exact, and the summary now carries `fidelity: quantitative` above them |
+| **Phase 2 rung status** | **F 🟩 · G 🟩 · H 🟩** · I ⬜ · J ⬜. **H (T204, session 27) is green on BOTH backends and is M10.** Clause 1, the table: **14 points straddling both boundaries from both sides**, every verdict the spec's, and the **D-091 discriminator** — deleting *either* gate changes a verdict. Clause 2: a BGK plan expects its band from `Re` alone (`nu_t` is exactly 0), a closure-on plan may not expect the top band, and the measured `nu_t` overrides the expectation. Clause 3, the sweep, three full product-path runs per backend: quantitative Re **99.6**, `Cs` 0, `max(nu_t)/nu` **0**, `Cd` **1.4030** on *both* backends against Rung 3's unwidened 1.25–1.45, peak |u| **0.0972**; qualitative Re **159.4**, `tau` 0.5282, `Cs` 0.17, `max(nu_t)/nu` **0.6906** numpy / **0.6886** warp, **no `Cd` emitted** — and it is the D-091 discriminator case, at `Re <= 200` and therefore quantitative by Reynolds number alone; illustrative Re **1.979e6**, `tau` **0.500002**, `max(nu_t)/nu` **3.374e4** numpy / **3.797e4** warp, peak |u| **0.2188** / **0.2247**, **no coefficient anywhere**. Clause 4: the literal command `python -m flow --fluid air --speed "20 m/s" --size "1.5 m"` **exits 0**, reports `illustrative`, prints no `Cd`. Clause 5, **Q-203's evidence**: Rung 3's own case with the closure on reads `max(nu_t)/nu` **0.1057** — inside the qualitative band, whose boundary is 0.1 — and still prints `Cd` **1.4143**, `St` **0.1719**, *identically on both backends* — **both are green on both backends**, and together they are **M9**. F (T202, session 25; re-run session 26 unmoved): `cs_smag=0` **bitwise** the frozen Phase 1 collision after 1000 steps of Rung 3's case (`array_equal`, worst |diff| **0.000e+00**) on the fused and unfused path, against the frozen NumPy oracle on numpy and the frozen **warp** oracle on warp; Rung 3 at `Cs = 0.17` printing Cd **1.4143** and St **0.1719** on *both*; `max(nu_t)/nu` **0.1910** on that wake; cross-backend with the closure on, worst kernel **2.980e-08** against 1e-6 and whole step **9.611e-06** against 1e-4. G (T203, session 26): on a 64x64 doubly periodic Taylor–Green at `tau = 0.52`, `u0 = 0.08`, `Cs = 0` returns `(tau-0.5)/3` to **0.2303%** against Rung 1's own 1% bar; `Cs = 0.17` returns `nu + <nu_t>` to **1.1547%** against 2%, while bare `nu` misses by **3.0178%** — so deleting the `<nu_t>` term *breaks* the clause rather than passing it; the measured excess equals the dissipation-weighted `<nu_t>` to **0.9972** (**D-091**); peak |u| **0.08000** throughout against the 0.1 ceiling; cross-backend `max|du|/u0` **1.150e-05** against **D-056**'s 1e-4 and the measured `nu` agreeing to **1.434e-06** |
+| **Provenance of the rung rows above** | **Session 27's own measurements.** Every one of the eleven existing rungs was re-run and **no published digit moved**: R1 L2 **0.3650%** numpy / **0.3649%** warp · R2 **0.75%** and **0.21 cells**, identical on both · R3 St **0.1731** Cd **1.4031**, identical on both · R4 square **1.5279** and polygon **1.4276**, identical on both · A worst kernel **5.960e-08**, whole step **9.611e-06**, restart within warp bit-identical · B (warp) **24/24, 0 failures**, worst Re error **0.0000%**, accuracy **1.0%** (predicted 33.22 s, actual 32.88 s) · C **15/15** in 15 s · D **3/3** caught before `nan`, all eleven checks `[ok]`, `Monitor` cost **1.96%** against its 2% limit · E warp **48.2 s** (limit 60), Cd **1.4040**, St **0.1672** · F bitwise **0.000e+00** on both backends, Rung 3 at `Cs = 0.17` printing Cd **1.4143** / St **0.1719** on both · G **0.2303%** / **1.1547%** / bare `nu` **3.0178%** / dissipation-weighted **0.9972**. **Two things to read honestly.** (1) **Rung B's numpy half was still running when the session checkpointed** — it is a ~3 h run and the warp half is green; it is the one row above carried from session 26 rather than re-measured, and it is flagged rather than quietly counted. (2) Rung D's `Monitor` cost read **1.96%** against a **2%** limit on its **first** run, taken after killing the ladder and idling the machine for seven minutes at 3201 of 3201 MHz on mains — inside the limit, and inside it by less than the machine's own run-to-run spread. **D-092** now has six readings: −0.69%, +1.02%, +0.17%, +2.11%, −0.55%, **+1.96%**. |
+| **Last updated** | 2026-09-03 — session 27 (**T204 done, M10 reached**: `flow/fidelity.py` (`Band`, `band_for`, `sentence`, `Qualified`), `validate/fidelity.py` (Rung H) and `tests/test_fidelity.py` (55 tests); `flow/autoconfig.py` engages the closure instead of refusing and plans `cs_smag`; `flow/report.py` gates every reduced coefficient on the band in `Result.__post_init__`; `flow/case.py` samples `nu_t`, bands the run and marks it substituted; `flow/diagnose.py` moves two tripwires and counts what they stopped stopping; `flow/cli.py`'s `--help` rewritten; Rung D's D-038 section inverted; `validate/cylinder.py` returns its `Sim`. **Rung H green on both backends**, **Q-203 answered** (**D-095**), **D-093** and **D-094**; queued issue `2fd69b874c32` closed as a side effect. `pytest` **894 passed, 2 skipped** (287.9 s), 67 of them new). Previously: 2026-09-03 — session 26
 
 Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
@@ -33,17 +33,22 @@ Legend: ⬜ not attempted · 🟩 passing · 🟥 failing · 🟨 partial
 
 Two entries stay in the local issue queue and neither is a blocker:
 
-- **`2fd69b874c32`** — `Case.explain()` prints a different suggestion list than `Case.nearest()` acts
-  on. A real T108 defect; not user-facing today because `flow/cli.py` prints the list it will actually
-  execute. **Folded into T207's acceptance criteria**, because the app would be a second surface for
-  the same mismatch.
+- ~~**`2fd69b874c32`** — `Case.explain()` prints a different suggestion list than `Case.nearest()`
+  acts on.~~ **Closed in session 27 and dropped from the queue (D-093).** The divergence was measured
+  on D-038's own case, which no longer refuses at all; every refusal that remains is fixed by the same
+  change from both code paths, and `flow.diagnose._present` now deduplicates by `(change, value)`.
+  `tests/test_cli.py::test_the_suggestions_the_cli_prints_are_the_ones_nearest_would_run` iterates
+  every reachable refusal and asserts the two lists agree, so **T207 inherits a guard rather than a
+  defect**.
 - **`495777c58269`** — `.gitignore` drops `*/__init__.py` and `tools/`. Open since session 16. It will
   bite T205, where a wheel has to contain every `__init__.py` it ships; fix it there or explicitly
-  carry it.
+  carry it. **This is the next task's problem and is the one queued entry that is nearly a blocker for
+  it.**
 
 A fourth was queued in session 25 and is likewise not a blocker:
 
-- **`022ac461c920`** — `Sim` allocates `smag_work` `(4, ny, nx)` on backends that never read it. The
+- **`022ac461c920`** — *(T204 did **not** take it; it is now T208's or a `/new-task`'s.)* `Sim`
+  allocates `smag_work` `(4, ny, nx)` on backends that never read it. The
   Warp backend (T202) ignores it — a GPU thread has registers, so there is nothing to stage — so with
   the closure on at 2M cells that is **32 MiB of device memory allocated and never read**, against a
   391 MiB `Sim` footprint on a 4 GiB card. Correct, bounded, and nothing today runs the closure at
@@ -51,7 +56,10 @@ A fourth was queued in session 25 and is likewise not a blocker:
   decision into the backend's own allocation), so it is a decision rather than a tidy-up; **T204** and
   **T208** both touch memory and either is a natural place.
 
-A third entry was queued in session 24 and is likewise not a blocker:
+A third entry was queued in session 24 and is likewise not a blocker. **Session 27 could not
+reproduce it**: Rung D printed `on mains` and `Win32_Battery.BatteryStatus` read 2 for the whole
+session, so it is either intermittent or already fixed by something since. It is left queued rather
+than dropped, because "could not reproduce once" is not "does not happen":
 
 - **`d5b27e51fcdc`** — `validate/refusals.py` printed `on battery` in its D-035 conditions line while
   `Win32_Battery.BatteryStatus` read **2 (mains)** for the whole session and `validate/minute.py`
@@ -122,13 +130,33 @@ backend** and **Rung B numpy ~3 h 15 m**, the latter mostly at a throttled 1882 
 
   ~~What is `<nu_t>` on a *resolved* 2D Taylor–Green at `Cs = 0.17`, as a fraction of `nu`?
   Expected small.~~ Kept for the record.
-- **Q-203** — Can the fidelity bands be made falsifiable enough to report a qualified `Cd` outside the
-  quantitative band, or does the closure ship **stability-only** (a picture, and no `Cd` at all
-  outside the validated band)? This is the phase's central product question and its pressure valve is
-  already written into `DOCS/PLAN3.md` § Risks. **T204 answers it.**
+- **Q-203 — CLOSED by T204 (session 27), answered by measurement. The answer is: a *qualified* `Cd`
+  in the qualitative band, and stability-only in the illustrative one.** Recorded as **D-095**. The
+  evidence is Rung 3's own case run with the closure forced on, which sits at `max(nu_t)/nu` =
+  **0.1057** — inside the qualitative band, whose boundary is 0.1 — and still prints `Cd` **1.4143**
+  and `St` **0.1719** against Rung 3's published, **unwidened** 1.25–1.45 and 0.155–0.175. That is a
+  falsifiable claim about the band rather than an argument about it, so the qualitative band emits a
+  `flow.fidelity.Qualified`: the number with its band and its caveat welded on, and deliberately no
+  `__float__`. The illustrative band takes the pressure valve, because there the evidence cannot
+  exist: at `max(nu_t)/nu` = **3.797e4** the model supplies four orders of magnitude more viscosity
+  than the fluid does, the wake is three-dimensional above Re ~190, and no 2D closure repairs that —
+  so **no coefficient is emitted at all**, anywhere on the object. **The margin is thin and is
+  recorded as thin**: 0.1057 against a 0.1 boundary. Nothing was widened to reach it.
+
+  ~~Can the fidelity bands be made falsifiable enough to report a qualified `Cd` outside the
+  quantitative band, or does the closure ship **stability-only**?~~ Kept for the record.
 - **Q-204** — Does `fengdong` publish to PyPI inside this phase, or does Rung I's locally built wheel
   close it? Publishing needs an account, a `LICENCE` file and a considered first version number, and
   none of the three is a packaging detail. **T205 raises it; the user decides.**
+- **Q-205 (new, session 27)** — **D-094** moved `Monitor`'s speed and mass wires to the meaning bound
+  on a closure-on run, and what it honestly gave up is early warning for a closure-on run that runs
+  away *between* the two bounds: peak `|u|` climbing from 0.1 towards 0.5774, or mass leaking from 1%
+  towards 50%. Both counters are kept and printed, so the *information* is there; nothing acts on it.
+  Does a live run need a **trend** wire — divergence as "over the accuracy bound **and rising**" —
+  and if so, does that replace the fixed bounds or sit beside them? Measured input already on file:
+  D-038's own case is flat at 0.20 from step 4000 to 48000 and linear in mass, so a trend wire would
+  be silent on it, which is the behaviour wanted. **T208 is where a run is watched live and is the
+  natural place to raise it**; it is not a blocker and Rung H covers the finished-run case.
 
 ## Environment
 
@@ -255,6 +283,10 @@ force.
 
 | D-091 | 2026-09-03 | **Rung G's case is *sized*, and the rung carries a third clause that no contract asked for: the closure's contribution must be large enough that deleting it fails the rung.** The operating point is 64x64 doubly periodic, one wavelength, `tau = 0.52`, `u0 = 0.08`, warm-up 0.3 `T_d` and a fit window of 1.0 `T_d`, where `T_d = 1 / (2 nu K^2)`. Two checks are added beside the contract's own: (a) *bare `nu` must miss the 2% bar* — the discriminator; and (b) *the measured excess equals the **dissipation-weighted** `<nu_t> = <nu_t^3>/<nu_t^2>`* to 5%, which is the bias-free form of the same claim. `EPS_TOL = 0.05`. | Three measured facts, none of them guessable from the contract. **(1) The 2% bar is vacuous on a well-resolved case.** `<nu_t>/nu` scales as `0.147 u0 / (L nu)`; at a comfortable resolved point (L = 64, `tau = 0.55`, `u0 = 0.05`) it is **0.14%**, so the clause would pass with the `<nu_t>` term deleted — precisely the *"wrong sim that looks plausible"* constraint 5 names, and a green rung that proves nothing. The case is therefore sized to `<nu_t>/nu` = **1.84%**, where the contract's check reads **1.1547%** (inside 2%) and bare `nu` reads **3.0178%** (outside it). **(2) The domain average carries a known geometric bias on this flow, and it is not an error.** Taylor–Green has `S_xy = 0` identically, so `|S| = 2 u0 k |sin kx x sin ky y|` and `nu_t` is strongly non-uniform; the energy decay responds to the dissipation-weighted mean, which is `(<\|s\|^3>/<s^2>)/<\|s\|> = ((4/3pi)^2/(1/2)^2)/(2/pi)^2 = ` **1.7780** times the domain mean. Measured across seven cases spanning L = 16..64, `tau` = 0.51..0.55 and `u0` = 0.05..0.07, the ratio of measured excess to domain mean sat at **1.69–1.79** — so the contract's domain-average comparison is systematically high by `0.78 <nu_t>`, which is why its 2% bar and the discriminator's 2% bar together admit only `<nu_t>/nu` in roughly 1.1%–2.6%. That window is *narrow but deterministic*: it is a property of the case, not of the run, and numpy and warp land on it to seven digits. **(3) Re-weighting the model's own field removes the bias entirely and costs nothing.** `nu_t = Cs^2 |S|`, so the dissipation weight `S_ab S_ab = |S|^2/2` is proportional to `nu_t^2` with every constant cancelling — `<nu_t^3>/<nu_t^2>` is therefore computable from exactly the :func:`lbm.probe.eddy_viscosity` field already being sampled, with **no analytic input and no fitting**. Against it the measured excess is **0.9972** — the closure adds what it claims to **0.3%** — and that number was 0.997 on every one of the seven cases, so the check has margin where the contract's has a window. Both are kept: the contract's because it is the contract's, and this one because it is the one that would catch a wrong coefficient. |
 | D-092 | 2026-09-03 | **A wall-clock A/B check that fails on a loaded machine is re-run on an idled one, and *both* readings are recorded.** Applied to Rung D this session; extends session 25's Rung E lesson from an observation into the standing procedure for every rung with a timing clause. | Rung D's `Monitor` cost check has now read **−0.69%**, **+1.02%**, **+0.17%**, **+2.11%** and **−0.55%** across five sessions against a **2%** limit — a ~3-point spread straddling zero, on a machine whose `CurrentClockSpeed` reports 3201 while sustained load clocks it well below (session 25). This session's first reading, **+2.11%**, came after an hour of continuous load and had its *bare* arm running **faster** than session 25's passing run (78.5 vs 76.0 steps/s), so the machine was not slow — the two arms drifted apart. The second reading, after a seven-minute idle at 3201 of 3201 MHz on mains, was **−0.55%**. All eleven physics checks were `[ok]` in both. Recording both readings rather than the passing one is what stops the next session reading a clean history and concluding the check is tight when it is in fact measuring this machine's run-to-run spread — which Rung D's own output already says is 12–21% between two runs of the *identical* path. |
+| D-093 | 2026-09-03 | **D-038's refusal is superseded. `flow.autoconfig.plan` engages the closure below `TAU_FLOOR` instead of refusing, and the only floor left is the one constraint 2 sets — `nu > 0`, i.e. `tau > 0.5` (`TAU_FLOOR_CLOSURE`).** `Plan` gains `cs_smag` and a `why` entry for it, printed by `--explain`; a case that clears `TAU_FLOOR` still plans `cs_smag = 0.0` and runs bitwise as Phase 1 ran it (constraint 19). The `relaxation` refusal class stays **reachable** — by an inviscid fluid, `nu <= 0` — so constraint 14's machinery is exercised by a real case rather than a synthetic, and Rung D's section 2 flips from *"it must refuse"* to *"it plans, the closure is what let it, and the band it expects is not a quantitative one"*. `flow/cli.py`'s `RE_LIMIT_NOTE` and `flow/diagnose.py`'s `_FIRST_PARAGRAPH["relaxation"]` are both rewritten, because both said the tool has no turbulence model. | This is the wall the whole phase exists to remove (`DOCS/IDEA4.md` § Goal; **D-038**, **D-074**), and removing it is a one-line change to a comparison — the honesty is in what replaces the refusal, not in the switch. Three things decided with it. **(1) The remaining floor is not a taste.** `nu = (tau - 0.5)/3`, so `tau > 0.5` is exactly `nu > 0`, and the closure raises the *effective* relaxation time where there is strain (**D-085**) and cannot raise the base one — there is nothing below 0.5 for any model to rescue. **(2) The class stays reachable, which was not free.** With D-038's case gone the only way to `tau <= 0.5` is a zero viscosity, and `reynolds = u l / nu` was a `ZeroDivisionError` on that path — an unreachable crash that became reachable the moment the closure carried cases down to the floor. It is now a refusal, and `_tau_suggestions` gained an inviscid branch because neither a slower speed nor a smaller body fixes a fluid with no viscosity: the fix is a **fluid**, named from the library and checked before it is offered. Rung D applies it and runs 2000 steps of what it produces. **(3) A side effect worth recording: queued issue `2fd69b874c32` is closed.** `Case.explain()` printed a different suggestion list from the one `Case.nearest()` acted on, measured on D-038's own case (*speed, size* vs *fluid -> honey*). That case no longer refuses, every refusal that remains is fixed by the same change from both code paths, and `flow.diagnose._present` now deduplicates by `(change, value)` — so the two lists agree on **every** reachable refusal, which `tests/test_cli.py` iterates rather than asserting about one case. |
+| D-094 | 2026-09-03 | **On a closure-on run, `flow.diagnose.Monitor`'s speed and mass tripwires move from the accuracy bound to the meaning bound — `CS_SOUND = 1/sqrt(3)` and `MASS_DRIFT_MEANINGLESS = 0.5` — and every crossing of the narrow bound is still counted and printed.** The criterion is `closure`, not the fidelity band: the closure is engaged exactly when `tau <= TAU_FLOOR`, which is knowable before the first timestep, where a band is not. `Monitor` gains `closure=`, `over_accuracy_ceiling`, `over_accuracy_drift`, `peak_seen` and `drift_seen`; `Result.warnings` reports both counts; `validate/refusals.py::run_plan` applies the same bound to the plan it runs. Rung D's own invocation is unaffected — it builds a default `Monitor`. | **Measured, and it is why the acceptance criterion is meetable at all.** D-038's case at `quality="fast"` on warp, the plan's own 48000 steps: the state is **finite at every sample**, the peak `|u|` climbs to **0.20** by step 4000 and is **flat** to the last step, `rho` sits in 0.78..1.12 throughout, and the fluid mass leaks **linearly** at ~0.11% per 1000 steps to **5.24%** at the end. Against that, `Monitor` as Phase 1 wrote it fires on the speed wire at **step 75** and on the mass wire at **step 11800**, raising `Diverging(cause="relaxation")` whose text reads *"the flow is growing without bound"* — which is false: the flow is bounded and steady, and the leak is a convective outlet radiating faster than a fluid with no viscosity can damp, not a domain filling until it bursts. So the wires were measuring the wrong thing in this regime, and the fix is to move them to a bound that means something rather than to switch them off. **Both new bounds come from one argument**, which is why this is a single decision: D2Q9 is an expansion about `rho = rho0` with `|u| << cs`, and constraint 3's Mach-squared error *is* that expansion's error term. Above `U_LATTICE_MAX` and above `MASS_DRIFT_ACCURACY` the answer is **inaccurate** — which is precisely what the fidelity band exists to say, and `Result.peak_u` still prints `** OVER THE LIMIT **`; above `cs` and above half the domain's mass the expansion has **nothing left to say**, and a run that reaches either is running away. Measured margin on D-038's own case: **0.2247 against 0.5774 (2.6x)** and **5.24% against 50% (9.5x)**. The interlock against this being a quiet weakening is threefold: the narrow bounds are still evaluated and their crossings printed (1919 of 1920 samples over 0.1, 1370 of 1920 over 1%, both in `Result.warnings`); Rung H asserts the illustrative run is **finite at its last step**, so nothing was hidden; and the not-finite wire is untouched. What is honestly given up is early warning for a closure-on run that genuinely runs away between `0.1` and `cs` — recorded here rather than glossed. |
+| D-095 | 2026-09-03 | **Q-203 answered: the qualitative band ships a *qualified* `Cd`, and the illustrative band ships stability-only.** `flow.fidelity.Qualified` is a frozen record carrying `cd`, `cd_std`, `cl`, `strouhal`, its `band` and its `caveat`, with **no `__float__`**, so the number cannot be slipped into arithmetic or a format string as if it were validated. Constraint 18 is implemented in **one place** — `Result.__post_init__` — which sets every entry of `flow.report.GATED_QUANTITIES` to `None` outside the quantitative band and drops `cd_qualified` too in the illustrative one; `summary`, `as_dict`, `plot` and the video metadata therefore have nothing to leak. The raw force histories stay on the result in every band, labelled as the run's data and not as a coefficient. | **The evidence existed before the module did, and Rung H re-measures it rather than citing it.** Rung 3's own case with `Cs = 0.17` sits at `max(nu_t)/nu` = **0.1057** at the end of its full 45500-step run — *inside* the qualitative band, since the boundary is 0.1 — and prints `Cd` **1.4143** and `St` **0.1719** against Rung 3's published, **unwidened** 1.25–1.45 and 0.155–0.175, on both backends. That is a falsifiable claim about the band and not an argument about it, so the pressure valve in `DOCS/PLAN3.md` § Risks is **not** taken for the qualitative band. It **is** taken for the illustrative one, where there is no evidence and by construction cannot be: at `max(nu_t)/nu` = 3.797e4 the model supplies four orders of magnitude more viscosity than the fluid, the wake is three-dimensional above Re ~190 (Williamson 1996) and no 2D closure repairs that — so no coefficient is emitted at all. Two implementation choices are load-bearing. **(1) The gate is on the record, not on the renderer**: a printer that formats a number the object withheld cannot exist, which is what lets Rung H assert constraint 18 *by inspecting the object* as the contract requires. **(2) `Result.fidelity` defaults to `quantitative`**, the band a plain-BGK run at `Re <= 200` earns by construction, so a `Result` built without one behaves exactly as Phase 1's did — and because that default is the permissive one, `tests/test_fidelity.py` reads `flow/case.py`'s **syntax** to assert the one production caller always passes `fidelity=`, `expected_fidelity=` and `closure_engaged=` explicitly. Note the margin the qualitative claim rests on: **0.1057 against a 0.1 boundary**. It is a measurement, it is close, and it is recorded as close rather than smoothed — if a future change moved it under 0.1 the case would band *quantitative* and this clause would have no case left to make, which is a thing to notice rather than to discover. |
+
 ### Constraint fate table (D-081, D-083)
 
 The fate of each of Phase 1's sixteen, decided in session 23 rather than left to rot — the same
@@ -280,7 +312,7 @@ table is the record of why each reads as it does.
 | 15 | `flow/` may import `lbm/`; `lbm/` may never import `flow/` | **Permanent**, and the model for constraint 17. |
 | 16 | No silent substitution — every artifact says so | **Permanent**, and strengthened: a run that engaged the closure is a substituted-fidelity run and says so alongside its band. |
 | **17** | — | **New (D-083).** `fengdong/` may import `flow/`; `flow/` may never import `fengdong/`. |
-| **18** | — | **New (D-082).** No unqualified quantitative claim outside the validated band. |
+| **18** | — | **New (D-082); landed by T204.** No unqualified quantitative claim outside the validated band. `flow/fidelity.py` decides the band from the eddy viscosity the run generated, `flow.report.Result.__post_init__` withholds every claim the band forbids, and Rung H asserts it by inspecting the object. **D-095** is which way Q-203 went. |
 | **19** | — | **New (D-081).** The closure defaults off, and `Cs = 0` is bitwise Phase 1 on every backend. |
 | **20** | — | **New (D-083).** One `pip install`, one command; Rung I proves it off this tree. |
 
@@ -692,3 +724,144 @@ analytic-solution harness), `lbm/core.py`'s closure, `lbm/probe.py::eddy_viscosi
 **Next:** **T204** — `flow/fidelity.py`: the three bands decided from the eddy viscosity a run
 generated, wired through `autoconfig` / `diagnose` / `report`, and **Rung H** → **M10**. Prompt
 written to `PROMPTS/027-t204-fidelity-bands.md`.
+
+
+### 2026-09-03 — Session 27: T204 — `flow/fidelity.py`, the bands wired through, Rung H, and **M10**
+
+**Task:** **T204**. **Status: done — every acceptance criterion in `DOCS/TASKS3.md` § T204 was run and
+passed.** **Rung H is green on both backends, and that is M10.** With it, the wall this whole phase
+exists to remove is gone: `--fluid air --speed "20 m/s" --size "1.5 m"` — **D-038**'s case, refused by
+Phase 0 and re-refused by Phase 1 — now exits 0, reports `illustrative`, and prints no `Cd`.
+
+**Read, in the protocol's order:** `PROMPTS/027-t204-fidelity-bands.md`; `CLAUDE.md`;
+`DOCS/STATE3.md` in full; `DOCS/TASKS3.md` § T201–T204 and the backlog index; `DOCS/IDEA4.md`
+§ The five things Phase 2 must get right (1) and § Validation ladder; `DOCS/PLAN3.md` § Why this
+order, § Session map, § Milestone gates, § Risks; `flow/autoconfig.py`, `flow/case.py`,
+`flow/report.py`, `flow/diagnose.py`, `flow/cli.py`, `lbm/probe.py::eddy_viscosity`,
+`validate/les.py`, `validate/refusals.py`, and the constraint-13/15 tests in
+`tests/test_flow_package.py`.
+
+**Two measurements taken before any code was written, because both changed the design**
+
+- **Rung 3's own case does not want the closure**, confirmed by arithmetic and then by running it:
+  the closure engages iff `Re >= 3.75 N`, i.e. Re 112.5 / 150 / 187.5 at fast / balanced / accurate,
+  and the product's Rung 3 case is Re **99.6**. So `nu_t` is identically zero there, the band is
+  decided from `Re` alone, and Rungs 3, B and E cannot move. `PROMPTS/027` asked for this to be the
+  first thing checked and it was.
+- **D-038's case runs, and it sits outside constraint 3's ceiling.** On warp at `quality="fast"`
+  (720x540, `tau` 0.5000023, `nu` 7.5e-7), the plan's own 48000 steps: **finite throughout**, peak
+  `|u|` **0.20** and *flat* from step 4000 to the last one, `rho` in **0.78..1.12**, mass leaking
+  **linearly** at ~0.11% per 1000 steps to **5.24%**, `max(nu_t)/nu` **3.7e4**. The peak sits at the
+  **inlet** (column x = 2), where the flow is uniform and the closure therefore supplies nothing, and
+  it is ~0.2 at `U` = 0.05, 0.03, 0.02 and 0.01 alike — an undamped acoustic mode, not a flow feature.
+  Against that, `Monitor` as Phase 1 wrote it fires on the speed wire at **step 75** and on the mass
+  wire at **step 11800**. That is what **D-094** exists to answer.
+
+**Done**
+
+- **`flow/fidelity.py`** (new) — `Band` (`quantitative` / `qualitative` / `illustrative`, with
+  `rank`, `reports_bare_numbers`, `reports_qualified_numbers`, `worse_of`),
+  `band_for(plan, nu_t_max=None)`, `ratio_for`, `sentence(band)`, `Qualified`, and the two boundaries
+  as named constants — `RE_3D_ONSET = 200` **cited to Williamson (1996)**, `RATIO_QUANTITATIVE = 0.1`,
+  `RATIO_QUALITATIVE = 1.0`.
+- **`flow/autoconfig.py`** — `TAU_FLOOR_CLOSURE = 0.5`, `CS_SMAG_PLANNED`, `Plan.cs_smag` with
+  `closure_engaged` and `expected_fidelity`, a `why["cs_smag"]` in both directions, and two setup
+  warnings (constraint 3's "warn at setup", and an answer to `stability_note`'s "expect nan", which is
+  a plain-BGK measurement). The `tau <= TAU_FLOOR` refusal becomes closure engagement (**D-093**); the
+  refusal that remains is `tau <= 0.5`. `reynolds` no longer divides by zero on an inviscid fluid, and
+  `_tau_suggestions` gained the branch that names a **fluid** for that case, because no speed and no
+  size fixes it.
+- **`flow/report.py`** — `Result.fidelity`, `expected_fidelity`, `cd_qualified`, `nu_t_ratio`,
+  `closure_engaged`; `GATED_QUANTITIES`; and **`__post_init__` as the single implementation of
+  constraint 18**. `summary` gained `_coefficient_lines` (three shapes, one per band), `as_dict`
+  carries the band and the qualified record, `plot` draws the trace in every band but titles it with
+  the band, and `metadata_entries` gained `fidelity=`, `closure=` and `provisional=`.
+- **`flow/case.py`** — `FIDELITY_SAMPLES_PER_RUN = 12`; `measure_nu_t` at a coarse cadence **only
+  when the closure is on** (with the closure off `nu_t` is exactly zero and nothing is sampled, which
+  is what keeps Rung E costing what it costs); the earned band from a final sample of the end state;
+  `_substitution`, which makes a closure-on run a substituted run (constraint 16) and joins the two
+  sentences when both apply; `Monitor(closure=...)`; the two "what the widened wire stopped stopping"
+  warnings; and `cs_smag` and the expected band printed by `explain()`.
+- **`flow/diagnose.py`** — `CS_SOUND`, `MASS_DRIFT_ACCURACY`, `MASS_DRIFT_MEANINGLESS`;
+  `Monitor(closure=)` with `speed_ceiling`, `over_accuracy_ceiling`, `over_accuracy_drift`,
+  `peak_seen`, `drift_seen`; `_present` deduplicates suggestions by `(change, value)`; and
+  `_FIRST_PARAGRAPH["relaxation"]` rewritten, because it told the user this tool has no turbulence
+  model.
+- **`flow/cli.py`** — `RE_LIMIT_NOTE` rewritten around the **fidelity band** rather than around a
+  refusal that no longer happens.
+- **`validate/fidelity.py`** (new) — Rung H, five clauses, printing PASS/FAIL, `--backend`,
+  `--skip-sweep`, `--skip-cylinder`.
+- **`validate/refusals.py`** — the `relaxation` row is now the inviscid case; `run_plan` runs the plan
+  it was given, closure included, against the same bound `Monitor` uses; § 2 flipped from "the D-038
+  refusal" to "the D-038 supersession".
+- **`validate/cylinder.py`** — `CylinderResult.sim`, a defaulted handle so Rung H can measure
+  `max(nu_t)/nu` and `Cd` **on the same run**. Nothing in Rung 3 reads it.
+- **`tests/test_fidelity.py`** (new, 55 tests) plus edits to `test_autoconfig`, `test_diagnose`,
+  `test_report`, `test_case`, `test_cli`, `test_flow_package` (`cs_smag`/`cs` added to
+  `LATTICE_NAMES`) and `test_smagorinsky` (the T201 ban on `flow/` mentioning the closure becomes the
+  sharper rule: no **function** in `flow/` may *take* `cs_smag`).
+- **`CLAUDE.md`** — § Commands gained Rung H's three invocations and D-038's own command; the
+  constraint list records that 18 and 19 have landed; § Current state rewritten.
+
+**Measured — every figure below is this session's own run**
+
+- **Rung H, full, on BOTH backends: PASS.** The table: **14 points** straddling both boundaries from
+  both sides, every verdict the spec's, plus the **D-091 discriminator** — deleting either gate
+  changes a verdict. The sweep, three full product-path runs per backend: quantitative Re **99.6**,
+  `Cs` 0, `max(nu_t)/nu` **0**, **`Cd` 1.4030 on both backends** against Rung 3's unwidened 1.25–1.45,
+  peak `|u|` 0.0972; qualitative Re **159.4**, `Cs` 0.17, `max(nu_t)/nu` **0.6906** numpy /
+  **0.6886** warp, **no `Cd` emitted** — and this is the discriminator case, inside the `Re <= 200`
+  gate and therefore quantitative by Reynolds number alone; illustrative Re **1.979e6**, `tau`
+  **0.500002**, `max(nu_t)/nu` **3.374e4** / **3.797e4**, peak `|u|` **0.2188** / **0.2247**, no
+  coefficient anywhere. The literal command exits **0**. And **Q-203's evidence**: Rung 3's own case
+  with the closure on reads `max(nu_t)/nu` **0.1057** — inside the qualitative band — and still prints
+  `Cd` **1.4143**, `St` **0.1719**, *identically on both backends*. numpy took **63 min**, warp
+  **5 min**.
+- **All eleven existing rungs re-run, and no published digit moved.** R1 **0.3650%** / **0.3649%** ·
+  R2 **0.75%** and **0.21 cells** · R3 St **0.1731** Cd **1.4031** · R4 **1.5279** / **1.4276** ·
+  A **5.960e-08** / **9.611e-06** · B (warp) **24/24, 0 failures**, worst Re error **0.0000%** ·
+  C **15/15** · D **3/3** caught before `nan` · E **48.2 s**, Cd **1.4040**, St **0.1672** ·
+  F **0.000e+00** bitwise on both · G **0.2303%** / **1.1547%** / **3.0178%** / **0.9972**.
+- **`pytest`: 894 passed, 2 skipped** in 287.9 s (session 26: 827 passed, 2 skipped; **+67**).
+
+**Decisions made**
+
+- **D-093** — D-038's refusal is superseded; the closure engages below `TAU_FLOOR` and the only floor
+  left is `nu > 0`. Closes queued issue `2fd69b874c32` as a side effect, and fixes a
+  `ZeroDivisionError` that became reachable the moment the closure carried cases to the floor.
+- **D-094** — on a closure-on run `Monitor`'s speed and mass wires move from the accuracy bound to the
+  meaning bound (`1/sqrt(3)`, half the domain's mass), and every crossing of the narrow bounds is
+  still counted and printed.
+- **D-095** — **closes Q-203**: a *qualified* `Cd` in the qualitative band, stability-only in the
+  illustrative one, with constraint 18 implemented in one place.
+
+**Not done / deferred**
+
+- **Rung B's numpy half was still running at checkpoint.** It is a ~3 h run; its warp half is green
+  (24/24, 0 failures, worst Re error 0.0000%, accuracy 1.0%) and its numpy figures in § Snapshot are
+  session 26's, carried and **labelled as carried**. Everything else in the ladder is this session's
+  own.
+- **`022ac461c920` (the dead `smag_work` allocation on warp) was not taken.** `PROMPTS/027` offered
+  T204 as a natural place and said taking it was optional and a `/new-task`; it was not taken, so the
+  32 MiB of unread device memory at 2M cells with the closure on is unchanged and stays T208's or a
+  `/new-task`'s.
+- **No enstrophy or cascade check, and no `Cs` tuning.** Constraint 1 forbids a dynamic procedure and
+  `DOCS/PLAN3.md` § Risks names tuning `Cs` as the phase's trap; the literature 0.17 is planned and
+  printed and was not touched.
+- **`bench.py --les` was not re-run.** It is M9's gate, not M10's, and nothing this session touched
+  `lbm/` at all — the only edit outside `flow/`, `validate/` and `tests/` is a defaulted field on
+  `CylinderResult`.
+- **The `d5b27e51fcdc` power-probe discrepancy could not be reproduced**: Rung D printed `on mains`
+  and `Win32_Battery.BatteryStatus` read 2 all session. Left queued rather than dropped.
+
+**One thing worth carrying forward, stated plainly**: the qualitative band's whole claim rests on
+`max(nu_t)/nu` = **0.1057** against a boundary of **0.1**. That is a measurement and nothing was
+widened to reach it — but the margin is 5.7%, and if a future change pushed that case under 0.1 it
+would band `quantitative` and Rung H's clause 5 would have no case left to make. Notice it rather than
+discover it.
+
+**Blockers:** none.
+
+**Next:** **T205** — packaging: `pyproject.toml`, the `fengdong` distribution, `validate/install.py`,
+and **Rung I** → **M11**. It depends on nothing in T201–T204 (`DOCS/PLAN3.md` § Why this order, 4).
+Prompt written to `PROMPTS/028-t205-packaging.md`.

@@ -41,6 +41,7 @@ import pytest
 from flow.case import Case, _resolve_sinks
 from flow.cli import RE_LIMIT_NOTE, build_parser, main
 from flow.report import metadata_entries
+from lbm.geometry import circle
 from lbm.record import FFMPEG_HINT, frame_count
 from lbm.runner import PHASE1_CLI_POINTER
 
@@ -59,8 +60,12 @@ WATER = [
     "--quality", "fast",
 ]
 
-#: **D-038**'s case, which Phase 0's CLI refuses and this one must go on
-#: refusing: air at 20 m/s past a 1.5 m body is ``Re = 2e6``.
+#: **D-038**'s case: air at 20 m/s past a 1.5 m body, ``Re = 2e6``. Phase 0 and
+#: Phase 1 both **refused** it; since **T204** / **D-093** the closure engages
+#: and it **runs**, reporting ``illustrative`` and no ``Cd``. Every test below
+#: that uses it runs it under ``--explain``, which executes no timesteps: the
+#: full run is ~48000 steps over ~389k cells and belongs to Rung H
+#: (``validate/fidelity.py``), not to a unit-test suite.
 AIR = [
     "--shape", DISC,
     "--fluid", "air",
@@ -68,14 +73,28 @@ AIR = [
     "--size", "1.5 m",
 ]
 
-#: The acceptance criterion's own literal case — air at 5 m/s past a 10 cm
-#: body. It is ``Re = 32982`` and it is **refused**, which is
-#: ``test_the_contracts_own_example_command_is_refused_and_that_is_correct``.
+#: The T109 acceptance criterion's own literal case — air at 5 m/s past a 10 cm
+#: body, ``Re = 32982``. Phase 1 refused it, which is why T109's own criterion
+#: could not be met literally; since **D-093** it runs, banded.
 CRITERION = [
     "--shape", DISC,
     "--fluid", "air",
     "--speed", "5 m/s",
     "--size", "10 cm",
+]
+
+#: The same disc as :data:`DISC`, as an array — for the tests that build a
+#: :class:`flow.case.Case` directly rather than through the command line.
+DISC_MASK = circle(80, 80, 40.0, 40.0, 20.0)
+
+#: A request that is still refused after T204, for the tests that need one: a
+#: fluid with no viscosity at all. ``nu <= 0`` is ``tau = 0.5`` exactly, and the
+#: closure raises the *effective* relaxation time, never the base one.
+INVISCID = [
+    "--shape", DISC,
+    "--fluid", "0 m^2/s",
+    "--speed", "1 mm/s",
+    "--size", "1 cm",
 ]
 
 
@@ -109,14 +128,16 @@ def test_help_states_the_reynolds_limit_in_plain_words() -> None:
     """**D-038**: the next person meets the arithmetic before the run.
 
     Phase 0's ``--help`` said air at 20 m/s past a 1.5 m body is Re 2e6 and is
-    refused. This one says the same thing, and names what to do instead —
-    which is the half Phase 0 could not offer because ``flow.diagnose`` did
-    not exist yet.
+    refused. Since **D-093** it is not refused — it runs and reports
+    ``illustrative`` — so the help says *that*, and still names the arithmetic
+    and what a user can do about it. A help text that went on describing a
+    refusal the tool no longer makes would be the tool lying about itself.
     """
     text = build_parser().format_help()
     assert "Re 2e6" in text
-    assert "REFUSED" in text
-    assert "turbulence model" in text
+    assert "illustrative" in text
+    assert "turbulence closure" in text
+    assert "FIDELITY BAND" in text
     assert "--nearest" in text
     assert RE_LIMIT_NOTE.splitlines()[0] in text
 
@@ -183,15 +204,15 @@ def test_explain_prints_the_cost_before_the_cost_is_paid(
 def test_a_refused_case_explains_itself_and_exits_two(
     no_sim: list[object], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Criterion 2's second half, on **D-038**'s own case.
+    """Criterion 2's second half, on the refusal that survived T204.
 
-    Air at 20 m/s past a 1.5 m body is Re 2e6; BGK with bounce-back and no
-    turbulence model (constraint 1) cannot represent it. Phase 0 refused it and
-    so does this — the refusal is the correct output and it stays.
+    D-038's own case was Phase 1's example here and it no longer refuses
+    (**D-093**); an inviscid fluid does, for the one reason no closure repairs.
+    The shape of the output is what is being pinned, and it has not changed.
     """
-    assert main(AIR) == 2
+    assert main(INVISCID) == 2
     err = capsys.readouterr().err
-    assert "turbulent" in err
+    assert "no viscosity" in err
     assert "tau" in err
     assert "What --nearest would run" in err
     assert no_sim == [], "a refused case must not construct a Sim"
@@ -199,25 +220,45 @@ def test_a_refused_case_explains_itself_and_exits_two(
 
 def test_a_refused_case_exits_two_under_explain_too(no_sim: list[object]) -> None:
     """``--explain`` does not turn a refusal into a success."""
-    assert main(AIR + ["--explain"]) == 2
+    assert main(INVISCID + ["--explain"]) == 2
     assert no_sim == []
 
 
-def test_the_contracts_own_example_command_is_refused_and_that_is_correct(
+def test_the_d038_case_plans_and_is_banded_rather_than_refused(
     no_sim: list[object], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The T109 criterion's literal command is a refusal, exactly as T011's was.
+    """**D-093**, at the surface a user actually types.
+
+    ``--fluid air --speed "20 m/s" --size "1.5 m"`` is Re 2e6. Phase 1 exited 2
+    with a refusal; this exits **0**, engages the closure, prints the ``Cs`` it
+    planned and the band it expects, and warns at setup that the peak velocity
+    estimate no longer bounds the run (constraint 3). Checked under
+    ``--explain`` so no timestep is executed — Rung H is what runs it to
+    completion and inspects the ``Result``.
+    """
+    assert main(AIR + ["--explain"]) == 0
+    printed = capsys.readouterr().out
+    assert "cs_smag" in printed
+    assert "illustrative" in printed or "qualitative" in printed
+    assert "constraint 3" in printed
+    assert no_sim == [], "--explain runs nothing"
+
+
+def test_the_contracts_own_example_command_is_no_longer_refused(
+    no_sim: list[object], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The T109 criterion's literal command, which Phase 1 could not meet.
 
     ``--shape wing.png --fluid air --speed "5 m/s" --size "10 cm"`` is
     ``Re = 5 * 0.1 / 1.516e-5 = 32982``, and ``tau`` reads **0.500182** against
-    the 0.54 bluff-body floor (**D-029**). This is **D-038** repeating itself
-    one layer up: two acceptance criteria of the same task cannot both be met
-    by one literal command — "writes a playable file" and "refuses a case it
-    cannot represent" — and the second wins, for D-038's reason. What T109 has
-    that T011 did not is a way through: ``--nearest``, tested below.
+    the 0.54 bluff-body floor (**D-029**). Phase 1 refused it, which is why two
+    acceptance criteria of the same task — "writes a playable file" and
+    "refuses a case it cannot represent" — could not both be met by one literal
+    command. **D-093** settles it: the closure engages and the command plans.
     """
-    assert main(CRITERION) == 2
-    assert "turbulent" in capsys.readouterr().err
+    assert main(CRITERION + ["--explain"]) == 0
+    printed = capsys.readouterr().out
+    assert "cs_smag" in printed
     assert no_sim == []
 
 
@@ -234,29 +275,57 @@ def test_a_refused_picture_exits_two_as_a_refused_case_does(
 
 
 def test_the_suggestions_the_cli_prints_are_the_ones_nearest_would_run() -> None:
-    """The printed list is the executed list, on the case where they differ.
+    """The printed list is the executed list — and after T204 they agree.
 
     ``Case.explain()`` renders the suggestions carried on the
     :class:`~flow.autoconfig.Unrepresentable`; ``Case.nearest()`` takes the top
     of :attr:`flow.case.Case.suggestions`, which is
     :func:`flow.diagnose.suggest`'s ranked list — and **D-063** has that list
-    prepend a ``"fluid"`` option ``autoconfig`` never creates. On the
-    criterion's own case the two disagree: ``explain`` shows *speed, size*
-    while ``nearest`` runs *fluid -> honey*. The CLI prints the second, so
-    "re-run with --nearest to run the first one listed above" is true.
-    """
-    case = Case.from_image(DISC, fluid="air", speed="5 m/s", size="10 cm")
-    assert not case.runnable
-    assert case.refusal is not None
+    extend the first with a ``"fluid"`` option. Phase 1 measured a real
+    divergence between the two on the criterion's own case (``explain`` showed
+    *speed, size* while ``nearest`` ran *fluid -> honey*), queued as
+    ``2fd69b874c32``.
 
-    rendered = [s.change for s in case.refusal.suggestions]
-    executed = [s.change for s in case.suggestions]
-    assert executed[0] == "fluid"
-    assert rendered != executed, (
-        "this test is pinning a real divergence — if the two lists have been "
-        "made one, the CLI's printed list can go back to explain()'s"
+    **T204 closed that divergence as a side effect** and this test is now what
+    holds it closed. Every case that still refuses is a ``relaxation`` refusal
+    about an inviscid fluid, whose fix *is* a fluid — so ``autoconfig`` names one
+    itself, ``diagnose``'s extension names the same one, and
+    ``flow.diagnose._present`` deduplicates them. The two lists agree on every
+    reachable refusal, which is checked here rather than assumed.
+    """
+    from flow.quantity import Quantity
+    from validate.refusals import CASES
+
+    for refusal_case in CASES:
+        request = dict(refusal_case.request)
+        case = Case.from_array(
+            request["mask"],
+            fluid=request["fluid"],
+            speed=request["speed"],
+            size=request["size"],
+            quality=request["quality"],
+        )
+        assert not case.runnable, refusal_case.name
+        executed = [(s.change, str(s.value)) for s in case.suggestions]
+        if case.refusal is None:
+            continue  # a refused *picture* carries a Fix, not suggestions
+        rendered = [(s.change, str(s.value)) for s in case.refusal.suggestions]
+        assert rendered[0] == executed[0], (
+            f"{refusal_case.name}: the CLI would print {rendered[0]} and "
+            f"--nearest would run {executed[0]}"
+        )
+
+    # And the specific case the issue was raised on: an inviscid fluid.
+    case = Case.from_array(
+        DISC_MASK,
+        fluid=Quantity(0.0, default_unit="m^2/s"),
+        speed="1 mm/s",
+        size="1 cm",
+        quality="fast",
     )
-    assert case.nearest().fluid.name == "honey"
+    assert not case.runnable
+    assert [s.change for s in case.suggestions] == ["fluid"]
+    assert case.nearest().runnable
 
 
 def test_nearest_runs_the_substitute_and_says_so(
@@ -269,7 +338,7 @@ def test_nearest_runs_the_substitute_and_says_so(
     honest thing for a run this brief to print.
     """
     out = tmp_path / "sub.gif"
-    code = main(CRITERION + ["--out", str(out), "--seconds", "0.02 s", "--nearest"])
+    code = main(INVISCID + ["--out", str(out), "--seconds", "0.02 s", "--nearest"])
     assert code == 0
     assert out.exists() and frame_count(out) >= 1
     captured = capsys.readouterr()
@@ -280,7 +349,7 @@ def test_nearest_runs_the_substitute_and_says_so(
 def test_without_nearest_a_refused_case_writes_nothing(tmp_path: Path) -> None:
     """The refusal is not a warning: no file is produced."""
     out = tmp_path / "never.mp4"
-    assert main(AIR + ["--out", str(out)]) == 2
+    assert main(INVISCID + ["--out", str(out)]) == 2
     assert not out.exists()
 
 

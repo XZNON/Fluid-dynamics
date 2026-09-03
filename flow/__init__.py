@@ -19,8 +19,9 @@ Two rules govern everything that lands here, and both have tests:
 What exists: physical quantities and the fluid library (T104); the chooser,
 ``flow/autoconfig.py`` (T105); the refusals and the live divergence probe,
 ``flow/diagnose.py`` (T106); geometry preparation, ``flow/prepare.py`` (T107);
-and the front door over all four — ``flow/case.py``'s :class:`~flow.case.Case`
-and ``flow/report.py``'s :class:`~flow.report.Result` (T108). ``flow/cli.py``
+the fidelity bands, ``flow/fidelity.py`` (T204); and the front door over all
+five — ``flow/case.py``'s :class:`~flow.case.Case` and ``flow/report.py``'s
+:class:`~flow.report.Result` (T108). ``flow/cli.py``
 is ``python -m flow``, the one-command form of the same three lines (T109);
 it is deliberately **not** re-exported here, because a CLI is a program and
 not part of the library's surface.
@@ -58,6 +59,15 @@ from flow.diagnose import (
     classify,
     explain,
     suggest,
+)
+from flow.fidelity import (
+    RATIO_QUALITATIVE,
+    RATIO_QUANTITATIVE,
+    RE_3D_ONSET,
+    Band,
+    Qualified,
+    band_for,
+    sentence,
 )
 from flow.fluids import FLUIDS, Fluid, fluid, known_fluids
 from flow.prepare import (
@@ -115,6 +125,13 @@ __all__ = [
     "QUALITY_LEVELS",
     "Diverging",
     "Monitor",
+    "Band",
+    "Qualified",
+    "band_for",
+    "sentence",
+    "RE_3D_ONSET",
+    "RATIO_QUANTITATIVE",
+    "RATIO_QUALITATIVE",
     "REFUSAL_CLASSES",
     "SUGGESTION_ORDER",
     "EXAMPLE_MASK",

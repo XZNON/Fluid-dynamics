@@ -55,11 +55,13 @@ than satisfied here against a stub.
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import Any, Iterable, Mapping
 
 import numpy as np
 from numpy.typing import NDArray
 
+from lbm.core import CS2
 from lbm.geometry import circle
 from lbm.units import U_LATTICE_DEFAULT, U_LATTICE_MAX
 
@@ -137,6 +139,57 @@ _NOT_YOUR_CASE = (
     "This is a different flow from the one you asked for -- not your case."
 )
 
+#: The lattice speed of sound, ``sqrt(cs2)`` = ``1 / sqrt(3)`` = 0.5774, derived
+#: from the one :data:`lbm.core.CS2` and never restated (``CLAUDE.md``
+#: § Coding conventions). It is :class:`Monitor`'s speed tripwire on a
+#: **closure-on** run, and the reason is the difference between two claims:
+#:
+#: * ``|u| >= 0.1`` (:data:`~lbm.units.U_LATTICE_MAX`) means the answer is
+#:   **inaccurate** — compressibility error grows as Mach squared, which is all
+#:   of constraint 3. In the illustrative band the tool has *already* said it is
+#:   making no quantitative claim, and :attr:`flow.report.Result.peak_u` still
+#:   prints the measured peak with ``** OVER THE LIMIT **`` beside it.
+#: * ``|u| >= cs`` means the answer is **meaningless**: the fluid is moving at
+#:   the lattice's own sound speed, where D2Q9's low-Mach expansion has nothing
+#:   left to say, and a run that reaches it is running away.
+#:
+#: So on a closure-on run the wire moves from the accuracy bound to the meaning
+#: bound rather than being switched off, and the not-finite wire is untouched
+#: (the mass wire moves by the same argument — :data:`MASS_DRIFT_MEANINGLESS`). Measured headroom on **D-038**'s own case (air, 20 m/s,
+#: 1.5 m, ``quality="fast"``, warp, 48000 steps): a **steady** peak of 0.20
+#: against 0.5774 — 2.9x — with the state finite at every sample and the peak
+#: flat from step 16000 to the last one. Rung H re-measures that every run
+#: (**D-094**), so the claim "nothing was hidden" is checked and not asserted.
+CS_SOUND: float = math.sqrt(CS2)
+
+#: Fractional mass change that counts as divergence for a **plain BGK** run.
+#: The scheme is incompressible in the low-Mach limit, so anything above a
+#: fraction of a percent is a boundary condition losing or inventing fluid.
+#: Phase 1's value, unchanged.
+MASS_DRIFT_ACCURACY: float = 0.01
+
+#: The same wire for a **closure-on** run, and it is :data:`CS_SOUND`'s argument
+#: applied to the other variable rather than a second, separate decision
+#: (**D-094**). D2Q9 is an expansion about ``rho = rho0`` with ``p = cs^2 rho``,
+#: and the expansion parameter is the *departure* from it — the same expansion
+#: constraint 3's Mach-squared error comes from. So:
+#:
+#: * a drift over :data:`MASS_DRIFT_ACCURACY` means the answer is **inaccurate**,
+#:   which is what the fidelity band is for, and it is **counted and reported**
+#:   whichever wire is armed (:attr:`Monitor.over_accuracy_drift`);
+#: * a drift over **one half** means the mean density has moved by as much as
+#:   itself and the expansion has nothing left to say — the answer is
+#:   **meaningless**, and that is divergence.
+#:
+#: Measured on **D-038**'s own case (air, 20 m/s, 1.5 m, ``quality="fast"``,
+#: warp, the plan's own 48000 steps): the drift is **linear**, ~0.11% per 1000
+#: steps, reaching **5.24%** at the last step with the state finite, the peak
+#: ``|u|`` flat at 0.20 from step 4000 onward, and ``rho`` in 0.78..1.12 — a
+#: slow leak through a convective outlet that has no viscosity to damp what it
+#: radiates, not a domain filling until it bursts. 5.24% against 50% is 9.5x of
+#: margin, and Rung H re-measures the whole trajectory every run.
+MASS_DRIFT_MEANINGLESS: float = 0.5
+
 
 def classify(exc: Unrepresentable) -> str:
     """Which of :data:`REFUSAL_CLASSES` this refusal belongs to.
@@ -174,12 +227,22 @@ def classify(exc: Unrepresentable) -> str:
 #: in their own units, or an empty string when :func:`explain` was not given
 #: one.
 _FIRST_PARAGRAPH: dict[str, str] = {
+    # Rewritten by T204 (**D-093**). Phase 1's wording said "this tool ... has
+    # no turbulence model" and refused every case whose tau fell below the
+    # bluff-body floor -- D-038's own case among them. Phase 2 has a closure, so
+    # those cases now RUN and are banded (:mod:`flow.fidelity`) rather than
+    # refused, and this paragraph is reachable only for the one thing no closure
+    # repairs: a viscosity that is not positive. Leaving the old sentence here
+    # would have been the tool telling the user something about itself that
+    # stopped being true.
     "relaxation": (
-        "{case}is far more energetic than this simulator can represent. At "
-        "that combination of speed, size and fluid the flow is turbulent, and "
-        "this tool models smooth, orderly flow only -- it has no turbulence "
-        "model. Running it anyway would produce a convincing-looking video of "
-        "the wrong answer, so it refuses instead."
+        "{case}has no viscosity left to give up: the fluid, the speed and the "
+        "size together leave this simulator with nothing to resist the motion "
+        "at all. A faster or larger flow than the tool can resolve is handled "
+        "these days by a turbulence model, and the tool will run it and tell "
+        "you plainly how much the answer is worth -- but a fluid with no "
+        "viscosity is not a fluid this method has a model of, and no amount of "
+        "modelling recovers it."
     ),
     "thickness": (
         "{case}has a feature too thin for this simulator to hold on to. Fluid "
@@ -349,7 +412,16 @@ def _present(suggestions: Iterable[Suggestion]) -> list[Suggestion]:
     knows about is a note the report and the video metadata will not carry.
     """
     out: list[Suggestion] = []
+    seen: set[tuple[str, str]] = set()
     for s in _rank(suggestions):
+        # Two sources can propose the same change: `_tau_suggestions` names a
+        # fluid for an inviscid case and `_viscous_fluid_suggestions` names one
+        # for a case the library can rescue, and on a case that is both they
+        # agree. Offering the identical fix twice is not two ways forward.
+        key = (s.change, str(s.value))
+        if key in seen:
+            continue
+        seen.add(key)
         note = _plain_note(s)
         if s.change in _CHANGES_THE_CASE and _NOT_YOUR_CASE not in note:
             note = f"{note}. {_NOT_YOUR_CASE}"
@@ -567,16 +639,21 @@ class Monitor:
     Three tripwires, each a row of ``DOCS/IDEA2.md`` § Stability:
 
     ``sustained over the speed ceiling``
-        Peak ``|u|`` at or above the constraint-3 ceiling on
+        Peak ``|u|`` at or above :attr:`speed_ceiling` on
         ``over_ceiling_samples`` **consecutive** samples. The *sustained* part
         is measured, not stylistic: a healthy start-up transient can cross the
         ceiling for one sample and recover, and a tripwire that fires on that
-        is a false alarm — see ``DOCS/STATE2.md`` for the trace.
+        is a false alarm — see ``DOCS/STATE2.md`` for the trace. Which ceiling
+        it is depends on ``fidelity`` — see that argument, and :data:`CS_SOUND`
+        for the measurement behind it (**D-094**).
     ``mass drift``
         Total fluid mass away from its starting value by more than
-        ``mass_drift``. The scheme is incompressible in the low-Mach limit, so
-        anything above a fraction of a percent is a boundary condition losing
-        or inventing fluid.
+        :attr:`mass_drift`. The scheme is incompressible in the low-Mach limit,
+        so anything above a fraction of a percent is a boundary condition losing
+        or inventing fluid — and which bound applies depends on ``closure``,
+        exactly as the speed wire's does. See :data:`MASS_DRIFT_MEANINGLESS`
+        (**D-094**); the crossings of the narrow bound are counted either way,
+        as :attr:`over_accuracy_drift`.
     ``already not finite``
         A last resort: if the state is already ``nan``, say so with the same
         structure rather than letting it surface as a bare array of ``nan``.
@@ -589,22 +666,53 @@ class Monitor:
 
     Args:
         every: sample cadence in timesteps.
-        mass_drift: fractional mass change that counts as divergence.
+        mass_drift: fractional mass change that counts as divergence, or
+            ``None`` for the default — :data:`MASS_DRIFT_ACCURACY` normally and
+            :data:`MASS_DRIFT_MEANINGLESS` when ``closure`` is set.
         over_ceiling_samples: consecutive over-ceiling samples required.
+        closure: whether the plan engaged the turbulence closure. **This is the
+            only thing that moves the speed tripwire**, and it moves it to
+            :data:`CS_SOUND` instead of :data:`~lbm.units.U_LATTICE_MAX`. It is
+            a yes/no about the model and carries no constant, so ``Cs`` still
+            appears in no public ``flow/`` signature (constraint 13).
+
+            Why this is the right criterion and not the fidelity band: the
+            closure is engaged **exactly** when ``tau`` has fallen to or below
+            :data:`~flow.autoconfig.TAU_FLOOR`, i.e. when the case has already
+            passed **D-029**'s measured stability floor and ``nu`` is small
+            enough that D-032's 1.8x peak estimate no longer bounds the run.
+            That is the set of runs the accuracy ceiling stops predicting
+            divergence for, it is known before the first timestep, and it is the
+            same set :func:`flow.autoconfig.plan` warns about at setup. The band
+            is not: a closure-on plan cannot know before running whether it will
+            earn ``qualitative`` or ``illustrative``.
 
     Attributes:
         samples: how many samples have been taken.
         peak_speed: the most recent sampled peak, ``nan`` before the first
             sample.
         drift: the most recent sampled fractional mass change.
+        speed_ceiling: the peak ``|u|`` this monitor treats as divergence.
+        peak_seen: the largest peak ``|u|`` over every sample so far.
+        over_accuracy_ceiling: how many samples crossed
+            :data:`~lbm.units.U_LATTICE_MAX` — counted **whatever**
+            :attr:`speed_ceiling` is, so that a run given the wider wire still
+            reports every sample the narrow one would have caught, and
+            :meth:`flow.case.Case.run` can put the count in
+            :attr:`flow.report.Result.warnings`. Moving a tripwire is only
+            defensible if what it stopped stopping is still counted.
+        over_accuracy_drift: the same, for the mass wire — samples over
+            :data:`MASS_DRIFT_ACCURACY` whatever :attr:`mass_drift` is.
+        drift_seen: the largest fractional mass change over every sample.
     """
 
     def __init__(
         self,
         *,
         every: int = 25,
-        mass_drift: float = 0.01,
+        mass_drift: float | None = None,
         over_ceiling_samples: int = 3,
+        closure: bool = False,
     ) -> None:
         if every < 1:
             raise ValueError(f"every must be at least 1 (got {every!r}).")
@@ -614,14 +722,24 @@ class Monitor:
                 f"(got {over_ceiling_samples!r})."
             )
         self.every = int(every)
-        self.mass_drift = float(mass_drift)
+        self.closure = bool(closure)
+        self.mass_drift = float(
+            mass_drift
+            if mass_drift is not None
+            else (MASS_DRIFT_MEANINGLESS if self.closure else MASS_DRIFT_ACCURACY)
+        )
         self.over_ceiling_samples = int(over_ceiling_samples)
+        self.speed_ceiling: float = CS_SOUND if self.closure else U_LATTICE_MAX
         self.reset()
 
     def reset(self) -> None:
         """Forget the reference mass and the tripwire counters."""
         self.samples: int = 0
         self.peak_speed: float = float("nan")
+        self.peak_seen: float = 0.0
+        self.over_accuracy_ceiling: int = 0
+        self.over_accuracy_drift: int = 0
+        self.drift_seen: float = 0.0
         self.drift: float = 0.0
         self._calls: int = 0
         self._mass0: float | None = None
@@ -662,6 +780,10 @@ class Monitor:
         peak_sq = float(sq.max())
         peak = float(np.sqrt(peak_sq)) if np.isfinite(peak_sq) else float("inf")
         self.peak_speed = peak
+        if peak > self.peak_seen:
+            self.peak_seen = peak
+        if peak >= U_LATTICE_MAX:
+            self.over_accuracy_ceiling += 1
 
         mass = (
             float(np.sum(rho, where=self._fluid, dtype=np.float64))
@@ -674,13 +796,17 @@ class Monitor:
             self.drift = abs(mass / self._mass0 - 1.0)
         else:
             self.drift = float("inf")
+        if self.drift > self.drift_seen:
+            self.drift_seen = self.drift
+        if self.drift > MASS_DRIFT_ACCURACY:
+            self.over_accuracy_drift += 1
 
         step = int(getattr(sim, "step_count", self._calls))
 
         if not (np.isfinite(peak_sq) and np.isfinite(mass)):
             self._raise(sim, "not finite", step, already_nan=True)
 
-        if peak >= U_LATTICE_MAX:
+        if peak >= self.speed_ceiling:
             self._over_run += 1
             if self._over_run >= self.over_ceiling_samples:
                 self._raise(sim, "speed", step)

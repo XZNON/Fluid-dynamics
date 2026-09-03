@@ -13,9 +13,11 @@ Four sections, each printing its own ``[ok]`` / ``[FAIL]``:
    back through :func:`~flow.diagnose.apply_suggestion` and :func:`plan`, and
    run :data:`STEPS_PER_CASE` timesteps. No ``nan``, peak ``|u|`` under the
    constraint-3 ceiling.
-2. **The D-038 case**, air at 20 m/s past a 1.5 m body, printed in full. Its
-   user-facing text is pinned as a golden string in
-   ``tests/test_diagnose.py``, so a reword is a deliberate edit.
+2. **The D-038 case**, air at 20 m/s past a 1.5 m body. Phase 1 printed its
+   *refusal* here; since **D-093** the closure engages and the case **runs**,
+   so what is printed is the supersession — it plans, the closure is what let
+   it, and the band it expects is not a quantitative one. The band it *earns*
+   is Rung H's (``validate/fidelity.py``), which runs it to completion.
 3. **Monitor** against the three failure modes of ``DOCS/IDEA2.md``
    § Stability. Each mode is run twice: once bare, to find the step at which it
    produces ``nan``, and once with :class:`~flow.diagnose.Monitor`, to find the
@@ -50,7 +52,10 @@ from flow.diagnose import (
     explain,
     suggest,
 )
+from flow.diagnose import CS_SOUND
+from flow.fidelity import sentence
 from flow.fluids import fluid
+from flow.quantity import Quantity
 from lbm.geometry import circle
 from lbm.runner import Sim, SimConfig
 from lbm.units import U_LATTICE_MAX
@@ -98,10 +103,22 @@ class RefusalCase:
 #: silently skipped.
 CASES: tuple[RefusalCase, ...] = (
     RefusalCase(
-        name="relaxation - D-038: air, 20 m/s, 1.5 m body (Re 2e6)",
+        # **T204 replaced this row.** Phase 1's `relaxation` case was D-038's
+        # own -- air, 20 m/s, a 1.5 m body -- and it refused because `tau` fell
+        # below the bluff-body floor. Since **D-093** that case RUNS: the
+        # closure engages and `flow.fidelity` bands it `illustrative`, which is
+        # section 2 below. What is left in this class is the one thing no
+        # closure repairs, because it is not a resolution problem: a fluid with
+        # **no viscosity at all**. `nu <= 0` is Re = infinity and `tau` exactly
+        # 0.5, i.e. `nu_lattice = 0` (constraint 2), and the closure raises the
+        # *effective* relaxation time where there is strain, never the base one.
+        name="relaxation - a fluid with no viscosity at all (nu = 0, Re = inf)",
         refusal_class="relaxation",
         request=dict(
-            fluid="air", speed="20 m/s", size="1.5 m", mask=NOMINAL_MASK,
+            fluid=Quantity(0.0, default_unit="m^2/s"),
+            speed="1 mm/s",
+            size="1 cm",
+            mask=NOMINAL_MASK,
             quality="balanced",
         ),
     ),
@@ -155,6 +172,10 @@ def run_plan(plan_: Plan, backend: str, steps: int = STEPS_PER_CASE) -> dict[str
         ny=ny, nx=nx, tau=plan_.tau, inlet_U=plan_.u_lattice, profile="uniform",
         use_inlet=True, use_outlet=True, convective_outlet=True, inlet_axis="x",
         check_geometry=False, backend=backend,
+        # T204: run the plan that was made, closure included. A rung that ran a
+        # *different* configuration from the one the suggestion produced would
+        # be proving the wrong claim.
+        cs_smag=plan_.cs_smag,
     )
     sim = Sim(cfg, solid)
     start = time.perf_counter()
@@ -166,7 +187,13 @@ def run_plan(plan_: Plan, backend: str, steps: int = STEPS_PER_CASE) -> dict[str
     u = sim.host_u()
     fluid_cells = ~sim.solid
     peak = float(np.sqrt(u[0][fluid_cells] ** 2 + u[1][fluid_cells] ** 2).max())
-    assert peak < U_LATTICE_MAX, f"peak |u| {peak} at/above the ceiling"
+    # The same bound flow.diagnose.Monitor applies, for the same reason
+    # (**D-094**): the closure is engaged exactly when nu is at or below the
+    # bluff-body floor, where crossing the 0.1 accuracy ceiling is a statement
+    # about the answer and crossing the lattice sound speed is a statement
+    # about survival.
+    ceiling = CS_SOUND if plan_.closure_engaged else U_LATTICE_MAX
+    assert peak < ceiling, f"peak |u| {peak} at/above the ceiling {ceiling}"
     return {"peak_u": peak, "seconds": elapsed}
 
 
@@ -517,26 +544,50 @@ def main(argv: list[str] | None = None) -> int:
     print()
 
     # --- 2. the D-038 case, printed in full -------------------------------
-    print("2. the D-038 case, as the user sees it")
-    d038 = CASES[0].request
+    #
+    # **T204 turned this section inside out (D-093).** Phase 1 printed D-038's
+    # refusal here and checked that it refused. It no longer does: the closure
+    # engages and the case runs, banded. What is checked now is the
+    # supersession itself -- that the case plans, that the closure is what let
+    # it, and that the band it expects is not a quantitative one -- plus the
+    # thing that did not change, which is that the sentence a user reads names
+    # no lattice quantity.
+    print("2. the D-038 case, as the user sees it now (D-093 supersedes D-038)")
+    d038 = dict(
+        fluid="air", speed="20 m/s", size="1.5 m", mask=NOMINAL_MASK,
+        quality="balanced",
+    )
     try:
-        plan(**_planargs(d038))
-        failures.append("D-038 case planned instead of refusing")
-        print("   [FAIL] it planned; D-038 says it must refuse")
+        d038_plan = plan(**_planargs(d038))
     except Unrepresentable as exc:
-        text = explain(
-            exc,
-            request={"fluid": "air", "speed": "20 m/s", "size": "1.5 m"},
-        )
-        for line in text.splitlines():
-            print(f"   | {line}")
-        first = text.split("\n\n", 1)[0].lower()
-        leaks = [w for w in ("tau", "lattice", "cell", "timestep") if w in first]
-        if leaks:
-            failures.append(f"D-038 first paragraph leaks {leaks}")
-            print(f"   [FAIL] first paragraph names {leaks}")
+        failures.append(f"the D-038 case refused: {exc}")
+        print(f"   [FAIL] it refused; D-093 says it must run: {exc}")
+    else:
+        band = d038_plan.expected_fidelity
+        text = sentence(band)
+        print(f"   | Air at 20 m/s past a body 1.5 m across: Re {d038_plan.Re:.4g}")
+        print(f"   | tau {d038_plan.tau:.7f}, closure Cs = {d038_plan.cs_smag:g}")
+        print(f"   | {text}")
+        if not d038_plan.closure_engaged:
+            failures.append("the D-038 case planned without engaging the closure")
+            print("   [FAIL] it planned under plain BGK; that cannot be right")
         else:
-            print("   [ok]   first paragraph names no lattice quantity")
+            print("   [ok]   it plans, and it plans with the closure on")
+        if band.reports_bare_numbers:
+            failures.append("the D-038 case expects the quantitative band")
+            print("   [FAIL] it expects to report unqualified numbers")
+        else:
+            print(f"   [ok]   it expects the {band} band, not a quantitative one")
+        leaks = [w for w in ("tau", "lattice", "cell", "timestep")
+                 if w in text.lower()]
+        if leaks:
+            failures.append(f"the D-038 band sentence leaks {leaks}")
+            print(f"   [FAIL] the sentence names {leaks}")
+        else:
+            print("   [ok]   the sentence a user reads names no lattice quantity")
+        print("   note: the band this case *earns* is measured by Rung H "
+              "(validate.fidelity), which runs it to completion; the band "
+              "above is what the plan expects.")
     print()
 
     # --- 3. Monitor -------------------------------------------------------

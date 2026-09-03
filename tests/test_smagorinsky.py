@@ -656,16 +656,24 @@ def test_the_closure_is_off_everywhere_it_is_not_being_tested():
     through from a caller — never a non-zero constant. ``validate/les.py`` is
     exempt because turning the closure on is that rung's entire job.
 
-    ``flow/`` must not mention it at all: the product layer takes no lattice
-    quantity in a public signature (constraint 13), and nothing there has been
-    taught about the closure yet — T204 is where the *fidelity band* surfaces,
-    and a band is not a knob.
+    ``flow/`` may mention it since **T204**, and the rule there is narrower and
+    sharper: the product layer may *plan* the closure and *pass* what it planned,
+    but **no function anywhere in ``flow/`` may take a ``cs_smag`` parameter**.
+    That is constraint 13 read exactly — ``Cs`` is a planned, printed quantity
+    like ``tau`` and never something a caller fills in — and it is what stops
+    the band from quietly becoming a knob. ``flow.autoconfig.Plan.cs_smag`` is a
+    field on a frozen output record, which is the same **D-060** exemption
+    ``tau`` and ``dx`` already live under.
     """
     import ast
 
     bad_defaults: list[str] = []
     bad_calls: list[str] = []
-    flow_hits: list[str] = []
+    flow_params: list[str] = []
+
+    # The two rungs whose entire job is turning the closure on. Everything else
+    # is held to "declared with a 0.0 default, passed only as a variable".
+    closure_rungs = {"validate/les.py", "validate/fidelity.py"}
 
     for tree_name in ("lbm", "flow", "validate"):
         for path in sorted((REPO / tree_name).rglob("*.py")):
@@ -674,8 +682,15 @@ def test_the_closure_is_off_everywhere_it_is_not_being_tested():
                 continue
             rel = path.relative_to(REPO).as_posix()
             if tree_name == "flow":
-                flow_hits.append(rel)
-            if rel == "validate/les.py":
+                for node in ast.walk(ast.parse(text, filename=rel)):
+                    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        continue
+                    args = node.args
+                    if "cs_smag" in [
+                        a.arg for a in args.args + args.kwonlyargs + args.posonlyargs
+                    ]:
+                        flow_params.append(f"{rel}:{node.lineno}: {node.name}")
+            if rel in closure_rungs:
                 continue
 
             tree = ast.parse(text, filename=rel)
@@ -730,7 +745,11 @@ def test_the_closure_is_off_everywhere_it_is_not_being_tested():
                                 f"{rel}:{kw.value.lineno}: cs_smag=<expression>"
                             )
 
-    assert not flow_hits, f"flow/ must not know about the closure yet: {flow_hits}"
+    assert not flow_params, (
+        "CLAUDE.md constraint 13: a function in flow/ takes cs_smag as a "
+        f"parameter, which makes it a knob rather than a planned quantity: "
+        f"{flow_params}"
+    )
     assert not bad_defaults, f"the closure does not default off: {bad_defaults}"
     assert not bad_calls, f"the closure is switched on outside Rung F: {bad_calls}"
 

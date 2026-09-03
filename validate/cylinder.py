@@ -76,6 +76,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field as dc_field
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -217,6 +218,13 @@ class CylinderResult:
     live_sps: float = float("nan")
     cd_series: NDArray[np.float64] = dc_field(default_factory=lambda: np.empty(0))
     cl_series: NDArray[np.float64] = dc_field(default_factory=lambda: np.empty(0))
+    #: The :class:`lbm.runner.Sim` that produced the numbers above, kept so a
+    #: caller can measure a **field** on the state this run actually ended in
+    #: rather than on a second run of a similar case (T204: Rung H reads
+    #: :func:`lbm.probe.eddy_viscosity` off it, which is the only way its
+    #: max(nu_t)/nu and its Cd can be from the same run). Nothing in Rung 3
+    #: reads it and no number here depends on it.
+    sim: Any = None
 
 
 # --- setup --------------------------------------------------------------------
@@ -721,6 +729,7 @@ def run_cylinder(
         live_sps=live_sps,
         cd_series=cd_series,
         cl_series=cl_series,
+        sim=sim,
     )
 
 

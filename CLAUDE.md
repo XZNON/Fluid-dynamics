@@ -104,9 +104,12 @@ way it does, and the retired one is kept below, struck, rather than deleted.
     into a fresh venv with no repository on the path. A package that only installs from the
     developer's tree is not distributed. *(New in Phase 2, D-083.)*
 
-Constraints 13–16 are enforced by tests that live with the code they govern (`flow/`). Constraints
-17–20 land with the code *they* govern (T201 onward); until then they are the design rule code has to
-be written to satisfy, not a dead letter.
+Constraints 13–16 are enforced by tests that live with the code they govern (`flow/`). **Constraint
+19 landed with T201/T202** (Rung F, `validate/les.py`) and **constraint 18 landed with T204** —
+`flow/fidelity.py` decides the band, `flow.report.Result.__post_init__` withholds every claim the band
+forbids, and Rung H (`validate/fidelity.py`) asserts it by inspecting the object. Constraints **17**
+and **20** land with the code *they* govern (T205 onward); until then they are the design rule code
+has to be written to satisfy, not a dead letter.
 
 ---
 
@@ -170,7 +173,9 @@ myenv/Scripts/python.exe -m validate.les                  # Rung F on numpy (T20
 myenv/Scripts/python.exe -m validate.les --backend warp   # Rung F on warp (T202) — both are the rung
 myenv/Scripts/python.exe -m validate.taylorgreen          # Rung G — analytic decay (T203)
 myenv/Scripts/python.exe -m validate.taylorgreen --backend warp   # Rung G on warp — both are the rung
-myenv/Scripts/python.exe -m validate.fidelity             # Rung H — the bands (T204)
+myenv/Scripts/python.exe -m validate.fidelity             # Rung H — the bands (T204), ~50 min on numpy
+myenv/Scripts/python.exe -m validate.fidelity --backend warp      # Rung H on warp (~5 min) — both are the rung
+myenv/Scripts/python.exe -m validate.fidelity --skip-sweep --skip-cylinder  # the table clauses alone, instant
 myenv/Scripts/python.exe -m validate.install              # Rung I — fresh-venv wheel (T205)
 myenv/Scripts/python.exe -m validate.drop                 # Rung J — the drop, timed (T209)
 myenv/Scripts/python.exe bench.py --backend warp --les    # the closure's cost against BGK (T202)
@@ -184,6 +189,12 @@ fengdong                                                  # the window; pip inst
 myenv/Scripts/python.exe -m flow --shape tests/data/shapes/disc.png \
     --fluid water --speed "5 mm/s" --size "2 cm" --out wake.mp4
 myenv/Scripts/python.exe -m flow --shape ... --explain     # plan, exit 0, runs nothing
+
+# D-038's own case, refused by Phase 1 and RUN by Phase 2 (T204, D-093): the
+# closure engages, the run completes, and it reports `illustrative` — a moving
+# picture and no Cd at all (constraint 18).
+myenv/Scripts/python.exe -m flow --shape tests/data/shapes/disc.png \
+    --fluid air --speed "20 m/s" --size "1.5 m" --no-live --backend warp
 ```
 
 ### Issue queue
@@ -293,10 +304,11 @@ measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 1
 (**D-077**) and Rung D's cost check gained rounds (**D-078**).
 
 **Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 landed in
-session 24, T202 in session 25, T203 in session 26 — and with it M9**. **T204 is next.** Three
-deliverables: a **Smagorinsky closure** on the existing BGK collision (both backends, defaulting
-off), the **fidelity bands** that make it safe to ship, and a **pygame desktop application** shipped
-as `pip install fengdong`. Rungs **F 🟩 · G 🟩 · H ⬜ · I ⬜ · J ⬜**, milestones **M9 🟩** – **M12**.
+session 24, T202 in session 25, T203 in session 26 — and with it M9 — and T204 in session 27, with
+M10**. **T205 is next.** Three deliverables: a **Smagorinsky closure** on the existing BGK collision
+(both backends, defaulting off), the **fidelity bands** that make it safe to ship, and a **pygame
+desktop application** shipped as `pip install fengdong`. Two of the three are done. Rungs
+**F 🟩 · G 🟩 · H 🟩 · I ⬜ · J ⬜**, milestones **M9 🟩 · M10 🟩** – **M12**.
 Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog `DOCS/TASKS3.md` · **live status
 `DOCS/STATE3.md`**.
 
@@ -333,10 +345,35 @@ to have teeth. Taylor–Green has `S_xy = 0`, so the decay responds to the **dis
 published digit unmoved, and `bench.py --backend warp --les` reading **3504.0 / 661.6 / 403.7** against
 floors **3116 / 568 / 331**.
 
+**T204, done (session 27): the bands, and with them M10 — and the wall this phase exists to remove
+is gone.** `flow/fidelity.py` is the judgement layer: `Band`, `band_for(plan, nu_t_max=None)`,
+`sentence(band)` and `Qualified`, with `RE_3D_ONSET = 200` cited to Williamson (1996) rather than
+chosen. `flow.autoconfig.plan` engages the closure below `TAU_FLOOR` instead of refusing (**D-093**),
+`Plan` gains `cs_smag` and its `why`, `Result` gains `fidelity` — and **constraint 18 is implemented
+in exactly one place**, `Result.__post_init__`, which withholds every claim the band forbids so that
+no printer, dict or MP4 comment has anything to leak. **Q-203's answer (D-095): a *qualified* `Cd` in
+the qualitative band, stability-only in the illustrative one**, and the evidence is measured, not
+argued — Rung 3's own case with the closure on sits at `max(nu_t)/nu` **0.1057** (inside the
+qualitative band, whose boundary is 0.1) and still prints Cd **1.4143**, St **0.1719** against the
+published, unwidened bands, identically on both backends. **D-094** is the price: on a closure-on run
+`Monitor`'s speed and mass wires move from the accuracy bound to the meaning bound — `1/sqrt(3)` and
+half the domain's mass — because D-038's case is **finite, flat and linear** for all 48000 steps
+(peak `|u|` 0.20 from step 4000 on, mass leaking 0.11% per 1000 steps to 5.24%) while the Phase 1
+wires called that "growing without bound" at step 75. Every crossing of the narrow bounds is still
+counted and printed. **Every one of the eleven existing rungs was re-run and no published digit
+moved** — R1 · R2 · R3 · R4 · A · B · C · D · E · F · G, on both backends where both apply, with
+Rung B's numpy half still running at checkpoint time and its warp half green (`DOCS/STATE3.md`
+§ Provenance).
+
+**The measured claim T204 is judged on**: `python -m flow --shape disc.png --fluid air --speed
+"20 m/s" --size "1.5 m"` — Re 2e6, the case **D-038** refused and **D-074** re-refused — now **exits
+0**, reports **illustrative**, and prints **no `Cd` at all**. Rung H runs that literal command.
+
 **What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
-picture"* and D-044 deferred that; everything beneath it is now validated by nine rungs, so this
-phase spends them. The closure exists because **D-038** and **D-074** — the first case any plausible
-user asks for — are refused, and the refusal is correct but is the wall every real user hits.
+picture"* and D-044 deferred that; everything beneath it is now validated by twelve rungs, so this
+phase spends them. The closure existed because **D-038** and **D-074** — the first case any plausible
+user asks for — *were* refused; since T204 they are not, and the fidelity band is what stands in the
+refusal's place.
 
 **The thing this phase can most easily get wrong**, stated so a future session cannot claim it was
 not warned: the closure buys **stability, not fidelity**. The cylinder wake is three-dimensional above

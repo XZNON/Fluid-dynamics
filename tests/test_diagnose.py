@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from flow.autoconfig import Suggestion, Unrepresentable, plan
+from flow.autoconfig import TAU_FLOOR, Suggestion, Unrepresentable, plan
 from flow.diagnose import (
     EXAMPLE_MASK,
     REFUSAL_CLASSES,
@@ -27,8 +27,10 @@ from flow.diagnose import (
     explain,
     suggest,
 )
+from flow.fidelity import sentence
 from lbm.geometry import circle
 from lbm.runner import Sim, SimConfig
+from validate.autoconfig import NOMINAL_MASK
 from validate.refusals import CASES, BASE_REQUEST, _planargs, _synthetic
 
 #: Words that must never appear in the first paragraph of a refusal. The
@@ -91,67 +93,100 @@ def test_the_numbers_are_available_in_a_second_section():
     text = explain(exc)
     head, _, details = text.partition("Details")
     assert details, "explain() must carry a details section"
-    assert "tau" in details and "0.54" in details
+    assert "tau" in details and "0.5" in details
     assert "tau" not in _first_paragraph(head)
 
 
 def test_explain_restates_the_request_in_the_users_own_units():
     exc = _refusal(CASES[0].request)
     text = explain(
-        exc, request={"fluid": "air", "speed": "20 m/s", "size": "1.5 m"}
+        exc, request={"fluid": "syrup", "speed": "1 mm/s", "size": "1 cm"}
     )
     first = _first_paragraph(text)
-    assert first.startswith("Air at 20 m/s past a body 1.5 m across")
+    assert first.startswith("Syrup at 1 mm/s past a body 1 cm across")
 
 
 def test_explain_without_a_request_still_reads_as_a_sentence():
     text = explain(_refusal(CASES[0].request))
-    assert _first_paragraph(text).startswith("This case is far more energetic")
+    assert _first_paragraph(text).startswith("This case has no viscosity")
 
 
 # ---------------------------------------------------------------------------
-# The D-038 case, pinned. A reword is a deliberate edit.
+# The D-038 case, pinned — and T204 turned it inside out (D-093)
 # ---------------------------------------------------------------------------
+#
+# Phase 1 pinned the *refusal* here, in full, so that a reword would be a
+# deliberate edit. There is no refusal any more: the closure engages and the
+# case runs, banded ``illustrative``. What is pinned instead is the thing that
+# replaced it — the plan, the band, and the sentence a user reads — with the
+# same "a reword is a deliberate edit" posture applied to the parts that are a
+# contract rather than prose (D-047).
 
-D038_GOLDEN = (
-    "Air at 20 m/s past a body 1.5 m across is far more energetic than this "
-    "simulator can represent. At that combination of speed, size and fluid the "
-    "flow is turbulent, and this tool models smooth, orderly flow only -- it "
-    "has no turbulence model. Running it anyway would produce a "
-    "convincing-looking video of the wrong answer, so it refuses instead.\n"
+D038_REQUEST = dict(
+    fluid="air", speed="20 m/s", size="1.5 m", mask=NOMINAL_MASK,
+    quality="balanced",
+)
+
+#: The refusal that *is* still reachable, pinned in full. Same posture as
+#: Phase 1's ``D038_GOLDEN``, moved to the case that still produces one.
+INVISCID_GOLDEN = (
+    "Syrup at 1 mm/s past a body 1 cm across has no viscosity left to give "
+    "up: the fluid, the speed and the size together leave this simulator with "
+    "nothing to resist the motion at all. A faster or larger flow than the "
+    "tool can resolve is handled these days by a turbulence model, and the "
+    "tool will run it and tell you plainly how much the answer is worth -- "
+    "but a fluid with no viscosity is not a fluid this method has a model of, "
+    "and no amount of modelling recovers it.\n"
     "\n"
     "What would work\n"
-    "  1. Run it slower -- about 0.00121 m/s -- at the same size and in the "
-    "same fluid. This is a different flow from the one you asked for -- not "
-    "your case.\n"
-    "  2. Run a smaller body -- about 9.1e-05 m across -- at the same speed "
-    "and in the same fluid. This is a different flow from the one you asked "
-    "for -- not your case.\n"
+    "  1. run the same shape at the same speed and size in water, or in any "
+    "real fluid: a fluid with no viscosity at all has nothing to resist the "
+    "motion, and there is no speed and no size that changes that. This is a "
+    "different flow from the one you asked for -- not your case.\n"
     "\n"
     "Details\n"
-    "  refused because: tau would sit at or below the bluff-body stability "
-    "floor of 0.54 -- the strictest of the project's three tau floors (D-029; "
-    "see D-032 for the generic 0.51 floor and D-036 for Rung 3's 0.537)\n"
-    "  tau = 0.500003 (limit 0.54)"
+    "  refused because: tau would sit at or below 0.5, which is nu <= 0 "
+    "(CLAUDE.md constraint 2: nu = (tau - 0.5) / 3). The Smagorinsky closure "
+    "raises the effective relaxation time where there is strain (D-085) and "
+    "cannot raise the base one, so there is nothing left to give up here\n"
+    "  tau = 0.5 (limit 0.5)"
 )
 
 
-def test_the_d038_case_reads_exactly_this(capsys):
-    """**D-038**: air, 20 m/s, a 1.5 m body -- Re 2e6, and the refusal is correct.
-
-    Pinned in full so a reword is a deliberate edit rather than a drift. The
-    same text is what ``validate/refusals.py`` § 2 prints.
-    """
+def test_the_inviscid_refusal_reads_exactly_this():
+    """The one refusal `relaxation` still has, pinned so a reword is deliberate."""
     exc = _refusal(CASES[0].request)
     text = explain(
-        exc, request={"fluid": "air", "speed": "20 m/s", "size": "1.5 m"}
+        exc, request={"fluid": "syrup", "speed": "1 mm/s", "size": "1 cm"}
     )
-    assert text == D038_GOLDEN
+    assert text == INVISCID_GOLDEN
 
 
-def test_the_d038_refusal_is_ascii():
+def test_the_inviscid_refusal_is_ascii():
     """A Windows console at its default codepage mojibakes an em dash (T104)."""
-    D038_GOLDEN.encode("ascii")
+    INVISCID_GOLDEN.encode("ascii")
+
+
+def test_the_d038_case_no_longer_refuses(capsys):
+    """**D-093**: air, 20 m/s, a 1.5 m body — Re 2e6 — now RUNS, banded.
+
+    The whole reason Phase 2 exists (``DOCS/IDEA4.md`` § Goal), asserted rather
+    than described: the case Phase 1 refused plans, the closure is what let it,
+    and the band it expects is not one that reports bare numbers.
+    """
+    p = plan(**_planargs(D038_REQUEST))
+    assert p.Re > 1e6
+    assert p.closure_engaged, "the closure is what makes this case runnable"
+    assert not p.expected_fidelity.reports_bare_numbers
+    # And there is nothing to suggest, because there is nothing to fix.
+    assert suggest(**D038_REQUEST) == []
+
+
+def test_the_d038_band_sentence_names_no_lattice_quantity():
+    """The sentence that replaced the refusal is held to the refusal's own bar."""
+    text = sentence(plan(**_planargs(D038_REQUEST)).expected_fidelity).lower()
+    leaks = [w for w in LATTICE_WORDS if w in text]
+    assert not leaks, f"the band sentence names {leaks}: {text}"
 
 
 # ---------------------------------------------------------------------------
@@ -191,25 +226,60 @@ def test_the_case_preserving_fix_is_offered_first():
 
 
 def test_a_more_viscous_fluid_is_offered_when_one_actually_works():
-    """The fluid suggestion is checked before it is offered, never invented."""
-    # Water at 0.5 m/s past a 0.2 m body is Re 1e5 -- refused. Honey (nu
-    # 7.042e-3) is ~7000x water's viscosity and brings the same geometry back
-    # into range.
-    request = dict(
-        fluid="water", speed="0.5 m/s", size="0.2 m", mask=EXAMPLE_MASK,
-        quality="balanced",
-    )
+    """**D-063**: the fluid suggestion is checked before it is offered.
+
+    Phase 1's case for this was water at 0.5 m/s past a 0.2 m body — Re 1e5,
+    refused, fixed by honey. Since **D-093** that case is not refused at all:
+    the closure engages and it runs, banded. So the claim is made on the one
+    request that still refuses — an inviscid fluid — where a library entry both
+    exists and clears the floor, and it is executed rather than described.
+    """
+    request = dict(CASES[0].request)
     found = suggest(**request)
     fluids = [s for s in found if s.change == "fluid"]
     assert fluids, [s.change for s in found]
     fixed = apply_suggestion(fluids[0], **request)
-    plan(**fixed)  # the claim, executed
+    fixed_plan = plan(**fixed)  # the claim, executed
+    assert fixed_plan.tau > TAU_FLOOR, (
+        "an offered fluid has to clear the floor on its own, not merely plan "
+        "with the closure carrying it"
+    )
+
+
+def test_no_fluid_is_offered_when_none_in_the_library_would_clear_the_floor():
+    """The other half of D-063: never invent one, and never name one that fails.
+
+    An inviscid case at a speed and size no library entry can rescue gets
+    **nothing** from :func:`flow.diagnose._viscous_fluid_suggestions` — the
+    generic "use a real fluid" fix from ``flow/autoconfig.py`` is what it falls
+    back to, and that is a different, weaker claim honestly labelled.
+    """
+    from flow.diagnose import _viscous_fluid_suggestions
+
+    assert (
+        _viscous_fluid_suggestions(
+            u_phys=20.0, l_phys=1.5, cells_per_length=40, current="air"
+        )
+        == []
+    )
 
 
 def test_no_fluid_is_invented_for_a_case_no_fluid_can_save():
-    """Re 2e6 is beyond every entry in the library -- so none is offered."""
+    """A fluid is offered only when a library entry actually clears the floor.
+
+    On the inviscid case a fluid is exactly the right fix and one is offered
+    (:func:`flow.autoconfig._tau_suggestions`); what must not happen is the same
+    fix offered twice by two different code paths, or a fluid named that does
+    not work.
+    """
     found = suggest(**CASES[0].request)
-    assert not [s for s in found if s.change == "fluid"]
+    fluids = [s for s in found if s.change == "fluid"]
+    assert fluids, "an inviscid case is fixed by changing the fluid, and only that"
+    assert len({str(s.value) for s in fluids}) == len(fluids), (
+        f"the same fluid offered twice: {[s.value for s in fluids]}"
+    )
+    for s in fluids:
+        plan(**apply_suggestion(s, **CASES[0].request))  # the claim, executed
 
 
 # ---------------------------------------------------------------------------

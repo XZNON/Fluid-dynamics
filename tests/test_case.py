@@ -30,6 +30,7 @@ import pytest
 
 import flow
 from flow.autoconfig import QUALITY_CELLS, Unrepresentable
+from flow.quantity import Quantity
 from flow.case import Case, _resolve_sinks, _seed_solid_at_rest
 from flow.report import metadata_entries
 from lbm.core import Q, W
@@ -431,16 +432,43 @@ def test_a_refused_picture_is_built_not_raised_and_run_refuses_to_run_it():
     assert caught.value.suggestions, "constraint 14: a refusal names a fix"
 
 
-def test_a_refused_physics_case_keeps_d038s_refusal_and_explains_it():
-    """Air at 20 m/s past a 1.5 m body is still refused, in plain language."""
+def test_d038s_case_is_no_longer_refused_and_carries_a_band_instead():
+    """**D-093**: air at 20 m/s past a 1.5 m body now plans, and is banded.
+
+    Phase 1's version of this test asserted the refusal. The refusal is what
+    Phase 2 exists to remove, so what is asserted now is the thing that replaced
+    it: the plan, the closure that made it possible, the band it expects, and
+    the fact that the band is not one that reports bare numbers.
+    """
     case = Case.from_image(DISC, **AIR_CASE)
+    assert case.runnable is True
+    assert case.refusal is None
+    assert case.plan is not None
+    assert case.plan.closure_engaged
+    assert not case.plan.expected_fidelity.reports_bare_numbers
+
+    text = case.explain(quiet=True)
+    assert "cs_smag" in text
+    assert "fidelity" in text
+    assert not case.suggestions, "nothing to fix: the case runs"
+
+
+def test_an_inviscid_case_is_refused_and_explains_itself():
+    """The refusal that survived T204, in plain language (constraint 14)."""
+    case = Case.from_image(
+        DISC,
+        fluid=Quantity(0.0, default_unit="m^2/s"),
+        speed="1 mm/s",
+        size="1 cm",
+        quality="fast",
+    )
     assert case.runnable is False
     assert case.refusal is not None
     assert case.refusal.quantity == "tau"
 
     text = case.explain(quiet=True)
     assert "What would work" in text
-    assert "turbulence model" in text
+    assert "no viscosity" in text
     assert case.suggestions, "constraint 14: a refusal names a fix"
 
 
@@ -452,7 +480,13 @@ def test_nearest_applies_the_tools_own_top_suggestion_and_marks_it():
     and the case it returns carries ``substituted=True``, because it is not
     the case that was asked for (constraint 16).
     """
-    case = Case.from_image(DISC, **AIR_CASE)
+    case = Case.from_image(
+        DISC,
+        fluid=Quantity(0.0, default_unit="m^2/s"),
+        speed="1 mm/s",
+        size="1 cm",
+        quality="fast",
+    )
     nearest = case.nearest()
 
     assert nearest.substituted is True
