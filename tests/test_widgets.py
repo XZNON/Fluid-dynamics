@@ -567,34 +567,68 @@ def test_drawing_an_unchanged_panel_renders_no_new_text(surface, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_no_identifier_in_widgets_is_a_lattice_quantity():
+def _fengdong_modules() -> list[pathlib.Path]:
+    """Every module in ``fengdong/`` — the scans below run over all of them, so a
+    file added to the package (T207's ``app.py``) is covered the moment it exists."""
+    return sorted(p for p in FENGDONG_ROOT.rglob("*.py") if "__pycache__" not in p.parts)
+
+
+@pytest.mark.parametrize("path", _fengdong_modules(), ids=lambda p: p.name)
+def test_no_identifier_in_fengdong_is_a_lattice_quantity(path):
     """The vocabulary is ``tests/test_flow_package.py::LATTICE_NAMES`` — imported, not copied."""
-    tree = ast.parse(WIDGETS_PY.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     clash = {n for n in _identifiers(tree) if n.lower() in LATTICE_NAMES}
-    assert not clash, f"constraint 13: lattice vocabulary in fengdong/widgets.py: {sorted(clash)}"
+    assert not clash, f"constraint 13: lattice vocabulary in fengdong/{path.name}: {sorted(clash)}"
 
 
-def test_no_string_in_widgets_names_a_lattice_quantity():
-    """Nor may a widget *display* one: every string literal, word by word."""
+def _docstrings(tree: ast.AST) -> set[int]:
+    """The ids of the docstring constants — prose that is never shown to a user."""
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                found.add(id(body[0].value))
+    return found
+
+
+@pytest.mark.parametrize("path", _fengdong_modules(), ids=lambda p: p.name)
+def test_no_string_in_fengdong_names_a_lattice_quantity(path):
+    """Nor may a widget *display* one: every string literal, word by word.
+
+    Docstrings are exempt — they are the one kind of string a window never
+    shows, and ``fengdong/__init__.py``'s names the forbidden vocabulary in
+    order to forbid it. Every other literal (a caption, a prompt, a status
+    line, an argparse ``help``) is scanned.
+    """
     import re
 
-    tree = ast.parse(WIDGETS_PY.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    prose = _docstrings(tree)
     clash = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in prose:
             for word in re.findall(r"[A-Za-z_]+", node.value):
                 if word.lower() in LATTICE_NAMES:
                     clash.add(word)
-    assert not clash, f"constraint 13: a widget could show {sorted(clash)}"
+    assert not clash, f"constraint 13: fengdong/{path.name} could show {sorted(clash)}"
 
 
-def test_no_public_signature_in_widgets_takes_a_lattice_quantity():
-    """The same scan ``tests/test_flow_package.py`` runs over ``flow/``, over this module."""
+def _fengdong_imported_modules() -> list[object]:
+    import importlib
+
+    return [importlib.import_module(f"fengdong.{p.stem}") for p in _fengdong_modules()
+            if p.stem != "__init__"] + [fengdong]
+
+
+@pytest.mark.parametrize("module", _fengdong_imported_modules(), ids=lambda m: m.__name__)
+def test_no_public_signature_in_fengdong_takes_a_lattice_quantity(module):
+    """The same scan ``tests/test_flow_package.py`` runs over ``flow/``, over every module here."""
     offenders = []
-    for name, obj in vars(widgets).items():
+    for name, obj in vars(module).items():
         if name.startswith("_") or not (inspect.isfunction(obj) or inspect.isclass(obj)):
             continue
-        if getattr(obj, "__module__", None) != widgets.__name__:
+        if getattr(obj, "__module__", None) != module.__name__:
             continue
         candidates = [(name, obj)]
         if inspect.isclass(obj):
@@ -614,6 +648,10 @@ def test_no_public_signature_in_widgets_takes_a_lattice_quantity():
 def test_the_constraint_13_scan_over_widgets_has_teeth():
     tree = ast.parse("def f(speed, tau=0.6):\n    return tau\nlabel = 'the tau is'\n")
     assert {n for n in _identifiers(tree) if n.lower() in LATTICE_NAMES} == {"tau"}
+    tree = ast.parse('"""a docstring about tau"""\nlabel = "the tau is"\n')
+    prose = _docstrings(tree)
+    shown = [n for n in ast.walk(tree) if isinstance(n, ast.Constant) and id(n) not in prose]
+    assert [n.value for n in shown] == ["the tau is"], "docstrings exempt, literals scanned"
 
 
 def test_the_fields_the_app_has_are_a_speed_and_a_size_and_nothing_lattice():
@@ -658,7 +696,8 @@ def test_no_module_under_flow_or_lbm_imports_fengdong():
 
 def test_widgets_imports_flow_and_never_lbm():
     """The legal direction is used (the field validates through ``flow``), and
-    the solver is never reached directly — not even ``lbm.render`` (constraint 10)."""
+    the solver is never reached directly — not even ``lbm.render`` (constraint 10).
+    The second half walks every file in ``fengdong/``, so ``app.py`` is covered too."""
     source = WIDGETS_PY.read_text(encoding="utf-8")
     assert _imports_of(source, "widgets", "flow") == [
         "widgets: from flow.fluids import ...",

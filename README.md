@@ -61,6 +61,7 @@ the path. It is not on PyPI yet, so the install line is the wheel, not the name:
 myenv/Scripts/python.exe -m build                 # dist/fengdong-0.2.0-py3-none-any.whl
 python -m venv elsewhere && elsewhere/Scripts/pip install dist/fengdong-0.2.0-py3-none-any.whl
 elsewhere/Scripts/fengdong --version              # fengdong 0.2.0
+elsewhere/Scripts/fengdong                        # the window (T207): drop a picture, type three numbers, see the plan
 elsewhere/Scripts/python -m flow --shape disc.png --fluid water --speed "5 mm/s" --size "2 cm"
 ```
 

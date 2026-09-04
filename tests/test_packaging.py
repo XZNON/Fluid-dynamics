@@ -274,15 +274,22 @@ def test_the_console_entry_point_resolves_and_prints_the_version():
     assert out.getvalue().strip() == f"fengdong {fengdong.__version__}"
 
 
-def test_the_bare_command_also_answers_and_exits_zero():
-    """Until T207 there is no window; the command must still not crash."""
-    from fengdong.__main__ import main
+def test_the_bare_command_opens_the_window_and_returns_its_exit_code(monkeypatch):
+    """From T207 the bare command *is* the window. ``App.run`` is stubbed so
+    this test opens nothing; ``tests/test_app.py`` drives the real loop under
+    the dummy driver."""
+    import os
 
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    from fengdong.__main__ import main
+    from fengdong.app import App
+
+    monkeypatch.setattr(App, "run", lambda self: 0)
     out = io.StringIO()
     with redirect_stdout(out):
         code = main([])
     assert code == 0
-    assert out.getvalue().splitlines()[0] == f"fengdong {fengdong.__version__}"
+    assert out.getvalue() == "", "the window prints nothing; --version is the printing path"
 
 
 def test_fengdong_imports_without_numpy_flow_or_a_display():

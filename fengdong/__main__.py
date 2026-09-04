@@ -6,17 +6,22 @@ exists."* ``pyproject.toml`` binds the ``fengdong`` command to :func:`main`
 here, and Rung I (``validate/install.py``) runs ``fengdong --version`` from a
 fresh venv to prove the binding survives the wheel.
 
-What this does today: prints ``fengdong <version>`` and exits 0. What it will
-do from T207: open the window (``DOCS/IDEA4.md`` § What Phase 2 is,
-concretely). The ``--version`` flag is kept when that happens, because it is
-what Rung I asks for and what a person types to check an install worked.
+What this does: ``--version`` prints ``fengdong <version>`` and exits 0;
+otherwise it opens the window (T207, ``DOCS/IDEA4.md`` § What Phase 2 is,
+concretely) and returns when the window is closed. ``--version`` is answered
+**first**, because it is what Rung I asks for and what a person types to check
+an install worked.
 
-Deliberately **no** ``flow`` or ``lbm`` import at module scope. Constraint 17
-permits it, but ``fengdong --version`` should answer in milliseconds and
-should answer even on a machine where numpy is broken — that is precisely the
-machine on which the version is worth knowing. The ``__name__`` guard is not
-decoration: ``tests/test_packaging.py`` imports this module to check the entry
-point resolves, and without the guard collection would run the command.
+Deliberately **no** ``flow``, ``lbm``, ``pygame`` or :mod:`fengdong.app` import
+at module scope — the window is imported *inside* :func:`main`, after the
+arguments are parsed. Constraint 17 permits the import; constraint 20 is why
+it is deferred: ``fengdong --version`` should answer in milliseconds and should
+answer even on a machine where numpy is broken, which is precisely the machine
+on which the version is worth knowing (``tests/test_packaging.py`` and
+``tests/test_widgets.py`` both assert it in a subprocess). The ``__name__``
+guard is not decoration: ``tests/test_packaging.py`` imports this module to
+check the entry point resolves, and without the guard collection would run
+the command.
 """
 
 from __future__ import annotations
@@ -45,14 +50,14 @@ def main(argv: list[str] | None = None) -> int:
 
     Returns:
         Process exit code — ``0`` on success. ``--version`` prints
-        :func:`version_line` and returns 0; with no arguments it prints the
-        same line and a note that the window lands with T207.
+        :func:`version_line` and returns 0 without importing the window;
+        otherwise the window is opened and its exit code returned.
     """
     parser = argparse.ArgumentParser(
         prog=PROG,
         description=(
             "FengDong - drop a picture on a window and watch the flow. "
-            "The window is T207; today this command reports its version."
+            "With no arguments, opens the window."
         ),
     )
     parser.add_argument(
@@ -60,16 +65,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="print the installed version and exit",
     )
+    parser.add_argument(
+        "--backend",
+        choices=("numpy", "warp"),
+        default="numpy",
+        help=(
+            "which backend the plan's wall-clock estimate is for, and which "
+            "will run the simulation (default numpy, the reference; warp "
+            "needs the [gpu] extra) -- the same flag python -m flow takes"
+        ),
+    )
     args = parser.parse_args(argv)
 
-    print(version_line())
-    if not args.version:
-        print(
-            "the window is not built yet (DOCS/TASKS3.md T207); the product "
-            "command today is `python -m flow`."
-        )
-    sys.stdout.flush()
-    return 0
+    if args.version:
+        print(version_line())
+        sys.stdout.flush()
+        return 0
+
+    # Imported here and not above: this pulls in pygame, numpy and flow, none
+    # of which --version needs (constraint 20; tests/test_packaging.py).
+    from fengdong.app import App
+
+    return App(backend=args.backend).run()
 
 
 if __name__ == "__main__":

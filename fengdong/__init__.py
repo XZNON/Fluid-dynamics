@@ -6,12 +6,16 @@ things Phase 2 must get right (5): *"One command installs it, on a machine that
 is not ours."* This package is what ``pip install fengdong`` installs and what
 the ``fengdong`` command runs (**D-083**).
 
-**T205 shipped the skeleton, T206 the widgets.** :func:`fengdong.__main__.main`
-prints a version and exits, so the console entry point is real before the app
-is; :mod:`fengdong.widgets` is the closed widget set (**D-083**), driven
-headless and imported by nothing here yet — the window is T207, the live view
-T208 and the drop T209 (``DOCS/PLAN3.md`` § Session map). Nothing here opens
-a display.
+**T205 shipped the skeleton, T206 the widgets, T207 the window.**
+:func:`fengdong.__main__.main` answers ``--version`` first and otherwise opens
+:class:`fengdong.app.App` — a resizable window titled *FengDong* with one
+:class:`~fengdong.widgets.DropTarget`, the setup column (fluid, speed, size,
+quality — through the closed widget set, **D-083**), a preview of the body
+:func:`flow.prepare.prepare` made of the dropped picture with its verdict, and
+the plan :meth:`flow.case.Case.explain` prints. No simulation runs yet: the
+live view is T208 and the drop rung T209 (``DOCS/PLAN3.md`` § Session map).
+Only :meth:`fengdong.app.App.open` touches a display; everything else is driven
+headless by ``tests/test_app.py`` and ``tests/test_widgets.py``.
 
 Two rules govern everything that lands here, and both have tests:
 

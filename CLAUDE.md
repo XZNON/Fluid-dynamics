@@ -186,7 +186,8 @@ myenv/Scripts/python.exe bench.py --backend warp --les    # the closure's cost a
 # the Phase 2 product command (T207+). `python -m flow` and `python -m lbm.runner`
 # both survive underneath it, with the knobs it deliberately has not got (D-072).
 fengdong                                                  # the window; pip install fengdong
-myenv/Scripts/python.exe -m fengdong --version            # today (T205): prints `fengdong 0.2.0`, exits 0
+myenv/Scripts/python.exe -m fengdong                      # the window from the tree (T207); --backend warp for the GPU estimate
+myenv/Scripts/python.exe -m fengdong --version            # prints `fengdong 0.2.0`, exits 0, imports no pygame / numpy / flow (T205)
 myenv/Scripts/python.exe -m build                         # dist/*.whl + dist/*.tar.gz (T205); Rung I does this itself
 pip install dist/fengdong-0.2.0-py3-none-any.whl          # into ANY venv; add [gpu] / [video] for warp / recording
 
@@ -258,9 +259,9 @@ version; `pytest`, `psutil` and `build` are `[dev]`, `warp-lang` is `[gpu]`, `im
 | `flow/report.py` | `Result` — Cd/Cl/St/convergence, the printed summary, the plot, `save()` | T108 |
 | `flow/cli.py` | `python -m flow` — the flags, the exit codes; `flow/__main__.py` is the entry point | T109 |
 | `flow/fidelity.py` | the three bands, decided from the eddy viscosity a run generated | T204 |
-| `fengdong/__init__.py`, `fengdong/__main__.py` | the package and the `fengdong` console entry point — `__version__` (single-sourced into `pyproject.toml`) and a `main` that prints it; no `flow` or `lbm` import at module scope, so `--version` answers on a machine where numpy is broken | T205 |
+| `fengdong/__init__.py`, `fengdong/__main__.py` | the package and the `fengdong` console entry point — `__version__` (single-sourced into `pyproject.toml`) and a `main` that answers `--version` first and otherwise imports `fengdong.app` *inside itself* and opens the window (T207); no `flow`, `lbm` or pygame import at module scope, so `--version` answers on a machine where numpy is broken | T205, T207 |
 | `fengdong/widgets.py` | the closed widget set (**D-083**, **D-097**): `Label`, `TextField`, `Dropdown`, `Button`, `DropTarget`, plus `Panel` (one column, tab order). Each has a `rect`, `draw(surface)` and `handle(events) -> changed`; driven headless with synthesised events; imports `flow.quantity` / `flow.fluids` and never `lbm` | T206 |
-| `fengdong/app.py` | the window, the event loop, the panels; `fengdong/__main__.py` is the entry point | T207, T208 |
+| `fengdong/app.py` | `App` — the window titled FengDong (**T207**): one `Panel` of T206 widgets (drop target, fluid, speed, size, quality, two buttons, a status line), the body preview (the prepared mask as two flat colours — chrome, constraint 10) and the plan pane, which is `Case.explain()` verbatim plus the suggestion list `Case.nearest()` acts on. `handle(events)` is the state machine, `draw(surface)` paints, `open()` is the only display call, `run()` the loop; built and driven headless. Imports `flow.case` / `flow.autoconfig.QUALITY_LEVELS`, never `lbm`. A `Case` is rebuilt on a drop, a choice, Enter or the Preview button — never per keystroke (**D-098**). Live view, numbers, save: T208 | T207, T208 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 | `validate/minute.py` | Rung E — the whole product path, timed from process start | T110 |
 | `validate/les.py` | Rung F — `Cs = 0` is bitwise BGK; Rung 3 survives the closure | T201, T202 |
@@ -317,10 +318,10 @@ measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 1
 
 **Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 landed in
 session 24, T202 in session 25, T203 in session 26 — and with it M9 — and T204 in session 27, with
-M10 — and T205 in session 28, with M11 — and T206 in session 29**. **T207 is next.** Three deliverables: a **Smagorinsky
+M10 — and T205 in session 28, with M11 — and T206 in session 29, and T207 in session 30**. **T208 is next.** Three deliverables: a **Smagorinsky
 closure** on the existing BGK collision (both backends, defaulting off), the **fidelity bands** that
 make it safe to ship, and a **pygame desktop application** shipped as `pip install fengdong`. Two of
-the three are done and the third has its box and its widgets. Rungs **F 🟩 · G 🟩 · H 🟩 · I 🟩 · J ⬜**, milestones
+the three are done and the third has its box, its widgets and its window — what it lacks is the moving picture. Rungs **F 🟩 · G 🟩 · H 🟩 · I 🟩 · J ⬜**, milestones
 **M9 🟩 · M10 🟩 · M11 🟩** – **M12**.
 Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog `DOCS/TASKS3.md` · **live status
 `DOCS/STATE3.md`**.
@@ -416,6 +417,26 @@ arrive as `TEXTINPUT`, `KEYDOWN` is for editing keys only, `handle` returns *rep
 allocates nothing on an unchanged frame (rendered text is cached per line; a test counts
 `Font.render` calls). `fengdong/__main__.py` still imports neither pygame nor the widgets. **Nothing
 in `lbm/` or `flow/` changed.**
+
+**T207, done (session 30): the window.** `fengdong/app.py::App` — the resizable window titled
+**FengDong**, one `Panel` of T206 widgets (drop target, fluid, speed, size, quality, *Preview the plan*,
+*Use the nearest case that runs*, a status line), a preview of the body `flow.prepare` made of the
+dropped picture with its verdict and first repair, and a scrollable plan pane whose text **is**
+`Case.explain(quiet=True)` — asserted by string equality — followed, for a refusal, by the list
+`Case.nearest()` acts on in its order, exactly as `flow/cli.py::_print_refusal` prints it. The app
+reads no `plan` field and no lattice name (AST-scanned), imports `flow` and never `lbm`, and the
+constraint-13 identifier and string scans now walk **every** file in `fengdong/` (docstrings exempt).
+`fengdong` with no argument opens it; `--version` still answers first without importing the window,
+pygame, numpy or `flow`; `--backend` is `python -m flow`'s flag, passed through (D-073). **D-098**:
+building a `Case` costs 0.4–1.1 s on this machine (measured), so the plan is rebuilt on a drop, a
+dropdown choice, Enter, or the button — never per keystroke — and the status line says when the
+fields have moved past the plan on screen. `tests/test_app.py` (32 tests) drives the whole state
+machine headless, opens the display only under the dummy driver and closes it, and runs the whole
+command in a subprocess with `-W error::ResourceWarning`. **The manual gate was run and is recorded
+in `DOCS/STATE3.md` § Session log (session 30)** — the real window, a posted drop, typed numbers,
+screenshots of the plan, a refusal and a bad entry. **Nothing in `lbm/` or `flow/` changed.** What
+the window does *not* do yet: run. That is T208, and `App` has the seams for it (`handle` returns
+whether the case changed; `open` / `run` / `close` are separate).
 
 **What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
 picture"* and D-044 deferred that; everything beneath it is now validated by twelve rungs, so this

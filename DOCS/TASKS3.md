@@ -21,7 +21,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T204 | `flow/fidelity.py` — the bands, wired through | `done` | T203 | **Rung H** 🟩 → **M10** 🟩 |
 | T205 | Packaging: `pyproject.toml`, the `fengdong` distribution | `done` | — | **Rung I** 🟩 → **M11** 🟩 |
 | T206 | `fengdong/widgets.py` — the closed widget set | `done` | T205 | unit tests, headless 🟩 (50 tests, session 29) |
-| T207 | `fengdong/app.py` — window, drop target, setup panel | `not_started` | T206 | manual gate + tests |
+| T207 | `fengdong/app.py` — window, drop target, setup panel | `done` | T206 | manual gate + tests 🟩 (32 tests + the gate, session 30) |
 | T208 | Live view, numbers panel, save, refusal UI | `not_started` | T207, T204 | manual gate + tests |
 | T209 | The drop: end to end, timed | `not_started` | T208 | **Rung J** → **M12** |
 
@@ -376,7 +376,7 @@ via `DropTarget` alone. `DropTarget` is therefore the one widget that is not neg
 
 ## T207 — `fengdong/app.py` — window, drop target, setup panel
 
-**Status:** `not_started`
+**Status:** `done` — session 30 (2026-09-04). Every criterion below run and passed; `tests/test_app.py`, 32 tests; the manual gate recorded in `DOCS/STATE3.md` § Session log (session 30).
 
 ### Goal
 
@@ -396,14 +396,14 @@ A window opens, a picture can be dropped on it, three physical numbers can be ty
 
 ### Acceptance criteria
 
-- [ ] `fengdong` opens a window titled **FengDong** with a visible drop target, and dropping a PNG on it loads and previews the mask that `flow.prepare` produced — the repaired one, with its verdict shown (**D-065**, **D-066**).
-- [ ] Fluid, speed, size and quality are entered through the T206 widgets, and a bad entry shows the parse error without crashing the window.
-- [ ] **The plan preview is `Case.explain()`'s content**, obtained from `flow.Case`, not recomputed: grid, `tau`, timestep, run length, expected fidelity band, and why each. Constraint 17 asserted — the app computes nothing.
-- [ ] A refused case shows the refusal and its suggestions, and the suggestion the app would **act on** is the one it shows. *(This is queued issue `2fd69b874c32` — `Case.explain()` prints a different list than `Case.nearest()` acts on. Fix it here or carry it explicitly; do not reproduce the mismatch in a second surface.)*
-- [ ] The window is resizable and the panel survives it; nothing is positioned by hard-coded pixel counts that break at another size.
-- [ ] Closing the window exits cleanly with no pygame resource warnings, asserted headless.
-- [ ] Headless test coverage of `App`'s state machine — file dropped, fields edited, plan computed — with no window opened. The manual gate (a human opens it and drops a file) is **recorded in `DOCS/STATE3.md` with what was seen**, per this project's habit of running things rather than reading them.
-- [ ] `pytest` green.
+- [x] `fengdong` opens a window titled **FengDong** with a visible drop target, and dropping a PNG on it loads and previews the mask that `flow.prepare` produced — the repaired one, with its verdict shown (**D-065**, **D-066**).
+- [x] Fluid, speed, size and quality are entered through the T206 widgets, and a bad entry shows the parse error without crashing the window.
+- [x] **The plan preview is `Case.explain()`'s content**, obtained from `flow.Case`, not recomputed: grid, `tau`, timestep, run length, expected fidelity band, and why each. Constraint 17 asserted — the app computes nothing.
+- [x] A refused case shows the refusal and its suggestions, and the suggestion the app would **act on** is the one it shows. *(This was queued issue `2fd69b874c32` — closed in session 27 by **D-093**; the window inherits the guard: it shows `case.suggestions` in order, acts on its first entry through `Case.nearest()`, and `tests/test_app.py` asserts the two agree, including on a substituted case that is itself refused.)*
+- [x] The window is resizable and the panel survives it; nothing is positioned by hard-coded pixel counts that break at another size.
+- [x] Closing the window exits cleanly with no pygame resource warnings, asserted headless.
+- [x] Headless test coverage of `App`'s state machine — file dropped, fields edited, plan computed — with no window opened. The manual gate (a human opens it and drops a file) is **recorded in `DOCS/STATE3.md` with what was seen**, per this project's habit of running things rather than reading them.
+- [x] `pytest` green.
 
 ### Constraints that bite here
 
