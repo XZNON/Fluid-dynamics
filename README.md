@@ -11,7 +11,7 @@ relaxation time, no grid.
 ```bash
 git clone <this repo> "Fluid Mech" && cd "Fluid Mech"
 python -m venv myenv
-myenv/Scripts/pip.exe install numpy matplotlib pillow pygame imageio imageio-ffmpeg psutil pytest warp-lang
+myenv/Scripts/pip.exe install numpy matplotlib pillow pygame imageio imageio-ffmpeg psutil pytest warp-lang build
 
 myenv/Scripts/python.exe -m flow --shape tests/data/shapes/disc.png \
     --fluid water --speed "5 mm/s" --size "2 cm" \
@@ -52,6 +52,23 @@ myenv/Scripts/python.exe -m validate.minute --backend warp
 ```
 
 Drop `--backend warp` to run on NumPy — same physics, same answer, slower.
+
+**Installing it rather than cloning it** (Phase 2, T205): the tree builds a wheel named `fengdong`
+that ships `lbm`, `flow` and the `fengdong` command into any virtual environment, with no checkout on
+the path. It is not on PyPI yet, so the install line is the wheel, not the name:
+
+```bash
+myenv/Scripts/python.exe -m build                 # dist/fengdong-0.2.0-py3-none-any.whl
+python -m venv elsewhere && elsewhere/Scripts/pip install dist/fengdong-0.2.0-py3-none-any.whl
+elsewhere/Scripts/fengdong --version              # fengdong 0.2.0
+elsewhere/Scripts/python -m flow --shape disc.png --fluid water --speed "5 mm/s" --size "2 cm"
+```
+
+The base install runs the NumPy backend and the app; `pip install "dist/fengdong-0.2.0-py3-none-any.whl[gpu]"`
+adds the Warp backend and `[video]` adds MP4 recording. `python -m validate.install` (Rung I) does all
+of the above into a fresh venv and times it — **52.6 s** on this machine against a 60 s limit. Only
+Windows is tested; the code is portable Python and nothing in it is deliberately Windows-only, but no
+other platform has been run.
 Every command is a validated path: see [the validation ladder](#validation-ladder--no-rung-skipped).
 
 ## The problem

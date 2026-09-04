@@ -11,12 +11,19 @@ myenv
 *.gif
 frames/
 
-*/__init__.py
-__init__.py
-
-tools
+# T205 (session 28, D-096): the rules `*/__init__.py`, `__init__.py` and
+# `tools` that lived here since session 5 are gone -- queued issue 495777c58269.
+# They untracked lbm/backends/__init__.py (the Backend protocol) and tools/
+# (the issue queue CLI), so a fresh clone could not import lbm.backends and a
+# wheel built from one would have shipped no backend seam.
 
 study.md
+
+# T205: build artefacts. `python -m build` writes dist/; setuptools leaves
+# build/ and *.egg-info behind. Rung I rebuilds every run; nothing reads these.
+dist/
+build/
+*.egg-info/
 
 # rendered runs (videos, GIFs, frame dumps)
 outputs/

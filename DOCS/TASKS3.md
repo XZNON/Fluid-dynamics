@@ -19,7 +19,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T202 | The closure on the Warp backend | `done` | T201 | **Rung F** (full) 🟩 + Rung A 🟩 |
 | T203 | Taylor–Green harness | `done` | T202 | **Rung G** 🟩 → **M9** 🟩 |
 | T204 | `flow/fidelity.py` — the bands, wired through | `done` | T203 | **Rung H** 🟩 → **M10** 🟩 |
-| T205 | Packaging: `pyproject.toml`, the `fengdong` distribution | `not_started` | — | **Rung I** → **M11** |
+| T205 | Packaging: `pyproject.toml`, the `fengdong` distribution | `done` | — | **Rung I** 🟩 → **M11** 🟩 |
 | T206 | `fengdong/widgets.py` — the closed widget set | `not_started` | T205 | unit tests, headless |
 | T207 | `fengdong/app.py` — window, drop target, setup panel | `not_started` | T206 | manual gate + tests |
 | T208 | Live view, numbers panel, save, refusal UI | `not_started` | T207, T204 | manual gate + tests |
@@ -279,7 +279,7 @@ the verdict and the absence of the number.
 
 ## T205 — Packaging: `pyproject.toml`, the `fengdong` distribution → Rung I → M11
 
-**Status:** `not_started`
+**Status:** `done` (session 28) — Rung I PASS at 52.6 s and 55.5 s against 60; all fourteen rungs re-run on both backends, no digit moved; `pytest` 921 passed
 
 ### Goal
 
@@ -302,14 +302,14 @@ and exits, so the entry point is real before the app exists.
 
 ### Acceptance criteria
 
-- [ ] `pyproject.toml` declares name `fengdong`, and **every runtime dependency matches a row in `DOCS/STATE3.md` § Environment** — no dependency appears in the package that was not installed and recorded in a session. A test asserts the two lists agree.
-- [ ] `python -m build` produces a wheel and an sdist; the wheel contains `lbm`, `flow` and `fengdong` and **no** `validate`, `tests`, `DOCS`, `myenv`, `outputs`, `Navier-Fluid-Equation` or `scripts`.
-- [ ] `validate/install.py` builds the wheel, creates a **fresh venv**, installs the wheel into it, and runs `fengdong --version` plus a headless smoke of the app's model layer — **with no repository directory on `sys.path`**, asserted inside the child process, not assumed.
-- [ ] The install-to-first-answer elapsed time is **printed**, and under **60 s** on a warm pip cache (**D-035** conditions quoted).
-- [ ] Optional extras are declared for what is genuinely optional: the Warp backend (`fengdong[gpu]`) and recording (`fengdong[video]`). The base install runs the NumPy backend and the app.
-- [ ] `myenv/Scripts/python.exe -m validate.install` prints **PASS**.
-- [ ] The repository still works uninstalled: every existing command in `CLAUDE.md` § Commands runs unchanged from the tree.
-- [ ] `pytest` green.
+- [x] `pyproject.toml` declares name `fengdong`, and **every runtime dependency matches a row in `DOCS/STATE3.md` § Environment** — no dependency appears in the package that was not installed and recorded in a session. A test asserts the two lists agree.
+- [x] `python -m build` produces a wheel and an sdist; the wheel contains `lbm`, `flow` and `fengdong` and **no** `validate`, `tests`, `DOCS`, `myenv`, `outputs`, `Navier-Fluid-Equation` or `scripts`.
+- [x] `validate/install.py` builds the wheel, creates a **fresh venv**, installs the wheel into it, and runs `fengdong --version` plus a headless smoke of the app's model layer — **with no repository directory on `sys.path`**, asserted inside the child process, not assumed.
+- [x] The install-to-first-answer elapsed time is **printed**, and under **60 s** on a warm pip cache (**D-035** conditions quoted).
+- [x] Optional extras are declared for what is genuinely optional: the Warp backend (`fengdong[gpu]`) and recording (`fengdong[video]`). The base install runs the NumPy backend and the app.
+- [x] `myenv/Scripts/python.exe -m validate.install` prints **PASS**.
+- [x] The repository still works uninstalled: every existing command in `CLAUDE.md` § Commands runs unchanged from the tree.
+- [x] `pytest` green.
 
 ### Constraints that bite here
 

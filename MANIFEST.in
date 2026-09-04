@@ -1,0 +1,15 @@
+# T205 (DOCS/TASKS3.md § T205). The sdist is the three packages, README.md and
+# pyproject.toml. setuptools' default manifest would also sweep in tests/
+# (it collects test*.py by habit); the wheel never had them, and the sdist
+# should match the wheel. Rung I reads the wheel; this keeps the sdist honest.
+prune tests
+prune validate
+prune scripts
+prune tools
+prune examples
+prune DOCS
+prune PROMPTS
+prune old-Docs
+prune outputs
+prune Navier-Fluid-Equation
+global-exclude __pycache__ *.py[cod]

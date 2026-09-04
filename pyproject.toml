@@ -1,0 +1,92 @@
+# pyproject.toml — the `fengdong` distribution (T205, DOCS/TASKS3.md § T205).
+#
+# DOCS/IDEA4.md § The five things Phase 2 must get right (5): "One command
+# installs it, on a machine that is not ours." This file is that command's
+# input. Three packages ship — `lbm`, `flow`, `fengdong` — and nothing else
+# (constraint 20, D-083). The distribution is named `fengdong` because `flow`
+# is taken on PyPI (D-083); the import names underneath do not change.
+#
+# Every dependency below is a row in DOCS/STATE3.md § Environment, at the
+# version that was installed and recorded in a session — no package appears
+# here that `myenv/` never had (DOCS/PLAN3.md § Risks, "Packaging drags in a
+# dependency the solver did not need"). tests/test_packaging.py parses both
+# files and asserts they agree, name for name and lower bound for version.
+#
+# Which rows are *runtime* and which are *optional* is the substance of that
+# criterion, decided by reading the imports rather than the habits:
+#   runtime  numpy (everything), pillow (`Case.from_image`, `lbm.geometry.from_png`),
+#            matplotlib (`Result.plot` / `Result.save`), pygame (the app, and
+#            `lbm.render.LiveSink` — the live window `python -m flow` opens).
+#   [gpu]    warp-lang — `lbm/backends/registry.py` already reports "known but
+#            not available" with the install line when it is absent, and the
+#            NumPy backend is the reference oracle (D-043). Base install runs.
+#   [video]  imageio + imageio-ffmpeg — `lbm/record.py` imports both lazily
+#            and names the install line when they are missing; the validation
+#            ladder records nothing.
+#   [dev]    pytest (tests), psutil (`validate/minute.py` times from process
+#            start), build (this file's own front-end). None is imported by
+#            `lbm/`, `flow/` or `fengdong/`.
+#
+# Backend: setuptools, not hatchling. setuptools 79.0.1 was already in `myenv`
+# (pip's own dependency), so choosing it keeps the "two packages expected"
+# budget at one new package (`build`); hatchling would have been a second.
+# Recorded as D-096.
+
+[build-system]
+requires = ["setuptools>=79.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fengdong"
+dynamic = ["version"]
+description = "FengDong (风洞): drop a picture on a window and watch the flow — a validated 2D lattice Boltzmann wind tunnel"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "XZNON" }]
+keywords = ["lattice-boltzmann", "cfd", "fluid-dynamics", "wind-tunnel", "d2q9"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+# Runtime — the base install runs the NumPy backend and the app.
+dependencies = [
+    "numpy>=2.4.6",
+    "matplotlib>=3.11.1",
+    "pillow>=12.3.0",
+    "pygame>=2.6.1",
+]
+
+[project.optional-dependencies]
+# The Warp backend. `python -m flow --backend warp`, Rungs A/E, bench.py.
+gpu = ["warp-lang>=1.16.0"]
+# Recording. `--out wake.mp4`, `lbm.record.RecordSink`.
+video = ["imageio>=2.37.4", "imageio-ffmpeg>=0.6.0"]
+# Developing the tree: unit tests, Rung E's process-start clock, this build.
+dev = ["pytest>=9.1.1", "psutil>=7.2.2", "build>=1.6.0"]
+
+[project.scripts]
+fengdong = "fengdong.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/XZNON/Fluid-dynamics"
+
+[tool.setuptools]
+# Only these three ship. Everything else at the root — validate/, tests/,
+# DOCS/, scripts/, tools/, examples/, Navier-Fluid-Equation/, myenv/,
+# outputs/ — is excluded by not being matched, and Rung I opens the wheel
+# to prove it.
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lbm*", "flow*", "fengdong*"]
+namespaces = false
+
+[tool.setuptools.dynamic]
+version = { attr = "fengdong.__version__" }

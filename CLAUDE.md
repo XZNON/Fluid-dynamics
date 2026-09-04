@@ -107,9 +107,12 @@ way it does, and the retired one is kept below, struck, rather than deleted.
 Constraints 13–16 are enforced by tests that live with the code they govern (`flow/`). **Constraint
 19 landed with T201/T202** (Rung F, `validate/les.py`) and **constraint 18 landed with T204** —
 `flow/fidelity.py` decides the band, `flow.report.Result.__post_init__` withholds every claim the band
-forbids, and Rung H (`validate/fidelity.py`) asserts it by inspecting the object. Constraints **17**
-and **20** land with the code *they* govern (T205 onward); until then they are the design rule code
-has to be written to satisfy, not a dead letter.
+forbids, and Rung H (`validate/fidelity.py`) asserts it by inspecting the object. **Constraints 17 and
+20 landed with T205** — `pyproject.toml` ships exactly `lbm`, `flow`, `fengdong`; Rung I
+(`validate/install.py`) installs the built wheel into a fresh venv and asserts, *inside the child
+process*, that no repository directory is on `sys.path` and that the installed `flow/` imports no
+`fengdong/`; `tests/test_packaging.py` scans the tree the way the constraint-15 test does
+(**D-096**).
 
 ---
 
@@ -183,6 +186,9 @@ myenv/Scripts/python.exe bench.py --backend warp --les    # the closure's cost a
 # the Phase 2 product command (T207+). `python -m flow` and `python -m lbm.runner`
 # both survive underneath it, with the knobs it deliberately has not got (D-072).
 fengdong                                                  # the window; pip install fengdong
+myenv/Scripts/python.exe -m fengdong --version            # today (T205): prints `fengdong 0.2.0`, exits 0
+myenv/Scripts/python.exe -m build                         # dist/*.whl + dist/*.tar.gz (T205); Rung I does this itself
+pip install dist/fengdong-0.2.0-py3-none-any.whl          # into ANY venv; add [gpu] / [video] for warp / recording
 
 # the product command (T109). python -m lbm.runner is kept for the solver-level
 # knobs this one deliberately does not have (D-072).
@@ -225,7 +231,10 @@ myenv/Scripts/python.exe -m tools.issues capture --source validate -- myenv/Scri
 
 `myenv/` is the project venv (Python 3.11, numpy 2.4, matplotlib 3.11, pillow). It is gitignored.
 Adding a dependency (pygame, imageio, pytest) means `myenv/Scripts/pip.exe install <pkg>` **and** a
-line in `DOCS/STATE3.md` § Environment — and, from T205, a matching entry in `pyproject.toml`.
+line in `DOCS/STATE3.md` § Environment — and, from T205, a matching entry in `pyproject.toml`
+(`tests/test_packaging.py` parses both and fails if they disagree, name for name and version for
+version; `pytest`, `psutil` and `build` are `[dev]`, `warp-lang` is `[gpu]`, `imageio` and
+`imageio-ffmpeg` are `[video]`, and the four the base install needs are runtime).
 
 ## Module map
 
@@ -249,6 +258,7 @@ line in `DOCS/STATE3.md` § Environment — and, from T205, a matching entry in 
 | `flow/report.py` | `Result` — Cd/Cl/St/convergence, the printed summary, the plot, `save()` | T108 |
 | `flow/cli.py` | `python -m flow` — the flags, the exit codes; `flow/__main__.py` is the entry point | T109 |
 | `flow/fidelity.py` | the three bands, decided from the eddy viscosity a run generated | T204 |
+| `fengdong/__init__.py`, `fengdong/__main__.py` | the package and the `fengdong` console entry point — `__version__` (single-sourced into `pyproject.toml`) and a `main` that prints it; no `flow` or `lbm` import at module scope, so `--version` answers on a machine where numpy is broken | T205 |
 | `fengdong/widgets.py` | the closed widget set: label, text field, dropdown, button, drop target, panel | T206 |
 | `fengdong/app.py` | the window, the event loop, the panels; `fengdong/__main__.py` is the entry point | T207, T208 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
@@ -267,7 +277,9 @@ the map and not the dumping ground. Nothing here is imported by `lbm/` or `flow/
 | Path | What belongs there |
 |---|---|
 | `bench.py` | the steps/s table; stays at the root, cited above. `--les` (T202) A/Bs the closure against plain BGK on `--backend`, in alternating rounds |
-| `pyproject.toml` | the `fengdong` distribution (T205): packages `lbm`, `flow`, `fengdong`; console entry point `fengdong`. Its runtime dependencies must match `DOCS/STATE3.md` § Environment exactly, and a test asserts it |
+| `pyproject.toml` | the `fengdong` distribution (T205, **D-096**): setuptools, PEP 621; packages `lbm`, `flow`, `fengdong` and nothing else; console entry point `fengdong`; extras `[gpu]`, `[video]`, `[dev]`. Its dependencies must match `DOCS/STATE3.md` § Environment exactly, and `tests/test_packaging.py` asserts it |
+| `MANIFEST.in` | keeps the sdist to the same three packages the wheel has — setuptools would otherwise sweep `tests/` into it by habit |
+| `dist/`, `build/`, `*.egg-info/` | `python -m build`'s leavings. Gitignored; Rung I clears `dist/` and rebuilds every run |
 | `scripts/` | visualisation drivers on top of `flow` — `slowmo`, `streamlines`, `windtunnel`. They change how a run is **drawn or paced**, never what it computes; every solver parameter still comes from `flow.autoconfig.plan`. Each puts the repo root on `sys.path` itself, so cwd does not matter. See `scripts/README.md` |
 | `examples/shapes/` | ad-hoc geometry for demos and issue repros. **Not** `tests/data/shapes/` — `validate/shapes.py` (Rung C) iterates every image in that one and `tests/test_prepare.py` cross-checks it against its `generate.py`, so a picture added there changes what a rung measures |
 | `outputs/` | rendered videos, GIFs and frame dumps. Gitignored; nothing reads from it |
@@ -305,10 +317,11 @@ measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 1
 
 **Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 landed in
 session 24, T202 in session 25, T203 in session 26 — and with it M9 — and T204 in session 27, with
-M10**. **T205 is next.** Three deliverables: a **Smagorinsky closure** on the existing BGK collision
-(both backends, defaulting off), the **fidelity bands** that make it safe to ship, and a **pygame
-desktop application** shipped as `pip install fengdong`. Two of the three are done. Rungs
-**F 🟩 · G 🟩 · H 🟩 · I ⬜ · J ⬜**, milestones **M9 🟩 · M10 🟩** – **M12**.
+M10 — and T205 in session 28, with M11**. **T206 is next.** Three deliverables: a **Smagorinsky
+closure** on the existing BGK collision (both backends, defaulting off), the **fidelity bands** that
+make it safe to ship, and a **pygame desktop application** shipped as `pip install fengdong`. Two of
+the three are done and the third has its box. Rungs **F 🟩 · G 🟩 · H 🟩 · I 🟩 · J ⬜**, milestones
+**M9 🟩 · M10 🟩 · M11 🟩** – **M12**.
 Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog `DOCS/TASKS3.md` · **live status
 `DOCS/STATE3.md`**.
 
@@ -368,6 +381,22 @@ Rung B's numpy half still running at checkpoint time and its warp half green (`D
 **The measured claim T204 is judged on**: `python -m flow --shape disc.png --fluid air --speed
 "20 m/s" --size "1.5 m"` — Re 2e6, the case **D-038** refused and **D-074** re-refused — now **exits
 0**, reports **illustrative**, and prints **no `Cd` at all**. Rung H runs that literal command.
+
+**T205, done (session 28): the box, and with it M11.** `pyproject.toml` (setuptools, PEP 621,
+**D-096**) ships exactly `lbm`, `flow` and `fengdong`; `fengdong/` exists as a skeleton whose `main`
+prints `fengdong 0.2.0` and exits, so the console entry point is real before the app is;
+`validate/install.py` (Rung I) builds the wheel, opens it, creates a **fresh venv**, installs, runs
+`fengdong --version`, and then drives a picture and three physical numbers through the *installed*
+`flow.Case` from a child process whose cwd is outside the tree and which asserts, itself, that no
+repository directory is on its `sys.path` and that the installed `lbm/` and `flow/` obey constraints
+15 and 17. **Measured: PASS, 52.6 s** from venv creation to the smoke's finite state, against 60 s on a
+warm pip cache, at 3201 of 3201 MHz on mains. The dependency split is the substance of the task: four
+runtime rows (`numpy`, `matplotlib`, `pillow`, `pygame`), `warp-lang` as `[gpu]`, `imageio` +
+`imageio-ffmpeg` as `[video]`, `pytest` + `psutil` + `build` as `[dev]`, and `tests/test_packaging.py`
+parses `pyproject.toml` and `DOCS/STATE3.md` § Environment and fails if they disagree in either
+direction. Queued issue `495777c58269` is closed: `.gitignore` no longer drops `__init__.py` or
+`tools/`, `lbm/backends/__init__.py` is tracked for the first time since T101, and the wheel is
+required to contain it. **Nothing in `lbm/` or `flow/` changed.** Q-204 (PyPI) stays the user's.
 
 **What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
 picture"* and D-044 deferred that; everything beneath it is now validated by twelve rungs, so this
