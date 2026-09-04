@@ -6,10 +6,12 @@ things Phase 2 must get right (5): *"One command installs it, on a machine that
 is not ours."* This package is what ``pip install fengdong`` installs and what
 the ``fengdong`` command runs (**D-083**).
 
-**T205 ships the skeleton.** :func:`fengdong.__main__.main` prints a version
-and exits, so the console entry point is real before the app exists — the
-widgets are T206, the window T207, the live view T208 and the drop T209
-(``DOCS/PLAN3.md`` § Session map). Nothing here opens a display.
+**T205 shipped the skeleton, T206 the widgets.** :func:`fengdong.__main__.main`
+prints a version and exits, so the console entry point is real before the app
+is; :mod:`fengdong.widgets` is the closed widget set (**D-083**), driven
+headless and imported by nothing here yet — the window is T207, the live view
+T208 and the drop T209 (``DOCS/PLAN3.md`` § Session map). Nothing here opens
+a display.
 
 Two rules govern everything that lands here, and both have tests:
 

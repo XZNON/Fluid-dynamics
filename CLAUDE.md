@@ -259,7 +259,7 @@ version; `pytest`, `psutil` and `build` are `[dev]`, `warp-lang` is `[gpu]`, `im
 | `flow/cli.py` | `python -m flow` — the flags, the exit codes; `flow/__main__.py` is the entry point | T109 |
 | `flow/fidelity.py` | the three bands, decided from the eddy viscosity a run generated | T204 |
 | `fengdong/__init__.py`, `fengdong/__main__.py` | the package and the `fengdong` console entry point — `__version__` (single-sourced into `pyproject.toml`) and a `main` that prints it; no `flow` or `lbm` import at module scope, so `--version` answers on a machine where numpy is broken | T205 |
-| `fengdong/widgets.py` | the closed widget set: label, text field, dropdown, button, drop target, panel | T206 |
+| `fengdong/widgets.py` | the closed widget set (**D-083**, **D-097**): `Label`, `TextField`, `Dropdown`, `Button`, `DropTarget`, plus `Panel` (one column, tab order). Each has a `rect`, `draw(surface)` and `handle(events) -> changed`; driven headless with synthesised events; imports `flow.quantity` / `flow.fluids` and never `lbm` | T206 |
 | `fengdong/app.py` | the window, the event loop, the panels; `fengdong/__main__.py` is the entry point | T207, T208 |
 | `validate/*.py` | the rungs, each printing pass/fail; all take `--backend` | T002, T003, T007, T008, T103 |
 | `validate/minute.py` | Rung E — the whole product path, timed from process start | T110 |
@@ -317,10 +317,10 @@ measurement harnesses were repaired rather than re-tuned: `_RATE_TABLE` gained 1
 
 **Phase 2 is live — FengDong** (风洞, *wind tunnel*). Planned in session 23; **T201 landed in
 session 24, T202 in session 25, T203 in session 26 — and with it M9 — and T204 in session 27, with
-M10 — and T205 in session 28, with M11**. **T206 is next.** Three deliverables: a **Smagorinsky
+M10 — and T205 in session 28, with M11 — and T206 in session 29**. **T207 is next.** Three deliverables: a **Smagorinsky
 closure** on the existing BGK collision (both backends, defaulting off), the **fidelity bands** that
 make it safe to ship, and a **pygame desktop application** shipped as `pip install fengdong`. Two of
-the three are done and the third has its box. Rungs **F 🟩 · G 🟩 · H 🟩 · I 🟩 · J ⬜**, milestones
+the three are done and the third has its box and its widgets. Rungs **F 🟩 · G 🟩 · H 🟩 · I 🟩 · J ⬜**, milestones
 **M9 🟩 · M10 🟩 · M11 🟩** – **M12**.
 Spec `DOCS/IDEA4.md` · plan `DOCS/PLAN3.md` · backlog `DOCS/TASKS3.md` · **live status
 `DOCS/STATE3.md`**.
@@ -397,6 +397,25 @@ parses `pyproject.toml` and `DOCS/STATE3.md` § Environment and fails if they di
 direction. Queued issue `495777c58269` is closed: `.gitignore` no longer drops `__init__.py` or
 `tools/`, `lbm/backends/__init__.py` is tracked for the first time since T101, and the wheel is
 required to contain it. **Nothing in `lbm/` or `flow/` changed.** Q-204 (PyPI) stays the user's.
+
+**T206, done (session 29): the widgets.** `fengdong/widgets.py` is the closed set **D-083** named —
+`Label`, `TextField`, `Dropdown`, `Button`, `DropTarget` — plus a `Panel` that stacks them in one
+column and walks Tab / Shift+Tab, and nothing else: no layout engine, no theming, no animation, and
+`tests/test_widgets.py` (50 tests) scans the module's *identifiers* for that vocabulary as well as
+for constraint 13's lattice names, imported from `tests/test_flow_package.py::LATTICE_NAMES` rather
+than copied. Every widget is built, driven with synthesised `pygame.event` objects and drawn onto an
+off-screen `Surface` under `SDL_VIDEODRIVER=dummy`, and the file's last test asserts
+`pygame.display.get_init()` is still false. `TextField.speed` / `.size` call `flow.quantity.parse`
+with the exact `expect` / `default_unit` pair `flow/case.py` passes, so a bad entry's `error` is the
+string `python -m flow` prints to stderr — asserted by running `flow.cli.main` in-process and
+comparing. `Dropdown.fluids` reads `flow.fluids.FLUIDS` at construction (a monkeypatched sixth
+fluid appears with no edit). `DropTarget` consumes `DROPBEGIN` / `DROPFILE` / `DROPCOMPLETE` and
+reports the path, judging nothing about the file. **D-097** records the event model: characters
+arrive as `TEXTINPUT`, `KEYDOWN` is for editing keys only, `handle` returns *reported-state* changes
+(not focus), an open `Dropdown` captures clicks so a button under its list cannot fire, and `draw`
+allocates nothing on an unchanged frame (rendered text is cached per line; a test counts
+`Font.render` calls). `fengdong/__main__.py` still imports neither pygame nor the widgets. **Nothing
+in `lbm/` or `flow/` changed.**
 
 **What Phase 2 is for, in one sentence**: `idea.md`'s success test says *"opens the tool, drags in a
 picture"* and D-044 deferred that; everything beneath it is now validated by twelve rungs, so this

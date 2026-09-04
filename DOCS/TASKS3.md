@@ -20,7 +20,7 @@ A task is `done` only when **every** acceptance criterion is checked. Code writt
 | T203 | Taylor–Green harness | `done` | T202 | **Rung G** 🟩 → **M9** 🟩 |
 | T204 | `flow/fidelity.py` — the bands, wired through | `done` | T203 | **Rung H** 🟩 → **M10** 🟩 |
 | T205 | Packaging: `pyproject.toml`, the `fengdong` distribution | `done` | — | **Rung I** 🟩 → **M11** 🟩 |
-| T206 | `fengdong/widgets.py` — the closed widget set | `not_started` | T205 | unit tests, headless |
+| T206 | `fengdong/widgets.py` — the closed widget set | `done` | T205 | unit tests, headless 🟩 (50 tests, session 29) |
 | T207 | `fengdong/app.py` — window, drop target, setup panel | `not_started` | T206 | manual gate + tests |
 | T208 | Live view, numbers panel, save, refusal UI | `not_started` | T207, T204 | manual gate + tests |
 | T209 | The drop: end to end, timed | `not_started` | T208 | **Rung J** → **M12** |
@@ -332,7 +332,7 @@ should install.
 
 ## T206 — `fengdong/widgets.py` — the closed widget set
 
-**Status:** `not_started`
+**Status:** `done` — session 29 (2026-09-04). Every criterion below run and passed; `tests/test_widgets.py`, 50 tests.
 
 ### Goal
 
@@ -353,14 +353,14 @@ list returning whether it changed.
 
 ### Acceptance criteria
 
-- [ ] Exactly those five widgets plus `Panel`. **No layout engine, no theming, no animation, no focus chain beyond tab order.** A sixth widget is `/new-task`.
-- [ ] Every widget is **testable headless**: constructed and driven with synthesised `pygame.event` objects against an off-screen `Surface`, with no window opened. `pytest` runs them under `SDL_VIDEODRIVER=dummy` and the test asserts no display is initialised.
-- [ ] `TextField` validates through `flow.quantity.parse` and shows the parse error **in the user's words** when it fails — the same message the CLI prints, obtained from the same code path, not re-worded (**constraint 14**'s posture).
-- [ ] `Dropdown` for fluids is populated from `flow.fluids.FLUIDS` at construction; adding a fluid to the library adds it to the widget with no edit here, asserted by test.
-- [ ] `DropTarget` consumes `pygame.DROPFILE` and reports the path; a test synthesises the event rather than requiring a human to drag anything.
-- [ ] **Constraint 13:** no widget accepts or displays a lattice quantity. A test scans the module for the vocabulary the Phase 1 scan already forbids in `flow/`.
-- [ ] **Constraint 17:** `fengdong/` imports `flow/`; `flow/` never imports `fengdong/`. A test asserts it, in the same shape as the existing constraint-15 test.
-- [ ] `pytest` green, new tests counted.
+- [x] Exactly those five widgets plus `Panel`. **No layout engine, no theming, no animation, no focus chain beyond tab order.** A sixth widget is `/new-task`.
+- [x] Every widget is **testable headless**: constructed and driven with synthesised `pygame.event` objects against an off-screen `Surface`, with no window opened. `pytest` runs them under `SDL_VIDEODRIVER=dummy` and the test asserts no display is initialised.
+- [x] `TextField` validates through `flow.quantity.parse` and shows the parse error **in the user's words** when it fails — the same message the CLI prints, obtained from the same code path, not re-worded (**constraint 14**'s posture).
+- [x] `Dropdown` for fluids is populated from `flow.fluids.FLUIDS` at construction; adding a fluid to the library adds it to the widget with no edit here, asserted by test.
+- [x] `DropTarget` consumes `pygame.DROPFILE` and reports the path; a test synthesises the event rather than requiring a human to drag anything.
+- [x] **Constraint 13:** no widget accepts or displays a lattice quantity. A test scans the module for the vocabulary the Phase 1 scan already forbids in `flow/`.
+- [x] **Constraint 17:** `fengdong/` imports `flow/`; `flow/` never imports `fengdong/`. A test asserts it, in the same shape as the existing constraint-15 test.
+- [x] `pytest` green, new tests counted.
 
 ### Constraints that bite here
 
